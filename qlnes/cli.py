@@ -196,17 +196,16 @@ def main(argv=None) -> int:
         return 0
     except (typer.Exit, SystemExit) as e:
         return getattr(e, "exit_code", 0) or 0
-    except (typer.Abort, click_exception()) as e:
-        typer.echo(str(e), err=True)
-        return 2
+    except typer.Abort:
+        return 1
     except FileNotFoundError as e:
         typer.echo(f"erreur : {e}", err=True)
         return 2
-
-
-def click_exception():
-    import click
-    return click.exceptions.UsageError
+    except Exception as e:
+        if type(e).__name__ in ("UsageError", "BadParameter", "MissingParameter"):
+            typer.echo(str(e), err=True)
+            return 2
+        raise
 
 
 if __name__ == "__main__":
