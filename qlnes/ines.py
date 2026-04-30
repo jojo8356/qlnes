@@ -8,7 +8,7 @@ HEADER_SIZE = 16
 PRG_BANK = 0x4000
 CHR_BANK = 0x2000
 
-SUPPORTED_MAPPERS = (0, 1, 2, 3)
+SUPPORTED_MAPPERS = (0, 1, 2, 3, 66)
 
 
 @dataclass
@@ -86,6 +86,22 @@ def _layout_mmc1_default(prg: bytes) -> List[Tuple[int, bytes]]:
     return _layout_uxrom(prg)
 
 
+def _layout_gxrom(prg: bytes) -> List[Tuple[int, bytes]]:
+    # Mapper 66 (GxROM/GNROM) : PRG switchable par blocs de 32 KB en $8000-$FFFF.
+    # Un seul registre en $8000-$FFFF : bits 5-4 = PRG bank, bits 1-0 = CHR bank.
+    # Pas de half fixe : on émet une image 64 KB par bank PRG de 32 KB.
+    if len(prg) % 0x8000 != 0 or len(prg) == 0:
+        raise ValueError(f"GxROM PRG size {len(prg):#x} not a multiple of 32K")
+    n = len(prg) // 0x8000
+    out: List[Tuple[int, bytes]] = []
+    for idx in range(n):
+        bank = prg[idx * 0x8000 : (idx + 1) * 0x8000]
+        image = bytearray(0x10000)
+        image[0x8000:0x10000] = bank
+        out.append((idx, bytes(image)))
+    return out
+
+
 def _fixed_only(last: bytes) -> bytes:
     image = bytearray(0x10000)
     image[0x8000:0xC000] = last
@@ -112,6 +128,8 @@ def rom_to_images(data: bytes) -> List[Tuple[int, bytes]]:
         return _layout_uxrom(prg)
     if h.mapper == 1:
         return _layout_mmc1_default(prg)
+    if h.mapper == 66:
+        return _layout_gxrom(prg)
     raise NotImplementedError(f"mapper {h.mapper} unhandled")
 
 

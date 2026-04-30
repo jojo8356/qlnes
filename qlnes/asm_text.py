@@ -102,6 +102,27 @@ def db_line_to_text(line: str, min_run: int = DEFAULT_MIN_RUN) -> str:
     return out
 
 
+_UNKNOWN_OPCODE_RE = re.compile(r"^(L_(?P<addr>[0-9A-Fa-f]{4}))\s+\?\?\?\s*$")
+
+
+def replace_unknown_opcodes(asm_text: str, image: bytes) -> str:
+    """Réécrit les lignes `L_XXXX  ???` (opcode 6502 invalide / non décodé)
+    en `L_XXXX: DB 0xYY` avec l'octet original. Sans ça, py65 encode `???`
+    en `0x02` (illegal JAM) et casse le round-trip byte-pour-byte."""
+    out: List[str] = []
+    for line in asm_text.splitlines():
+        m = _UNKNOWN_OPCODE_RE.match(line)
+        if m:
+            addr = int(m.group("addr"), 16)
+            if 0 <= addr < len(image):
+                line = f"{m.group(1)}: DB  0x{image[addr]:02X}    ; opcode invalide"
+        out.append(line)
+    result = "\n".join(out)
+    if asm_text.endswith("\n"):
+        result += "\n"
+    return result
+
+
 def rewrite_db_strings(asm_text: str, min_run: int = DEFAULT_MIN_RUN) -> str:
     new_lines: List[str] = []
     converted = 0

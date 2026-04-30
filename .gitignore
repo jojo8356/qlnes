@@ -23,3 +23,9 @@ env/
 bin/ql6502
 build/
 *.o
+
+# Local test ROMs and analysis outputs (not redistributable)
+roms/
+out/
+*.nes
+*.zip

@@ -64,6 +64,25 @@ class TestMMC1Default(unittest.TestCase):
             self.assertEqual(image[0xC000], 3)
 
 
+class TestGxROM(unittest.TestCase):
+    def test_gxrom_one_image_per_32k_bank(self):
+        # 4 PRG banks (16K) = 2 banks de 32K → 2 images
+        images = rom_to_images(fake_rom(4, 66))
+        self.assertEqual(len(images), 2)
+        for _, image in images:
+            self.assertEqual(len(image), 0x10000)
+
+    def test_gxrom_bank_marker_at_8000(self):
+        # fake_rom marque le 1er octet de chaque bank 16K avec son index
+        images = rom_to_images(fake_rom(4, 66))
+        self.assertEqual(images[0][1][0x8000], 0)
+        self.assertEqual(images[1][1][0x8000], 2)
+
+    def test_gxrom_single_32k_bank(self):
+        images = rom_to_images(fake_rom(2, 66))
+        self.assertEqual(len(images), 1)
+
+
 class TestUnsupportedMapper(unittest.TestCase):
     def test_mmc3_raises(self):
         with self.assertRaises(NotImplementedError):

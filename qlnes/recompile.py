@@ -17,6 +17,7 @@ boucle Python octet-par-octet n'est utilisée que quand on doit pinpointer
 le premier byte qui diffère.
 """
 
+import ast
 import hashlib
 import re
 from dataclasses import dataclass, field
@@ -40,6 +41,9 @@ _HEX_0X = re.compile(r"\b0x([0-9A-Fa-f]+)\b")
 _DATA_LINE_RE = re.compile(
     r"^\s*L_[0-9A-Fa-f]+:?\s+(?:\.byte|DB|DW)\s+(?P<rest>.+)$",
     re.IGNORECASE,
+)
+_NAMED_LABEL_RE = re.compile(
+    r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*):(?P<rest>\s+\S.*)$"
 )
 
 
@@ -99,6 +103,20 @@ def _normalize_operand(operand: str) -> str:
     return s
 
 
+def _scan_quoted(body: str, start: int) -> Tuple[str, int]:
+    # Délimite une string Python "..." en respectant \\ et \" comme échappements.
+    # Retourne (littéral_avec_guillemets, index_après_quote_fermante).
+    i = start + 1
+    while i < len(body):
+        if body[i] == "\\" and i + 1 < len(body):
+            i += 2
+            continue
+        if body[i] == '"':
+            return body[start : i + 1], i + 1
+        i += 1
+    raise ValueError(f"unterminated string in: {body!r}")
+
+
 def _parse_byte_tokens(body: str) -> List[int]:
     out: List[int] = []
     cursor = 0
@@ -108,11 +126,11 @@ def _parse_byte_tokens(body: str) -> List[int]:
             cursor += 1
             continue
         if ch == '"':
-            end = body.find('"', cursor + 1)
-            if end < 0:
-                raise ValueError(f"unterminated string in: {body!r}")
-            out.extend(b for b in body[cursor + 1 : end].encode("latin-1"))
-            cursor = end + 1
+            literal, cursor = _scan_quoted(body, cursor)
+            decoded = ast.literal_eval(literal)
+            if not isinstance(decoded, str):
+                raise ValueError(f"unexpected literal type in: {body!r}")
+            out.extend(decoded.encode("latin-1"))
             continue
         m = re.match(r"(?:0x|\$)([0-9A-Fa-f]+)", body[cursor:])
         if m:
@@ -186,6 +204,8 @@ class Recompiler:
             return None
 
     def assemble(self, asm_text: str, image_size: int = 0x10000) -> bytes:
+        if self.names_to_addr:
+            asm_text = self._restore_label_addresses(asm_text)
         disasm = Disasm(asm_text)
         image = bytearray(image_size)
         for line in disasm.lines:
@@ -197,6 +217,25 @@ class Recompiler:
                 continue
             image[line.addr:end] = data
         return bytes(image)
+
+    def _restore_label_addresses(self, asm_text: str) -> str:
+        # Le rewriter remplace `L_8EDD:` par `update_scroll:` au début des
+        # lignes de subroutines. Pour réassembler à la bonne adresse il faut
+        # restaurer la forme `L_XXXX:`. On ne touche que les noms qui
+        # résolvent à une adresse en zone PRG ($8000-$FFFF).
+        out: List[str] = []
+        for raw in asm_text.splitlines():
+            m = _NAMED_LABEL_RE.match(raw)
+            if m:
+                name = m.group("name")
+                addr = self.names_to_addr.get(name)
+                if addr is not None and 0x8000 <= addr <= 0xFFFF:
+                    raw = f"L_{addr:04X}:{m.group('rest')}"
+            out.append(raw)
+        result = "\n".join(out)
+        if asm_text.endswith("\n"):
+            result += "\n"
+        return result
 
 
 def recompile_asm(
@@ -239,6 +278,69 @@ def assemble_to_rom(
     out += new_prg
     out += chr_data
     return bytes(out), errors
+
+
+def _bank_prg_chunk(image: bytes, mapper: int, bank_idx: int, total_banks: int) -> bytes:
+    # Extrait le morceau de PRG correspondant au bank `bank_idx` depuis l'image 64KB
+    # désassemblée, en suivant la convention de mapping de chaque mapper.
+    if mapper == 66:
+        return image[0x8000:0x10000]
+    if mapper in (1, 2):
+        if bank_idx == total_banks - 1:
+            return image[0xC000:0x10000]
+        return image[0x8000:0xC000]
+    if mapper in (0, 3):
+        return image[0x8000:0x10000]
+    raise NotImplementedError(f"chunk extraction not implemented for mapper {mapper}")
+
+
+def assemble_to_rom_multibank(
+    bank_asms: List[str],
+    original_rom: bytes,
+    bank_names: Optional[List[Optional[Dict[str, int]]]] = None,
+) -> Tuple[bytes, List[str]]:
+    """Recompile une ROM multi-bank depuis N ASMs (un par bank PRG).
+
+    Chaque ASM est assemblé en image 64KB avec sa **propre** name-map
+    (les détecteurs dataflow peuvent attribuer le même nom à des adresses
+    différentes selon le bank). On découpe ensuite le morceau pertinent
+    selon le mapper, on concatène dans l'ordre des banks, puis on ré-attache
+    l'header iNES + CHR-ROM originale.
+    """
+    h = parse_header(original_rom)
+    if h is None:
+        raise ValueError("multibank requires iNES header")
+    if not bank_asms:
+        raise ValueError("bank_asms is empty")
+    if bank_names is not None and len(bank_names) != len(bank_asms):
+        raise ValueError("bank_names length must match bank_asms")
+
+    n = len(bank_asms)
+    chunks: List[bytes] = []
+    all_errors: List[str] = []
+    for idx, asm in enumerate(bank_asms):
+        names = bank_names[idx] if bank_names else None
+        image, errors = recompile_asm(
+            asm, image_size=0x10000, names_to_addr=names
+        )
+        chunks.append(_bank_prg_chunk(image, h.mapper, idx, n))
+        all_errors.extend(errors)
+    new_prg = b"".join(chunks)
+    if len(new_prg) != h.prg_size:
+        raise ValueError(
+            f"multibank PRG size mismatch: expected {h.prg_size}, got {len(new_prg)}"
+        )
+
+    chr_offset = HEADER_SIZE + (512 if h.has_trainer else 0) + h.prg_size
+    chr_data = (
+        original_rom[chr_offset : chr_offset + h.chr_size] if h.chr_size else b""
+    )
+    out = bytearray(original_rom[:HEADER_SIZE])
+    if h.has_trainer:
+        out += original_rom[HEADER_SIZE : HEADER_SIZE + 512]
+    out += new_prg
+    out += chr_data
+    return bytes(out), all_errors
 
 
 def _first_diff_offset(a: bytes, b: bytes) -> Tuple[Optional[int], int]:

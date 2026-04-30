@@ -117,11 +117,11 @@ def analyze(
         typer.echo(f"✓ STACK.md écrit : {output}")
 
     if asm is not None:
-        content = profile.annotated_asm
+        chr_block = ""
         if assets_dir is not None and profile.assets and profile.assets.chr_raw:
             import os
             chr_rel = os.path.relpath(profile.assets.chr_raw, asm.parent)
-            content += (
+            chr_block = (
                 "\n\n"
                 "; ============================================================\n"
                 "; CHR-ROM extraite vers un fichier séparé (lien réassemblable)\n"
@@ -130,9 +130,20 @@ def analyze(
                 f".incbin \"{chr_rel}\"\n"
                 f"; ou: .include \"{os.path.relpath(profile.assets.chr_asm, asm.parent)}\"\n"
             )
-        asm.write_text(content, encoding="utf-8")
-        if not quiet:
-            typer.echo(f"✓ ASM annoté écrit : {asm}")
+
+        if profile.is_multi_bank:
+            for i, bank_asm in enumerate(profile.bank_asms):
+                content = bank_asm + (chr_block if i == 0 else "")
+                bank_path = asm.with_name(f"{asm.stem}.bank{i}{asm.suffix}")
+                bank_path.write_text(content, encoding="utf-8")
+                if not quiet:
+                    typer.echo(
+                        f"✓ ASM annoté écrit : {bank_path} (bank {i}/{len(profile.bank_asms) - 1})"
+                    )
+        else:
+            asm.write_text(profile.annotated_asm + chr_block, encoding="utf-8")
+            if not quiet:
+                typer.echo(f"✓ ASM annoté écrit : {asm}")
 
     if verify:
         if not quiet:

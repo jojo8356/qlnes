@@ -23,6 +23,7 @@ class Detection:
     confidence: float
     why: str
     pattern: str
+    target_addr: Optional[int] = None
 
 
 def _operand_addr(line: Line) -> Optional[int]:
@@ -347,26 +348,27 @@ def detect_loop_counters(disasm: Disasm) -> List[Detection]:
 def detect_subroutine_args(disasm: Disasm) -> List[Detection]:
     out: List[Detection] = []
     code = disasm.code_lines()
-    seen: Set[int] = set()
     for i, line in enumerate(code):
         if (line.mnemonic or "").upper() != "JSR":
             continue
+        target = line.refs[0] if line.refs else None
         for j in range(max(0, i - 4), i):
             prev = code[j]
             up = (prev.mnemonic or "").upper()
             if up != "STA":
                 continue
             a = _operand_addr(prev)
-            if not _is_zp_or_ram(a) or a in seen:
+            if not _is_zp_or_ram(a):
                 continue
-            seen.add(a)
+            target_str = f" → JSR ${target:04X}" if target is not None else ""
             out.append(
                 Detection(
                     addr=a,
                     name="arg_pre_jsr",
                     confidence=0.55,
-                    why=f"STA ${a:04X} juste avant JSR (probable argument)",
+                    why=f"STA ${a:04X} juste avant JSR{target_str}",
                     pattern="STA <zp> ; ... ; JSR <routine>",
+                    target_addr=target,
                 )
             )
     return out
@@ -412,6 +414,76 @@ def find_subroutines(disasm: Disasm, max_body: int = 200) -> List[Subroutine]:
     return subs
 
 
+def _is_wait_vblank(body: List[Line]) -> bool:
+    # Pattern : BIT $2002 (PPUSTATUS) suivi d'un BPL/BMI court ($-3..$-5)
+    # qui reboucle sur le BIT lui-même → busy-wait sur le bit 7 de PPUSTATUS.
+    for i, line in enumerate(body):
+        up = (line.mnemonic or "").upper()
+        if up != "BIT" or 0x2002 not in line.refs:
+            continue
+        for j in range(i + 1, min(len(body), i + 3)):
+            nxt = body[j]
+            up2 = (nxt.mnemonic or "").upper()
+            if up2 in ("BPL", "BMI") and nxt.refs and nxt.refs[0] == line.addr:
+                return True
+    return False
+
+
+def _is_clear_ram(body: List[Line]) -> bool:
+    # Pattern : LDA #0 ; STA $00,X (ou $0100,X etc.) ; INX/DEX ; BNE.
+    has_zero_load = False
+    has_indexed_store = False
+    has_loop = False
+    for i, line in enumerate(body):
+        up = (line.mnemonic or "").upper()
+        if up == "LDA" and (line.operands or "").startswith("#") and (
+            line.operands or "" ).strip("# ").rstrip(",") in ("0", "0x0", "0x00", "$00", "$0"):
+            has_zero_load = True
+        if up == "STA" and (line.operands or "").rstrip().endswith(",X"):
+            has_indexed_store = True
+        if up == "BNE" and i > 0:
+            prev_up = (body[i - 1].mnemonic or "").upper()
+            if prev_up in ("INX", "DEX", "INY", "DEY"):
+                has_loop = True
+    return has_zero_load and has_indexed_store and has_loop
+
+
+def _is_indirect_y_memcpy(body: List[Line]) -> bool:
+    # Pattern : LDA (src),Y ; STA (dst),Y ; INY ; (BNE | CPY ... ; BNE).
+    for i, line in enumerate(body[:-3]):
+        up = (line.mnemonic or "").upper()
+        ops = (line.operands or "")
+        if up != "LDA" or not (ops.startswith("(") and ",Y" in ops):
+            continue
+        nxt = body[i + 1]
+        up2 = (nxt.mnemonic or "").upper()
+        ops2 = (nxt.operands or "")
+        if up2 != "STA" or not (ops2.startswith("(") and ",Y" in ops2):
+            continue
+        for k in range(i + 2, min(len(body), i + 6)):
+            up3 = (body[k].mnemonic or "").upper()
+            if up3 == "INY":
+                return True
+            if up3 in ("RTS", "RTI", "JMP"):
+                break
+    return False
+
+
+def _is_delay_loop(body: List[Line], hw_refs: int) -> bool:
+    # Aucune écriture matérielle, et au moins une boucle DEX/DEY ; BNE imbriquée
+    if hw_refs > 0 or len(body) > 25:
+        return False
+    has_dec_loop = False
+    for i, line in enumerate(body[:-1]):
+        up = (line.mnemonic or "").upper()
+        if up in ("DEX", "DEY"):
+            up2 = (body[i + 1].mnemonic or "").upper()
+            if up2 == "BNE":
+                has_dec_loop = True
+                break
+    return has_dec_loop
+
+
 def _classify_subroutine(body: List[Line]) -> Tuple[Optional[str], Optional[str]]:
     apu_targets: Set[int] = set()
     ppu_targets: Set[int] = set()
@@ -419,12 +491,15 @@ def _classify_subroutine(body: List[Line]) -> Tuple[Optional[str], Optional[str]
     has_joy1_strobe = False
     has_joy_read_loop = 0
     has_pulse = has_triangle = has_noise = has_dmc = False
+    hw_refs = 0
     for line in body:
         for ref in line.refs:
             if 0x2000 <= ref <= 0x3FFF:
                 ppu_targets.add(ref & 0x2007)
+                hw_refs += 1
             elif 0x4000 <= ref <= 0x4017:
                 apu_targets.add(ref)
+                hw_refs += 1
             if ref == 0x4014:
                 has_oam_dma = True
             if 0x4000 <= ref <= 0x4007:
@@ -439,6 +514,9 @@ def _classify_subroutine(body: List[Line]) -> Tuple[Optional[str], Optional[str]
                 has_joy1_strobe = True
             if ref == 0x4016 and (line.mnemonic or "").upper() == "LDA":
                 has_joy_read_loop += 1
+
+    if _is_wait_vblank(body):
+        return ("wait_vblank", "BIT PPUSTATUS ; BPL self (busy-wait sur vblank)")
     if has_joy1_strobe and has_joy_read_loop >= 4:
         return ("read_controllers", "strobe + 8x LDA $4016 / LSR / ROL")
     if has_oam_dma and len(apu_targets) <= 2:
@@ -463,6 +541,12 @@ def _classify_subroutine(body: List[Line]) -> Tuple[Optional[str], Optional[str]
             return ("ppu_setup", "écrit PPUCTRL/PPUMASK")
         if 0x2005 in ppu_targets:
             return ("update_scroll", "écrit PPUSCROLL")
+    if _is_indirect_y_memcpy(body):
+        return ("memcpy", "LDA (src),Y ; STA (dst),Y ; INY ; loop")
+    if _is_clear_ram(body):
+        return ("clear_ram", "LDA #0 ; STA $XX,X ; INX ; BNE")
+    if _is_delay_loop(body, hw_refs):
+        return ("delay", "boucle DEX/DEY ; BNE sans I/O")
     return (None, None)
 
 

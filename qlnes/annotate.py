@@ -114,10 +114,10 @@ def build_report(
     report.oam = _pass_oam(addrs)
 
     detections = detect_all(disasm, image=image)
-    df_names, _ = merge_detections(detections)
     report.detections = detections
-    report.dataflow = {a: n for a, n in df_names.items() if a not in report.hardware}
 
+    # Détecte d'abord les subroutines : leur kind sert à renommer les args
+    # (`arg_pre_jsr` → `play_pulse_arg`, etc.) avant la dédup nom-unique.
     sub_kinds = detect_subroutine_kinds(disasm)
     used_names: Set[str] = set()
     for entry, sub in sorted(sub_kinds.items()):
@@ -128,6 +128,40 @@ def build_report(
         sub.name = unique
         report.subroutines[entry] = unique
         report.subroutine_details[entry] = sub
+
+    df_names, _ = merge_detections(detections)
+    raw_dataflow = {a: n for a, n in df_names.items() if a not in report.hardware}
+
+    # Si tous les JSR qui suivent un STA <addr> visent la même *famille* de
+    # sub (même `kind`), renomme l'arg en `<kind>_arg`. Sinon laisse
+    # `arg_pre_jsr` (la dédup ci-dessous suffixe l'adresse).
+    arg_targets: Dict[int, Set[int]] = {}
+    for d in detections:
+        if d.name == "arg_pre_jsr" and d.target_addr is not None:
+            arg_targets.setdefault(d.addr, set()).add(d.target_addr)
+    renamed: Dict[int, str] = {}
+    for addr, name in raw_dataflow.items():
+        if name == "arg_pre_jsr":
+            kinds = {
+                report.subroutine_details[t].kind
+                for t in arg_targets.get(addr, ())
+                if t in report.subroutine_details
+            }
+            kinds.discard(None)
+            if len(kinds) == 1:
+                renamed[addr] = f"{next(iter(kinds))}_arg"
+                continue
+        renamed[addr] = name
+
+    # Dédup : un même nom ne peut pas pointer vers plusieurs adresses
+    # (sinon le round-trip ne sait plus quelle adresse rétablir).
+    counts: Dict[str, int] = {}
+    for n in renamed.values():
+        counts[n] = counts.get(n, 0) + 1
+    report.dataflow = {
+        a: (f"{n}_{a:04X}" if counts[n] > 1 else n)
+        for a, n in renamed.items()
+    }
 
     mapped = set(report.hardware) | set(report.oam) | set(report.dataflow) | set(report.subroutines)
     report.fallback = _pass_fallback(addrs, mapped)

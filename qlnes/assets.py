@@ -17,12 +17,41 @@ Le module sort :
 - `pattern_table_spr.png` : 2e banque PT1 ($1000-$1FFF côté PPU)
 """
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from .ines import HEADER_SIZE
 from .rom import Rom
+
+if TYPE_CHECKING:
+    from .annotate import AnnotationReport
+
+
+_NAMED_LABEL_RE = re.compile(
+    r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*):(?P<rest>\s+\S.*)$"
+)
+
+
+def _restore_named_labels(asm: str, name_to_addr: Dict[str, int]) -> str:
+    """Réécrit `update_scroll: ...` en `L_8EDD: ...` pour que `Disasm`
+    (qui n'attend que des labels `L_XXXX`) puisse retrouver les adresses
+    des subroutines déjà renommées par l'annotateur."""
+    out: List[str] = []
+    for line in asm.splitlines():
+        m = _NAMED_LABEL_RE.match(line)
+        if m:
+            addr = name_to_addr.get(m.group("name"))
+            if addr is not None:
+                line = f"L_{addr:04X}:{m.group('rest')}"
+        out.append(line)
+    return "\n".join(out)
+
+
+MUSIC_KINDS = frozenset(
+    {"play_pulse", "play_triangle", "play_noise", "play_dmc", "play_sound"}
+)
 
 
 NES_PALETTE_GRAYSCALE = [
@@ -52,6 +81,8 @@ class AssetsManifest:
     bg_image: Optional[Path] = None
     spr_image: Optional[Path] = None
     n_tiles: int = 0
+    music_asm: Optional[Path] = None
+    music_routines: int = 0
     notes: List[str] = field(default_factory=list)
 
     def to_rows(self) -> List[str]:
@@ -67,6 +98,11 @@ class AssetsManifest:
             rows.append(f"- Pattern table BG : `{self.bg_image.name}`")
         if self.spr_image:
             rows.append(f"- Pattern table sprites : `{self.spr_image.name}`")
+        if self.music_asm:
+            rows.append(
+                f"- Sound engine en ASM : `{self.music_asm.name}` "
+                f"({self.music_routines} routine{'s' if self.music_routines > 1 else ''})"
+            )
         for n in self.notes:
             rows.append(f"- _{n}_")
         return rows
@@ -188,6 +224,92 @@ def _save_png_or_ppm(
             for color in pixels:
                 f.write(bytes(palette[color]))
         return ppm_path
+
+
+def extract_music(
+    bank_asms: List[str],
+    bank_reports: List["AnnotationReport"],
+    out_dir: Path,
+    rom_name: str = "rom",
+) -> Tuple[Optional[Path], int]:
+    """Extrait toutes les routines audio (kind ∈ play_pulse/triangle/noise/dmc/sound)
+    dans `out_dir/music.asm`.
+
+    Le fichier est **informatif** : les bytes restent dans les `.bank*.asm`
+    pour que le round-trip continue à matcher byte-pour-byte. C'est un calque
+    pratique pour modder le moteur audio sans naviguer dans les 5000 lignes
+    du désassemblage complet.
+    """
+    from .parser import Disasm
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "music.asm"
+
+    head: List[str] = [
+        "; ============================================================",
+        f"; Sound / music engine — {rom_name}",
+        "; Extrait par qlnes (copie informative).",
+        ";",
+        "; Les bytes correspondants restent dans les fichiers .bank*.asm,",
+        "; donc le round-trip qlnes recompile ne dépend PAS de ce fichier.",
+        "; ============================================================",
+        "",
+    ]
+    body: List[str] = []
+    routine_count = 0
+
+    for bank_idx, (asm, report) in enumerate(zip(bank_asms, bank_reports)):
+        music_subs = sorted(
+            (entry, name)
+            for entry, name in report.subroutines.items()
+            if entry in report.subroutine_details
+            and report.subroutine_details[entry].kind in MUSIC_KINDS
+        )
+        if not music_subs:
+            continue
+
+        body.append("; ============================================================")
+        body.append(f"; === Bank {bank_idx} ===")
+        body.append("; ============================================================")
+        body.append("")
+
+        name_to_addr = {n: a for a, n in report.subroutines.items()}
+        disasm = Disasm(_restore_named_labels(asm, name_to_addr))
+        addr_to_idx = {l.addr: i for i, l in enumerate(disasm.lines) if l.addr >= 0}
+
+        for entry, name in music_subs:
+            sub = report.subroutine_details[entry]
+            body.append(
+                "; ------------------------------------------------------------"
+            )
+            body.append(f"; {name} @ ${entry:04X}  ({sub.kind})")
+            if sub.why:
+                body.append(f";   {sub.why}")
+            body.append(
+                "; ------------------------------------------------------------"
+            )
+
+            start = addr_to_idx.get(entry)
+            if start is None:
+                body.append(f"; <introuvable dans le bank {bank_idx}>")
+                body.append("")
+                continue
+
+            for ln in disasm.lines[start : start + 200]:
+                body.append(ln.raw)
+                up = (ln.mnemonic or "").upper()
+                if up in ("RTS", "RTI"):
+                    break
+            else:
+                body.append("; ... (sub > 200 lignes, tronquée)")
+            body.append("")
+            routine_count += 1
+
+    if routine_count == 0:
+        return None, 0
+
+    out_path.write_text("\n".join(head + body), encoding="utf-8")
+    return out_path, routine_count
 
 
 def extract_chr(rom: Rom, out_dir: Path) -> AssetsManifest:

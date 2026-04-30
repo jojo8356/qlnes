@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from .annotate import AnnotationReport, annotate, rewrite_asm
-from .assets import AssetsManifest, extract_chr
+from .asm_text import replace_unknown_opcodes
+from .assets import AssetsManifest, extract_chr, extract_music
 from .cross_ref import RoutineNameProposal, cross_reference, merge_proposals
 from .dataflow import find_nmi_address, find_reset_address
 from .engines import EngineHint, detect_copyright_year, detect_engines
@@ -24,7 +25,12 @@ from .lang_detect import LangHypothesis, detect_language
 from .nes_hw import NES_REGS
 from .parser import Disasm
 from .ql6502 import QL6502
-from .recompile import RomDiff, assemble_to_rom, verify_round_trip
+from .recompile import (
+    RomDiff,
+    assemble_to_rom,
+    assemble_to_rom_multibank,
+    verify_round_trip,
+)
 from .rom import Rom
 
 
@@ -110,6 +116,8 @@ class RomProfile:
     engine_hints: List[EngineHint] = field(default_factory=list)
     copyright_string: Optional[str] = None
     assets: Optional[AssetsManifest] = None
+    bank_asms: List[str] = field(default_factory=list)
+    bank_reports: List[AnnotationReport] = field(default_factory=list)
 
     @classmethod
     def from_path(cls, path) -> "RomProfile":
@@ -120,70 +128,112 @@ class RomProfile:
         return cls(rom=rom, header=rom.header)
 
     def analyze_static(self) -> "RomProfile":
-        try:
-            image = self.rom.single_image()
-        except ValueError:
-            image = next(self.rom.banks()).image
-        asm = (
-            QL6502()
-            .load_image(image)
-            .mark_blank(0x0000, 0x7FFF)
-            .generate_asm()
-        )
-        self.asm_line_count = len(asm.splitlines())
-        self.annotated_asm, self.static_report = annotate(asm, image=image)
-        self.vectors = self._extract_vectors(image)
-        base_disasm = Disasm(asm)
-        self.hardware = self._detect_hardware(self.annotated_asm, base_disasm)
-        self.language_hypotheses = detect_language(base_disasm, self.header)
-        self.engine_hints = detect_engines(self.rom.raw, self.header, base_disasm)
-        cr = detect_copyright_year(self.rom.raw)
-        if cr:
-            self.copyright_string = cr[1]
+        banks = list(self.rom.banks())
+        self.bank_asms = []
+        self.bank_reports = []
+        total_lines = 0
+        for i, bank in enumerate(banks):
+            image = bank.image
+            asm = (
+                QL6502()
+                .load_image(image)
+                .mark_blank(0x0000, 0x7FFF)
+                .generate_asm()
+            )
+            asm = replace_unknown_opcodes(asm, image)
+            annotated, report = annotate(asm, image=image)
+            self.bank_asms.append(annotated)
+            self.bank_reports.append(report)
+            total_lines += len(annotated.splitlines())
+            if i == 0:
+                self.annotated_asm = annotated
+                self.static_report = report
+                self.vectors = self._extract_vectors(image)
+                base_disasm = Disasm(asm)
+                self.hardware = self._detect_hardware(self.annotated_asm, base_disasm)
+                self.language_hypotheses = detect_language(base_disasm, self.header)
+                self.engine_hints = detect_engines(
+                    self.rom.raw, self.header, base_disasm
+                )
+                cr = detect_copyright_year(self.rom.raw)
+                if cr:
+                    self.copyright_string = cr[1]
+        self.asm_line_count = total_lines
         return self
+
+    @property
+    def is_multi_bank(self) -> bool:
+        return len(self.bank_asms) > 1
 
     def extract_assets(self, out_dir) -> AssetsManifest:
         from pathlib import Path as _Path
         out = _Path(out_dir)
         self.assets = extract_chr(self.rom, out)
+        if self.bank_asms and self.bank_reports:
+            music_path, n = extract_music(
+                self.bank_asms,
+                self.bank_reports,
+                out,
+                rom_name=self.rom.name,
+            )
+            if music_path is not None:
+                self.assets.music_asm = music_path
+                self.assets.music_routines = n
         return self.assets
 
-    def names_to_addr(self) -> Dict[str, int]:
-        if not self.static_report:
-            return {}
+    @staticmethod
+    def _names_from_report(report: AnnotationReport) -> Dict[str, int]:
         out: Dict[str, int] = {}
         for d in (
-            self.static_report.hardware,
-            self.static_report.oam,
-            self.static_report.dataflow,
-            self.static_report.fallback,
-            self.static_report.subroutines,
+            report.hardware,
+            report.oam,
+            report.dataflow,
+            report.fallback,
+            report.subroutines,
         ):
             for addr, name in d.items():
                 out.setdefault(name, addr)
         return out
 
-    def recompile(self, output_path) -> Path:
+    def names_to_addr(self) -> Dict[str, int]:
+        # Map agrégée (utilisée pour le single-bank et l'analyse globale).
+        # Pour le round-trip multi-bank, on utilise les maps par bank afin
+        # d'éviter les collisions où un même nom pointe sur des adresses
+        # différentes selon le bank.
+        out: Dict[str, int] = {}
+        reports = self.bank_reports if self.bank_reports else (
+            [self.static_report] if self.static_report else []
+        )
+        for r in reports:
+            for name, addr in self._names_from_report(r).items():
+                out.setdefault(name, addr)
+        return out
+
+    def per_bank_names(self) -> List[Dict[str, int]]:
+        return [self._names_from_report(r) for r in self.bank_reports]
+
+    def _assemble(self) -> Tuple[bytes, List[str]]:
         if not self.annotated_asm:
             raise RuntimeError("appeler analyze_static() d'abord")
-        recompiled, errors = assemble_to_rom(
-            self.annotated_asm,
-            self.rom.raw,
-            names_to_addr=self.names_to_addr(),
+        if self.is_multi_bank:
+            return assemble_to_rom_multibank(
+                self.bank_asms,
+                self.rom.raw,
+                bank_names=self.per_bank_names(),
+            )
+        return assemble_to_rom(
+            self.annotated_asm, self.rom.raw, names_to_addr=self.names_to_addr()
         )
+
+    def recompile(self, output_path) -> Path:
+        recompiled, _errors = self._assemble()
         from pathlib import Path as _Path
         out = _Path(output_path)
         out.write_bytes(recompiled)
         return out
 
     def verify_round_trip(self) -> RomDiff:
-        if not self.annotated_asm:
-            raise RuntimeError("appeler analyze_static() d'abord")
-        recompiled, errors = assemble_to_rom(
-            self.annotated_asm,
-            self.rom.raw,
-            names_to_addr=self.names_to_addr(),
-        )
+        recompiled, errors = self._assemble()
         from .recompile import compare_roms
         diff = compare_roms(self.rom.raw, recompiled)
         if errors:
