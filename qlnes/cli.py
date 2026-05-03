@@ -201,6 +201,78 @@ def verify(
     raise typer.Exit(1)
 
 
+@app.command()
+def audio(
+    rom: Path = typer.Argument(..., help="ROM .nes à rendre", exists=True),
+    output: Path = typer.Option(
+        ..., "-o", "--output", help="Sortie WAV ou MP3 (extension détermine le format)"
+    ),
+    frames: int = typer.Option(
+        600, "--frames", help="Durée en frames NTSC (60 fps → 600 = 10 s)"
+    ),
+    keep: bool = typer.Option(
+        False, "--keep-intermediate", help="Garde la trace TSV et le WAV intermédiaire"
+    ),
+    quiet: bool = typer.Option(False, "-q", "--quiet"),
+):
+    """Rend l'audio de la ROM (fceux trace APU + synth pur Python → WAV/MP3)."""
+    from .audio import render_rom_audio
+
+    if not quiet:
+        typer.echo(f"→ capture APU via fceux ({frames} frames)…")
+    result = render_rom_audio(rom, output, frames=frames, keep_intermediate=keep)
+    if not quiet:
+        typer.echo(
+            f"✓ {result.n_events} writes APU sur {result.duration_s:.2f}s"
+        )
+        if result.mp3:
+            typer.echo(f"✓ MP3 écrit : {result.mp3}")
+        else:
+            typer.echo(f"✓ WAV écrit : {result.wav}")
+
+
+@app.command()
+def nsf(
+    rom: Path = typer.Argument(..., help="ROM .nes source", exists=True),
+    output: Path = typer.Option(..., "-o", "--output", help="Sortie .nsf"),
+    title: str = typer.Option("", "--title", help="Titre du morceau"),
+    artist: str = typer.Option("qlnes", "--artist"),
+    copyright_: str = typer.Option("", "--copyright"),
+    init_addr: Optional[str] = typer.Option(
+        None, "--init", help="Adresse INIT (hex, ex: 0x8000) — défaut RESET vector"
+    ),
+    play_addr: Optional[str] = typer.Option(
+        None, "--play", help="Adresse PLAY (hex, ex: 0x8082) — défaut NMI vector"
+    ),
+    songs: int = typer.Option(1, "--songs", help="Nombre total de morceaux"),
+    experimental: bool = typer.Option(
+        False, "--experimental",
+        help="Pour mappers ≠ 0 : packagise la banque fixe en best-effort"
+    ),
+    quiet: bool = typer.Option(False, "-q", "--quiet"),
+):
+    """Construit un fichier NSF depuis la ROM (mapper 0 auto, autres mappers expérimental)."""
+    from .nsf import write_nsf
+
+    init_int = int(init_addr, 0) if init_addr else None
+    play_int = int(play_addr, 0) if play_addr else None
+
+    build = write_nsf(
+        rom, output,
+        title=title, artist=artist, copyright_=copyright_,
+        init_addr=init_int, play_addr=play_int,
+        songs=songs, experimental=experimental,
+    )
+    if not quiet:
+        typer.echo(
+            f"✓ NSF écrit : {output}  "
+            f"(load=${build.load_addr:04X}, init=${build.init_addr:04X}, "
+            f"play=${build.play_addr:04X})"
+        )
+        if build.note:
+            typer.echo(build.note)
+
+
 def main(argv=None) -> int:
     try:
         app(argv, standalone_mode=False)

@@ -29,3 +29,15 @@ roms/
 out/
 *.nes
 *.zip
+
+# ROM-derived artifacts (do NOT commit — copyright/DMCA risk on commercial ROMs)
+# These are regenerated locally by `qlnes analyze` / `qlnes recompile` from a
+# user-supplied ROM and must never be redistributed.
+STACK.md
+*.bank*.asm
+smb*.asm
+assets/
+
+# Local Claude Code configuration and skill installs (re-installable via
+# `npx bmad-method install ...` — not part of the project source).
+.claude/
