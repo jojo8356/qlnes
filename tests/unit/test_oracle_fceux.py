@@ -193,7 +193,12 @@ def test_trace_strips_ambient_qlnes_env_vars(monkeypatch, tmp_path):
     assert qlnes_keys <= {"QLNES_TRACE_OUT", "QLNES_FRAMES", "QLNES_REFERENCE_WAV"}
 
 
-def test_trace_raises_on_nonzero_exit(monkeypatch, tmp_path):
+def test_trace_raises_on_nonzero_exit_when_no_trace_written(monkeypatch, tmp_path):
+    """Non-zero exit AND missing trace file → internal_error.
+
+    Non-zero exit alone is tolerated (fceux 2.6.5 SIGSEGVs after emu.exit()
+    even on successful runs); only failure when trace is also absent.
+    """
     fake = tmp_path / "fceux"
     fake.write_text("")
     fake.chmod(0o755)
@@ -201,6 +206,7 @@ def test_trace_raises_on_nonzero_exit(monkeypatch, tmp_path):
     rom.write_bytes(b"NES\x1a")
 
     def fake_run(cmd, env=None, capture_output=False, timeout=None):
+        # No trace file written.
         return subprocess.CompletedProcess(cmd, 1, stdout=b"", stderr=b"oops")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -210,6 +216,27 @@ def test_trace_raises_on_nonzero_exit(monkeypatch, tmp_path):
     assert exc.value.cls == "internal_error"
     assert exc.value.extra["fceux_exit"] == 1
     assert "oops" in exc.value.extra["stderr"]
+
+
+def test_trace_tolerates_nonzero_exit_when_trace_is_valid(monkeypatch, tmp_path):
+    """fceux 2.6.5 SIGSEGV after emu.exit() → exit -11 but trace was written.
+    Oracle must accept the trace and not raise."""
+    fake = tmp_path / "fceux"
+    fake.write_text("")
+    fake.chmod(0o755)
+    rom = tmp_path / "rom.nes"
+    rom.write_bytes(b"NES\x1a")
+
+    def fake_run(cmd, env=None, capture_output=False, timeout=None):
+        # Write a valid trace, then "crash" with SIGSEGV.
+        trace_out = env["QLNES_TRACE_OUT"]
+        Path(trace_out).write_text(f"{TRACE_HEADER}\n0\t10\t4015\t0F\n0\t20\t4000\tBF\n")
+        return subprocess.CompletedProcess(cmd, -11, stdout=b"", stderr=b"Lua thread bombed out")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    oracle = FceuxOracle(fceux_path=str(fake))
+    trace = oracle.trace(rom, frames=30)
+    assert trace.n_events == 2
 
 
 def test_trace_raises_on_timeout(monkeypatch, tmp_path):

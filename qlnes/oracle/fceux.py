@@ -144,13 +144,22 @@ class FceuxOracle:
             if capture_reference_wav:
                 ref_wav = tdp / "reference.wav"
 
-            self._run_fceux(rom, env)
+            res = self._run_fceux(rom, env)
 
-            if not trace_out.exists():
+            # fceux 2.6.5 SIGSEGVs on `emu.exit()` even after writing a complete
+            # trace — we treat exit-code as advisory: fail only if the trace
+            # file is missing or malformed. Architecture step 10 pinned 2.6.6+
+            # but lower versions are tolerated here.
+            trace_present = trace_out.exists() and trace_out.stat().st_size > 0
+            if not trace_present:
                 raise QlnesError(
                     "internal_error",
-                    "fceux completed but produced no trace file",
-                    extra={"expected": str(trace_out)},
+                    f"fceux exited {res.returncode} and produced no trace",
+                    extra={
+                        "fceux_exit": res.returncode,
+                        "expected": str(trace_out),
+                        "stderr": res.stderr.decode("utf-8", "replace")[:500],
+                    },
                 )
 
             apu_trace = parse_trace_file(trace_out)
@@ -206,7 +215,11 @@ class FceuxOracle:
                 del env[k]
         return env
 
-    def _run_fceux(self, rom: Path, env: dict[str, str]) -> None:
+    def _run_fceux(self, rom: Path, env: dict[str, str]) -> subprocess.CompletedProcess[bytes]:
+        """Run fceux. Returns the CompletedProcess; caller decides how to
+        handle non-zero exit (fceux 2.6.5 SIGSEGVs after `emu.exit()` even
+        on successful traces — we only fail later if no trace was written).
+        """
         cmd = [
             self.fceux_path,
             *FCEUX_DEFAULT_ARGS,
@@ -215,7 +228,7 @@ class FceuxOracle:
             str(rom),
         ]
         try:
-            res = subprocess.run(
+            return subprocess.run(
                 cmd,
                 env=env,
                 capture_output=True,
@@ -227,15 +240,6 @@ class FceuxOracle:
                 f"fceux timed out after {self.timeout_seconds}s",
                 extra={"detail": "timeout", "timeout_seconds": self.timeout_seconds},
             ) from e
-        if res.returncode != 0:
-            raise QlnesError(
-                "internal_error",
-                f"fceux exited {res.returncode}",
-                extra={
-                    "fceux_exit": res.returncode,
-                    "stderr": res.stderr.decode("utf-8", "replace")[:500],
-                },
-            )
 
 
 def _wav_pcm_payload(path: Path) -> bytes:

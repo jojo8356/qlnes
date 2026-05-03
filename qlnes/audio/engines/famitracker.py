@@ -64,27 +64,57 @@ class FamiTrackerEngine(SoundEngine):
     def detect(self, rom: Rom) -> DetectionResult:
         evidence: list[str] = []
         confidence = 0.0
-        # 1. ASCII signature scan in PRG bytes.
         prg = rom.prg if hasattr(rom, "prg") else b""
         if not prg:
             prg = rom.raw
+
+        # 1. ASCII signature scan. Most FT-authored homebrew compiled with
+        # FamiTone does NOT embed the literal "FamiTracker" string, so this
+        # only catches a subset (notably the FT export tool's debug builds).
         for sig in _FT_SIGNATURES:
             if sig in prg:
                 evidence.append(f"signature:{sig.decode('ascii')}")
                 confidence += 0.5
                 break
+
         # 2. Mapper match (target_mappers already pre-filters at registry level
-        #    but we still record the evidence for debugging).
+        # but we still record the evidence for debugging).
         if rom.mapper in self.target_mappers:
             evidence.append(f"mapper:{rom.mapper}")
             confidence += 0.2
-        # 3. Heuristic: many APU writes per frame is a strong indicator of an
-        #    active sound engine. We don't actually scan disasm here (that's
-        #    expensive) — leaves room for A.4 to add stronger signals.
+
+        # 3. Heuristic: count static APU register writes in PRG. Pattern is
+        # 6502 STA absolute = `0x8D <lo> <hi>` where <hi>=0x40 and <lo> ∈
+        # 0x00..0x17. A real sound engine emits dozens of these; a non-audio
+        # ROM has zero or a handful (e.g., $4014 OAMDMA, $4016/$4017 joypad
+        # reads — those are STA too but to specific addrs).
+        # We exclude the joypad/OAMDMA addresses to avoid false positives
+        # from games that don't have a sound engine but poll the controllers.
+        non_audio_apu_lo = {0x14, 0x16, 0x17}  # OAMDMA, JOY1, FRAME_CNT/JOY2
+        n_apu_writes = 0
+        i = 0
+        while i < len(prg) - 2:
+            if prg[i] == 0x8D and prg[i + 2] == 0x40:
+                lo = prg[i + 1]
+                if 0x00 <= lo <= 0x17 and lo not in non_audio_apu_lo:
+                    n_apu_writes += 1
+                i += 3
+            else:
+                i += 1
+        if n_apu_writes >= 30:
+            evidence.append(f"apu_writes_static:{n_apu_writes}")
+            confidence += 0.5
+        elif n_apu_writes >= 15:
+            evidence.append(f"apu_writes_static:{n_apu_writes}")
+            confidence += 0.4
+        elif n_apu_writes >= 5:
+            evidence.append(f"apu_writes_static:{n_apu_writes}")
+            confidence += 0.2
+
         return DetectionResult(
             confidence=min(confidence, 1.0),
             evidence=evidence,
-            metadata={},
+            metadata={"apu_writes_static": n_apu_writes},
         )
 
     def walk_song_table(self, rom: Rom) -> list[SongEntry]:
