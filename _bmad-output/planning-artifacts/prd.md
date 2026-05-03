@@ -1,6 +1,10 @@
 ---
 stepsCompleted: ['step-01-init', 'step-02-discovery', 'step-02b-vision', 'step-02c-executive-summary', 'step-03-success', 'step-04-journeys', 'step-05-domain', 'step-06-innovation', 'step-07-project-type', 'step-08-scoping', 'step-09-functional', 'step-10-nonfunctional', 'step-11-polish', 'step-12-complete']
 completedAt: '2026-05-03'
+lastAmended: '2026-05-03'
+amendmentLog:
+  - date: '2026-05-03'
+    summary: 'Post-readiness research integrated: tiered audio fidelity (sample-accurate for recognized engines, frame-accurate for unknown), MP3 byte-equivalence bounded by encoder-library version with PCM as canonical hash target, bilan.json coverage axis extended to (mapper, audio engine) for audio artifacts.'
 releaseMode: phased
 inputDocuments:
   - _bmad-output/project-context.md
@@ -67,19 +71,21 @@ For each user need, `qlnes` produces the requested artifact in the requested for
 | Artifact | Invariant | Verification method |
 |---|---|---|
 | `NSF` | The generated NSF, played in the reference NSF player, produces a PCM stream sample-by-sample identical to the audio captured from the reference NES emulator running the original ROM, at a defined sample rate and channel mix. | Automated PCM hash diff over the test corpus. |
-| `MP3` / `WAV` (direct ASM → audio path) | The PCM stream produced by the direct path is sample-by-sample identical to the PCM stream captured from the reference NES emulator running the original ROM. `MP3` is the lossy encoding of that exact PCM stream. | Automated PCM hash diff over the test corpus. |
+| `MP3` / `WAV` (direct ASM → audio path) | The PCM stream is sample-by-sample identical to FCEUX **for ROMs whose audio engine has a recognized handler** (tier 1). For ROMs whose audio engine is not recognized, the output is **frame-accurate** (≈ 16.6 ms NTSC) and is tagged `unverified` in `bilan.json`, never `pass`. `MP3` is the lossy encoding of the canonical PCM stream; PCM is the equivalence-checked artifact. | Automated PCM hash diff over the test corpus. |
 | Annotated ASM | The reassembled ROM (via `py65`) is byte-identical to the input `.nes` file. | Existing `--verify` round-trip hash check, applied per supported mapper. |
 | `CHR` / `PNG` | Round-trip `CHR → PNG → CHR` is byte-identical for the original CHR-ROM bank set. | SHA-256 hash compare. |
 | Gameplay data | Structured outputs (drop tables, RNG, AI scripts) are extracted from disassembled bytes and refer back to source addresses; values must agree with the original ROM's runtime behavior on a fixed input sequence in the reference emulator. | Replay-and-compare against captured runtime traces. |
 
 **Reference emulator:** FCEUX. Chosen for pragmatic reasons (already in the project owner's environment, well-documented audio capture path). All PCM equivalence checks are anchored to FCEUX's audio output. The reference choice can be revisited later if a stronger oracle is needed, but FCEUX is the locked default for this PRD.
 
+**Tiered audio fidelity (the "recognized engine" model).** The sample-by-sample equivalence promise applies only to ROMs whose **audio engine** (the in-ROM driver that walks the song-pointer table — Capcom-Sakaguchi, Konami-Maezawa, FamiTracker, Sunsoft, etc.) has a recognized handler in `qlnes`. Recognition is necessary because per-engine bytecode and loop-opcode semantics differ — there is no published universal NES-audio detector. Coverage extends one engine at a time, gated by the engine's full equivalence-invariant set passing on its corpus subset. ROMs whose engine is *not* recognized fall back to a frame-accurate (≈ 16.6 ms NTSC) generic path that emulates the ROM and fingerprints APU register writes; outputs from this path are tagged `unverified` in `bilan.json` and never reported as `pass`. The product-level mapper-coverage promise is therefore an *(iNES mapper, audio engine)* matrix for audio artifacts, not just a mapper count.
+
 **Test corpus:** A versioned set of `.nes` ROMs covering each supported mapper. Every release of `qlnes` runs every invariant against every corpus ROM. A release ships for a mapper only if every invariant passes for every corpus ROM of that mapper.
 
 ### Measurable Outcomes
 
 - **Equivalence pass rate:** 100% (not 99.9%, not 99%) on every invariant for every ROM in the supported portion of the corpus. Anything below 100% blocks release for that mapper.
-- **Mapper coverage:** Mapper count is the public progress signal — the number of iNES mappers for which the full invariant set passes.
+- **Coverage progress signal:** for non-audio artifacts (`analyze`, `verify`), the public progress signal is the number of iNES mappers for which the full invariant set passes. For audio artifacts (`audio`, `nsf`), the signal is the number of *(mapper, audio engine)* pairs for which the full invariant set passes — the (mapper, engine) matrix is published via `bilan.json` and `qlnes coverage`.
 - **Audio fidelity:** Bit-identical PCM output vs reference emulator on the audio test corpus, for both the `NSF` path and the direct ASM → audio path.
 - **Round-trip fidelity:** Byte-identical reassembled ROM for every supported mapper.
 
@@ -284,9 +290,25 @@ Honoring the `qlnes.toml` defaults from `audio`, `verify`, `audit`, and `coverag
     },
     "1": {
       "analyze": {"status": "pass", "rom_count": 12, "fail_count": 0},
-      "nsf":     {"status": "partial", "rom_count": 12, "fail_count": 4, "failing_roms": ["sha256:abc…", "sha256:def…"]},
-      "audio":   {"status": "fail", "rom_count": 12, "fail_count": 12},
-      "verify":  {"status": "pass", "rom_count": 12, "fail_count": 0}
+      "verify":  {"status": "pass", "rom_count": 12, "fail_count": 0},
+      "audio": {
+        "status": "partial",
+        "rom_count": 12,
+        "fail_count": 4,
+        "engines": {
+          "famitracker":  {"status": "pass",       "rom_count": 8, "fail_count": 0},
+          "unknown":      {"status": "unverified", "rom_count": 4, "fail_count": 4}
+        }
+      },
+      "nsf": {
+        "status": "partial",
+        "rom_count": 12,
+        "fail_count": 4,
+        "engines": {
+          "famitracker": {"status": "pass",       "rom_count": 8, "fail_count": 0, "format": "nsf2+nsfe"},
+          "unknown":     {"status": "unverified", "rom_count": 4, "fail_count": 4}
+        }
+      }
     }
   }
 }
@@ -433,7 +455,7 @@ Capabilities not listed below are not part of the product. If something is neede
 - **FR8.** `[MVP]` User can choose between `NSF`, `WAV`, and `MP3` output via the `--format` flag (one format per invocation).
 - **FR9.** `[MVP]` User can specify a per-track output directory via `--output <dir>`; output filenames are deterministic and predictable from the input ROM's hash and the song-table index.
 - **FR10.** `[MVP]` `qlnes` walks the song-pointer table exhaustively, including unreferenced entries (composer demos, unused music) — these are included in the output unless explicitly filtered.
-- **FR11.** `[MVP]` The audio rendering path for `WAV`/`MP3` is direct ASM → PCM, with no intermediate `NSF` rip. The PCM output matches the FCEUX reference output sample-by-sample.
+- **FR11.** `[MVP]` The audio rendering path for `WAV`/`MP3` is direct ASM → PCM, with no intermediate `NSF` rip. The PCM output is **sample-by-sample identical to FCEUX for ROMs whose audio engine has a recognized handler** (tier 1, the `qlnes` correctness commitment). For ROMs whose audio engine is not recognized, the output is **frame-accurate** (≈ 16.6 ms NTSC) and is reported as `unverified` in `bilan.json`, never as `pass`. PCM-level signal heuristics are never used as the primary rendering path.
 - **FR12.** `[Growth]` User can extract audio from any iNES mapper covered by Growth-phase work; coverage extends one mapper at a time, gated by full equivalence on the test corpus.
 
 ### 3. Code & Asset Round-Trip
@@ -449,11 +471,11 @@ Capabilities not listed below are not part of the product. If something is neede
 - **FR18.** `[MVP]` User can verify the audio equivalence invariant on a single ROM via `qlnes verify --audio <rom>` against the FCEUX reference.
 - **FR19.** `[MVP]` User can run the full equivalence audit across the test corpus via `qlnes audit`, producing a versioned `bilan.json` report.
 - **FR20.** `[MVP]` `qlnes audit` exits non-zero (`102`) without writing `bilan.json` if any ROM declared in the test corpus lacks its FCEUX reference output.
-- **FR21.** `[MVP]` User can read the per-mapper, per-artifact coverage matrix via `qlnes coverage`, rendered as a human-readable table by default or as JSON via `--format json`.
+- **FR21.** `[MVP]` User can read the coverage matrix via `qlnes coverage`, rendered as a human-readable table by default or as JSON via `--format json`. The matrix axis is **per-mapper** for non-audio artifacts (`analyze`, `verify`) and **per-(mapper, audio engine)** for audio artifacts (`audio`, `nsf`), reflecting that audio coverage depends on whether the ROM's audio engine has a recognized handler.
 - **FR22.** `[MVP]` `qlnes coverage` automatically runs `qlnes audit` and generates `bilan.json` if it is missing or fails schema validation.
 - **FR23.** `[MVP]` `qlnes coverage` warns the user that `bilan.json` is likely stale if its `generated_at` predates any source file in `qlnes/`, and suggests `--refresh`.
 - **FR24.** `[MVP]` User can force a re-audit via `qlnes coverage --refresh`, bypassing the cached `bilan.json`.
-- **FR25.** `[MVP]` `bilan.json` records, per supported mapper and per artifact type, the pass/fail status, the corpus ROM count, the failure count, and the SHA-256s of failing ROMs.
+- **FR25.** `[MVP]` `bilan.json` records, per supported mapper and per artifact type, the pass/fail status, the corpus ROM count, the failure count, and the SHA-256s of failing ROMs. For audio artifacts (`audio`, `nsf`), an additional `engines` sub-map records the same fields per recognized audio engine plus a synthetic `unknown` entry for ROMs whose engine is not recognized; the `unknown` entry is always reported with `status: "unverified"`, never `pass`.
 - **FR26.** `[MVP]` Every release is gated by a 100% equivalence pass rate on the supported portion of the test corpus; partial passes block release for the affected mapper.
 
 ### 5. Configuration & Invocation Surface
@@ -492,7 +514,7 @@ Performance budgets are defined for a developer laptop (4-core CPU, 16 GB RAM, S
 
 The product's value proposition is strict equivalence. Determinism is therefore a first-class quality attribute, not an afterthought.
 
-- **NFR-REL-1.** Given the same input ROM, the same `qlnes` version, the same FCEUX reference, and the same flags, every output is **byte-identical** across runs and across hosts (within the supported portability matrix).
+- **NFR-REL-1.** Given the same input ROM, the same `qlnes` version, the same FCEUX reference, and the same flags, every output is **byte-identical** across runs and across hosts (within the supported portability matrix). The PCM stream is the canonical hash target. `MP3` byte-equivalence is additionally bounded by the encoder library version (LAME stamps its version into the MP3 Info Tag); cross-version equivalence checks hash the PCM, not the MP3.
 - **NFR-REL-2.** No output artifact contains a wall-clock timestamp, hostname, username, or other host-specific value by default. `bilan.json`'s `generated_at` is the documented exception (it is part of the audit's provenance and not part of any equivalence-checked artifact).
 - **NFR-REL-3.** Any internal parallelism is order-deterministic: the output of a parallel render is bit-identical to the serial render of the same input.
 - **NFR-REL-4.** Output files are written atomically (per FR35); a crash or kill leaves the previous output (if any) intact.
