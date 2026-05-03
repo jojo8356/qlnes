@@ -55,6 +55,7 @@ def test_pcm_byte_equivalent_to_fceux(rom_entry):
     Skips if the contributor doesn't have the actual ROM file locally.
     """
     from qlnes.audio.renderer import render_rom_audio_v2
+    from qlnes.io.errors import QlnesError
     from qlnes.oracle import FceuxOracle
 
     sha = rom_entry["sha256"]
@@ -62,9 +63,20 @@ def test_pcm_byte_equivalent_to_fceux(rom_entry):
     if not rom_path.exists():
         pytest.skip(f"corpus ROM not present locally: {sha}")
 
-    # Capture FCEUX reference PCM for this ROM.
+    # Capture FCEUX reference PCM for this ROM. fceux 2.6.5 lacks the
+    # `sound.recordstart` Lua binding (added in 2.6.6); the trace path works
+    # but reference WAV capture doesn't. Skip cleanly so the rest of the
+    # invariant suite stays green.
     oracle = FceuxOracle()
-    ref_pcm = oracle.reference_pcm(rom_path, frames=rom_entry.get("frames", 600))
+    try:
+        ref_pcm = oracle.reference_pcm(rom_path, frames=rom_entry.get("frames", 600))
+    except QlnesError as e:
+        if e.cls == "internal_error" and "reference WAV" in e.reason:
+            pytest.skip(
+                "reference PCM capture unavailable (need fceux >= 2.6.6 with "
+                "sound.recordstart Lua binding)"
+            )
+        raise
 
     # Render via qlnes pipeline.
     out_dir = Path(f"/tmp/qlnes-eq-{sha[:8]}")

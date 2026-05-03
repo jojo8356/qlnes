@@ -1,0 +1,30 @@
+# qlnes test corpus — manifest.
+#
+# IP discipline (architecture step 11): this file references ROMs by SHA-256
+# only. ROM bytes are NEVER committed. Contributors / CI runners legally
+# obtain each ROM and place it at `corpus/roms/<sha256>.nes` locally.
+# See ./README.md for the setup procedure.
+#
+# Schema: see qlnes/audit/bilan_schema.json (lands in B.1). Until then the
+# fields below are the loose informal manifest format consumed by
+# tests/invariants/test_pcm_equivalence.py.
+
+schema_version = "1"
+
+[[rom]]
+name = "Alter Ego"
+sha256 = "2744282b530b410f7ca842459343bfcbc3cbffb65dc4a9e44118b8a4dc93d536"
+mapper = 0
+region = "ntsc"
+engine = "famitracker"
+song_count = 1   # A.1 simplification: one render per ROM (A.4 walks the song table)
+frames = 600     # 10 s NTSC default capture window
+notes = """\
+Shiru's homebrew NES game (2011). Uses FamiTone audio runtime (FamiTracker-
+derived). PRG carries no FamiTracker ASCII signature; detection relies on
+the static APU-write density signal added in commit 7dd82ff.
+
+Distribution: free download from scene.org (ftp.scene.org) and Shiru's site
+(https://shiru.untergrund.net/software.shtml). NOT redistributed by qlnes
+per IP discipline — drop your local copy at corpus/roms/<sha256>.nes.\
+"""

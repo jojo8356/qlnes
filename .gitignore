@@ -30,6 +30,11 @@ out/
 *.nes
 *.zip
 
+# Test corpus — hashes-only manifest is committed; ROM bytes + FCEUX
+# reference WAVs are user-supplied and must NEVER be redistributed.
+corpus/roms/
+corpus/references/
+
 # ROM-derived artifacts (do NOT commit — copyright/DMCA risk on commercial ROMs)
 # These are regenerated locally by `qlnes analyze` / `qlnes recompile` from a
 # user-supplied ROM and must never be redistributed.
