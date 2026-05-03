@@ -1,6 +1,5 @@
 import unittest
 
-from tests.test_setup import synth_annotate, synth_disasm
 from qlnes.dataflow import (
     detect_controller_reads,
     detect_frame_counter,
@@ -12,6 +11,7 @@ from qlnes.dataflow import (
 )
 from qlnes.parser import Disasm
 from tests.fixtures.synth_rom import EXPECTED_NAMES, build_image
+from tests.test_setup import synth_annotate, synth_disasm
 
 
 class TestVectorHelpers(unittest.TestCase):

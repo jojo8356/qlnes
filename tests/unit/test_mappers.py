@@ -1,8 +1,8 @@
 import unittest
 
-from tests.test_setup import fake_rom, ines_header
 from qlnes import Rom, rom_to_images
 from qlnes.ines import PRG_BANK, SUPPORTED_MAPPERS, parse_header, strip_ines
+from tests.test_setup import fake_rom, ines_header
 
 
 class TestMapperHeader(unittest.TestCase):

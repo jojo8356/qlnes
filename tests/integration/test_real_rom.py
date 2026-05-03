@@ -1,13 +1,13 @@
 import time
 import unittest
 
+from qlnes.dataflow import find_reset_address
 from tests.test_setup import (
     NESTEST_PATH,
     Rom,
     disassemble,
     disassemble_and_annotate,
 )
-from qlnes.dataflow import find_reset_address
 
 
 @unittest.skipUnless(NESTEST_PATH.exists(), f"missing {NESTEST_PATH}")

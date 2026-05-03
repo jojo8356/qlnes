@@ -13,15 +13,21 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from qlnes import Disasm, QL6502, Rom, annotate
-from qlnes.ines import INES_MAGIC, PRG_BANK
-
+# Imports below must come AFTER the sys.path insertion above so qlnes resolves
+# when tests are run with cwd != repo root. Drop these noqas once a pyproject.toml
+# lands (Growth FR31) and the package is installed editable.
+from qlnes import QL6502 as QL6502  # noqa: E402
+from qlnes import Disasm as Disasm  # noqa: E402
+from qlnes import Rom as Rom  # noqa: E402
+from qlnes import annotate as annotate  # noqa: E402
+from qlnes.ines import INES_MAGIC, PRG_BANK  # noqa: E402
 
 FIXTURES_DIR = _ROOT / "tests" / "fixtures"
 NESTEST_PATH = FIXTURES_DIR / "nestest.nes"
 
 try:
     import cynes  # noqa: F401
+
     HAS_CYNES = True
 except ImportError:
     HAS_CYNES = False
@@ -30,6 +36,7 @@ except ImportError:
 def write_temp_rom(rom_bytes: bytes) -> Path:
     fd, path = tempfile.mkstemp(suffix=".nes")
     import os
+
     with os.fdopen(fd, "wb") as f:
         f.write(rom_bytes)
     return Path(path)
@@ -37,6 +44,7 @@ def write_temp_rom(rom_bytes: bytes) -> Path:
 
 def build_game_synth_rom_path(with_game_over: bool = False) -> Path:
     from tests.fixtures.game_synth import build_rom
+
     return write_temp_rom(build_rom(with_game_over=with_game_over))
 
 
@@ -75,10 +83,18 @@ def simple_image():
     image = bytearray(0x10000)
     code = bytes(
         [
-            0xAD, 0x02, 0x20,
-            0x8D, 0x05, 0x20,
-            0xAD, 0x16, 0x40,
-            0x4C, 0x00, 0x80,
+            0xAD,
+            0x02,
+            0x20,
+            0x8D,
+            0x05,
+            0x20,
+            0xAD,
+            0x16,
+            0x40,
+            0x4C,
+            0x00,
+            0x80,
         ]
     )
     image[0x8000 : 0x8000 + len(code)] = code

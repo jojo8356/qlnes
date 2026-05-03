@@ -1,9 +1,9 @@
 import unittest
 
-from tests.test_setup import disassemble, simple_image
 from qlnes import Disasm, annotate
 from qlnes.ines import INES_MAGIC, parse_header, strip_ines
 from qlnes.nes_hw import oam_name
+from tests.test_setup import disassemble, simple_image
 
 
 class TestQL6502(unittest.TestCase):

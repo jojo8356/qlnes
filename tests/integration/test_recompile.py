@@ -3,17 +3,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.test_setup import NESTEST_PATH
 from qlnes import QL6502, Rom, RomProfile, annotate
 from qlnes.recompile import (
     Recompiler,
-    assemble_to_rom,
     compare_roms,
     fast_equal,
     hash_rom,
     recompile_asm,
     verify_round_trip,
 )
+from tests.test_setup import NESTEST_PATH
 
 
 class TestCompareRoms(unittest.TestCase):
@@ -52,9 +51,7 @@ class TestHashAndFastEqual(unittest.TestCase):
     def test_hash_rom_sha256(self):
         h = hash_rom(b"abc")
         # Known sha256 of "abc"
-        self.assertEqual(
-            h, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        )
+        self.assertEqual(h, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
 
     def test_hash_rom_md5(self):
         h = hash_rom(b"abc", algorithm="md5")
@@ -74,26 +71,22 @@ class TestComparePerformance(unittest.TestCase):
     def test_1mb_compare_under_10ms(self):
         import os
         import time
+
         rom = os.urandom(1024 * 1024)
         t0 = time.perf_counter()
         diff = compare_roms(rom, rom)
         elapsed = time.perf_counter() - t0
         self.assertTrue(diff.equal)
         self.assertLess(
-            elapsed, 0.050,
-            f"compare_roms on 1MB took {elapsed*1000:.1f}ms",
+            elapsed,
+            0.050,
+            f"compare_roms on 1MB took {elapsed * 1000:.1f}ms",
         )
 
 
 class TestRecompileAsm(unittest.TestCase):
     def test_simple_program(self):
-        asm = (
-            "L_8000: SEI\n"
-            "L_8001  CLD\n"
-            "L_8002  LDX  #0xFF\n"
-            "L_8004  TXS\n"
-            "L_8005  JMP  L_8000\n"
-        )
+        asm = "L_8000: SEI\nL_8001  CLD\nL_8002  LDX  #0xFF\nL_8004  TXS\nL_8005  JMP  L_8000\n"
         image, errors = recompile_asm(asm)
         self.assertEqual(errors, [])
         self.assertEqual(image[0x8000], 0x78)
@@ -113,11 +106,7 @@ class TestRecompileAsm(unittest.TestCase):
         self.assertEqual(image[0xC000:0xC006], b"Hello\x00")
 
     def test_branches(self):
-        asm = (
-            "L_8000: LDA  #0x00\n"
-            "L_8002  BNE  L_8000\n"
-            "L_8004: BEQ  L_8000\n"
-        )
+        asm = "L_8000: LDA  #0x00\nL_8002  BNE  L_8000\nL_8004: BEQ  L_8000\n"
         image, errors = recompile_asm(asm)
         self.assertEqual(errors, [])
         self.assertEqual(image[0x8002:0x8004], bytes([0xD0, 0xFC]))
@@ -129,6 +118,7 @@ class TestRecompilerWithNames(unittest.TestCase):
         asm = "L_C000: STA  PPUCTRL\n"
         rec = Recompiler(names_to_addr={"PPUCTRL": 0x2000})
         from qlnes.parser import Disasm
+
         d = Disasm(asm)
         out = rec.encode_line(d.lines[0])
         self.assertEqual(out, bytes([0x8D, 0x00, 0x20]))
@@ -137,6 +127,7 @@ class TestRecompilerWithNames(unittest.TestCase):
         asm = "L_C000: STA  UNKNOWN_REG\n"
         rec = Recompiler()
         from qlnes.parser import Disasm
+
         d = Disasm(asm)
         out = rec.encode_line(d.lines[0])
         self.assertIsNone(out)
@@ -149,12 +140,7 @@ class TestNestestRoundTrip(unittest.TestCase):
         cls.rom_bytes = NESTEST_PATH.read_bytes()
         cls.rom = Rom.from_file(NESTEST_PATH)
         cls.image = cls.rom.single_image()
-        cls.raw_asm = (
-            QL6502()
-            .load_image(cls.image)
-            .mark_blank(0x0000, 0x7FFF)
-            .generate_asm()
-        )
+        cls.raw_asm = QL6502().load_image(cls.image).mark_blank(0x0000, 0x7FFF).generate_asm()
         cls.annotated, cls.report = annotate(cls.raw_asm, image=cls.image)
 
     def test_raw_asm_round_trip(self):
@@ -173,9 +159,7 @@ class TestNestestRoundTrip(unittest.TestCase):
         ):
             for addr, name in d.items():
                 names_to_addr.setdefault(name, addr)
-        diff, errors = verify_round_trip(
-            self.annotated, NESTEST_PATH, names_to_addr=names_to_addr
-        )
+        diff, errors = verify_round_trip(self.annotated, NESTEST_PATH, names_to_addr=names_to_addr)
         self.assertTrue(diff.equal, f"diff: {diff.summary()}")
         self.assertEqual(len(errors), 0)
 
@@ -209,24 +193,30 @@ class TestCliRecompileVerify(unittest.TestCase):
 
     def test_cli_recompile(self):
         from qlnes.cli import main
+
         out = self.tmp_path / "out.nes"
-        rc = main([
-            "recompile",
-            str(NESTEST_PATH),
-            "-o", str(out),
-            "--quiet",
-        ])
+        rc = main(
+            [
+                "recompile",
+                str(NESTEST_PATH),
+                "-o",
+                str(out),
+                "--quiet",
+            ]
+        )
         self.assertEqual(rc, 0)
         self.assertTrue(out.exists())
         self.assertEqual(out.read_bytes(), NESTEST_PATH.read_bytes())
 
     def test_cli_verify_round_trip(self):
         from qlnes.cli import main
+
         rc = main(["verify", str(NESTEST_PATH), "--quiet"])
         self.assertEqual(rc, 0)
 
     def test_cli_verify_two_roms(self):
         from qlnes.cli import main
+
         copy = self.tmp_path / "copy.nes"
         shutil.copy(NESTEST_PATH, copy)
         rc = main(["verify", str(NESTEST_PATH), str(copy), "--quiet"])

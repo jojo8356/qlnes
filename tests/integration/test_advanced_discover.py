@@ -1,15 +1,14 @@
 import os
 import unittest
 
-from tests.test_setup import HAS_CYNES, build_game_synth_rom_path
 from tests.fixtures.game_synth import (
+    ZP_CONTROLLER1,
     ZP_FRAME_COUNTER,
+    ZP_LEVEL,
     ZP_LIVES,
     ZP_SCORE_LO,
-    ZP_LEVEL,
-    ZP_CONTROLLER1,
 )
-
+from tests.test_setup import HAS_CYNES, build_game_synth_rom_path
 
 STATIC = {ZP_FRAME_COUNTER: "frame_counter", ZP_CONTROLLER1: "controller1_state"}
 
@@ -17,6 +16,7 @@ STATIC = {ZP_FRAME_COUNTER: "frame_counter", ZP_CONTROLLER1: "controller1_state"
 class TestClassifyDurations(unittest.TestCase):
     def test_linear_counter_high_conf(self):
         from qlnes.emu import DurationMeasurement, classify_durations
+
         ms = [
             DurationMeasurement(5, 0, 5),
             DurationMeasurement(10, 0, 10),
@@ -28,6 +28,7 @@ class TestClassifyDurations(unittest.TestCase):
 
     def test_linear_gauge_high_conf(self):
         from qlnes.emu import DurationMeasurement, classify_durations
+
         ms = [
             DurationMeasurement(5, 50, 45),
             DurationMeasurement(10, 50, 40),
@@ -39,6 +40,7 @@ class TestClassifyDurations(unittest.TestCase):
 
     def test_saturation_detected(self):
         from qlnes.emu import DurationMeasurement, classify_durations
+
         ms = [
             DurationMeasurement(5, 0, 128),
             DurationMeasurement(10, 0, 128),
@@ -49,12 +51,14 @@ class TestClassifyDurations(unittest.TestCase):
 
     def test_no_change_is_flag(self):
         from qlnes.emu import DurationMeasurement, classify_durations
+
         ms = [DurationMeasurement(5, 7, 7), DurationMeasurement(10, 7, 7)]
         kind, _, _ = classify_durations(ms)
         self.assertEqual(kind, "flag")
 
     def test_empty_measurements(self):
         from qlnes.emu import classify_durations
+
         kind, conf, _ = classify_durations([])
         self.assertEqual(kind, "flag")
         self.assertEqual(conf, 0.0)
@@ -65,8 +69,10 @@ class TestMultiDurationDiscovery(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.rom_path = build_game_synth_rom_path(with_game_over=False)
-        from qlnes.emu import Discoverer
         import cynes
+
+        from qlnes.emu import Discoverer
+
         cls.discoverer = Discoverer(cls.rom_path, static_names=STATIC)
         cls.cynes = cynes
 
@@ -105,18 +111,14 @@ class TestMultiDurationDiscovery(unittest.TestCase):
         self.assertIn(ZP_LEVEL, by_addr)
 
     def test_static_addresses_excluded(self):
-        found = self.discoverer.discover_multi_duration(
-            "press_a", self.cynes.NES_INPUT_A
-        )
+        found = self.discoverer.discover_multi_duration("press_a", self.cynes.NES_INPUT_A)
         addrs = {v.addr for v in found}
         self.assertNotIn(ZP_FRAME_COUNTER, addrs)
         self.assertNotIn(ZP_CONTROLLER1, addrs)
 
     def test_durations_required(self):
         with self.assertRaises(ValueError):
-            self.discoverer.discover_multi_duration(
-                "press_a", self.cynes.NES_INPUT_A, durations=()
-            )
+            self.discoverer.discover_multi_duration("press_a", self.cynes.NES_INPUT_A, durations=())
 
 
 @unittest.skipUnless(HAS_CYNES, "cynes non installé")
@@ -124,8 +126,10 @@ class TestMultiDurationOnGameOverROM(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.rom_path = build_game_synth_rom_path(with_game_over=True)
-        from qlnes.emu import Discoverer
         import cynes
+
+        from qlnes.emu import Discoverer
+
         cls.discoverer = Discoverer(cls.rom_path, static_names=STATIC)
         cls.cynes = cynes
 
@@ -158,13 +162,19 @@ class TestComposedScenarios(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.rom_path = build_game_synth_rom_path(with_game_over=False)
-        from qlnes.emu import Discoverer
         import cynes
+
+        from qlnes.emu import Discoverer
+
         cls.discoverer = Discoverer(cls.rom_path, static_names=STATIC)
         cls.cynes = cynes
         cls.inter = cls.discoverer.discover_composed(
-            "press_a", cls.cynes.NES_INPUT_A, 5,
-            "press_b", cls.cynes.NES_INPUT_B, 5,
+            "press_a",
+            cls.cynes.NES_INPUT_A,
+            5,
+            "press_b",
+            cls.cynes.NES_INPUT_B,
+            5,
         )
 
     @classmethod
@@ -204,6 +214,7 @@ class TestComposedScenarios(unittest.TestCase):
 class TestInteractionResultLogic(unittest.TestCase):
     def test_independent_when_additive(self):
         from qlnes.emu import InteractionResult
+
         ir = InteractionResult(addr=0x10, a_alone=2, b_alone=3, a_then_b=5, b_then_a=5)
         self.assertTrue(ir.is_independent)
         self.assertFalse(ir.order_matters)
@@ -211,12 +222,14 @@ class TestInteractionResultLogic(unittest.TestCase):
 
     def test_order_matters(self):
         from qlnes.emu import InteractionResult
+
         ir = InteractionResult(addr=0x10, a_alone=1, b_alone=1, a_then_b=3, b_then_a=5)
         self.assertTrue(ir.order_matters)
         self.assertEqual(ir.label(), "order_dependent")
 
     def test_interactive_when_nonadditive(self):
         from qlnes.emu import InteractionResult
+
         ir = InteractionResult(addr=0x10, a_alone=1, b_alone=1, a_then_b=10, b_then_a=10)
         self.assertFalse(ir.order_matters)
         self.assertTrue(ir.has_interaction)
@@ -228,8 +241,10 @@ class TestFindTransitions(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.rom_path = build_game_synth_rom_path(with_game_over=True)
-        from qlnes.emu import Discoverer, Scenario
         import cynes
+
+        from qlnes.emu import Discoverer, Scenario
+
         d = Discoverer(cls.rom_path, static_names=STATIC)
         sc = Scenario("die_combo").hold(cynes.NES_INPUT_A | cynes.NES_INPUT_B, 16)
         cls.transitions = d.find_transitions(ZP_FRAME_COUNTER, sc)
@@ -250,17 +265,18 @@ class TestFindTransitions(unittest.TestCase):
     def test_transitions_include_lives_reset(self):
         for t in self.transitions:
             self.assertIn(ZP_LIVES, t.ram_diff)
-            before, after = t.ram_diff[ZP_LIVES]
+            _before, after = t.ram_diff[ZP_LIVES]
             self.assertEqual(after, 3)
 
     def test_transition_state_addrs(self):
         state = self.discoverer.transition_state_addrs(self.transitions)
         self.assertIn(ZP_LIVES, state)
-        before, after = state[ZP_LIVES]
+        _before, after = state[ZP_LIVES]
         self.assertEqual(after, 3)
 
     def test_transition_serializes_to_dict(self):
         import json
+
         d = self.transitions[0].to_dict()
         json.dumps(d)
         self.assertIn("frame", d)
@@ -273,6 +289,7 @@ class TestNoTransitionsOnLinearROM(unittest.TestCase):
         rom_path = build_game_synth_rom_path(with_game_over=False)
         try:
             from qlnes.emu import Discoverer, Scenario
+
             d = Discoverer(rom_path)
             sc = Scenario("idle").hold(0, 100)
             transitions = d.find_transitions(ZP_FRAME_COUNTER, sc)

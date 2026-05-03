@@ -3,7 +3,6 @@ import unittest
 import tests.test_setup  # noqa: F401  (déclenche l'ajout au sys.path)
 from qlnes.parser import Disasm
 
-
 SAMPLE = """L_8000: SEI                      ;JMP Entry ..........
 L_8001  CLD
 L_8002  LDA  #0x03
@@ -23,25 +22,25 @@ class TestParserBasic(unittest.TestCase):
 
     def test_address_extracted(self):
         self.assertEqual(
-            [l.addr for l in self.d.lines],
+            [ln.addr for ln in self.d.lines],
             [0x8000, 0x8001, 0x8002, 0x8004, 0x8007, 0x800A, 0x800D],
         )
 
     def test_label_marker(self):
         self.assertEqual(
-            [l.is_label for l in self.d.lines],
+            [ln.is_label for ln in self.d.lines],
             [True, False, False, False, False, False, True],
         )
 
     def test_mnemonic_parsing(self):
         self.assertEqual(
-            [l.mnemonic for l in self.d.lines],
+            [ln.mnemonic for ln in self.d.lines],
             ["SEI", "CLD", "LDA", "STA", "LDA", "JMP", "DB"],
         )
 
     def test_data_marker(self):
         self.assertEqual(
-            [l.is_data for l in self.d.lines],
+            [ln.is_data for ln in self.d.lines],
             [False, False, False, False, False, False, True],
         )
 

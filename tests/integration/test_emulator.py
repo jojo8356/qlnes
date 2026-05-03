@@ -16,6 +16,7 @@ class TestRunner(unittest.TestCase):
 
     def setUp(self):
         from qlnes.emu import Runner
+
         self.r = Runner(self.rom_path)
 
     def test_boot_advances_frame_count(self):
@@ -30,6 +31,7 @@ class TestRunner(unittest.TestCase):
 
     def test_hold_advances_correctly(self):
         import cynes
+
         self.r.boot(60)
         self.r.hold(cynes.NES_INPUT_A, 5)
         self.assertEqual(self.r.frame, 65)
@@ -41,6 +43,7 @@ class TestRunner(unittest.TestCase):
 
     def test_holding_a_decrements_lives(self):
         import cynes
+
         self.r.boot(60)
         before = self.r.snapshot_ram()
         self.r.hold(cynes.NES_INPUT_A, 10)
@@ -49,6 +52,7 @@ class TestRunner(unittest.TestCase):
 
     def test_holding_b_increments_score(self):
         import cynes
+
         self.r.boot(60)
         before = self.r.snapshot_ram()
         self.r.hold(cynes.NES_INPUT_B, 7)
@@ -60,12 +64,14 @@ class TestRunner(unittest.TestCase):
 class TestScenario(unittest.TestCase):
     def test_scenario_chaining(self):
         from qlnes.emu import Scenario
+
         sc = Scenario("test").hold(0x80, 10).idle(5).hold(0x40, 3)
         self.assertEqual(len(sc.steps), 3)
         self.assertEqual(sc.total_frames(), 18)
 
     def test_scenario_rejects_zero_frames(self):
         from qlnes.emu import Scenario
+
         with self.assertRaises(ValueError):
             Scenario("x").hold(0, 0)
 
@@ -81,8 +87,10 @@ class TestRunScenario(unittest.TestCase):
         os.unlink(cls.rom_path)
 
     def test_run_scenario_returns_initial_and_final(self):
-        from qlnes.emu import Runner, Scenario
         import cynes
+
+        from qlnes.emu import Runner, Scenario
+
         r = Runner(self.rom_path)
         sc = Scenario("press_a").hold(cynes.NES_INPUT_A, 10)
         snaps = r.run_scenario(sc, boot_frames=30)
@@ -91,15 +99,12 @@ class TestRunScenario(unittest.TestCase):
         self.assertEqual(snaps[1].frame, 40)
 
     def test_run_scenario_each_step(self):
-        from qlnes.emu import Runner, Scenario
         import cynes
+
+        from qlnes.emu import Runner, Scenario
+
         r = Runner(self.rom_path)
-        sc = (
-            Scenario("multi")
-            .hold(cynes.NES_INPUT_A, 5)
-            .idle(3)
-            .hold(cynes.NES_INPUT_B, 2)
-        )
+        sc = Scenario("multi").hold(cynes.NES_INPUT_A, 5).idle(3).hold(cynes.NES_INPUT_B, 2)
         snaps = r.run_scenario(sc, boot_frames=30, snapshot_each_step=True)
         self.assertEqual(len(snaps), 4)
 

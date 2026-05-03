@@ -1,36 +1,39 @@
 import os
 import unittest
 
-from tests.test_setup import HAS_CYNES, build_game_synth_rom_path
 from tests.fixtures.game_synth import (
-    EXPECTED_GAME_VARS,
+    ZP_CONTROLLER1,
     ZP_FRAME_COUNTER,
+    ZP_LEVEL,
     ZP_LIVES,
     ZP_SCORE_LO,
-    ZP_LEVEL,
-    ZP_CONTROLLER1,
 )
+from tests.test_setup import HAS_CYNES, build_game_synth_rom_path
 
 
 class TestClassifyChange(unittest.TestCase):
     def test_no_change_is_flag(self):
         from qlnes.emu import classify_change
-        kind, conf, _ = classify_change(5, 5, 10)
+
+        kind, _conf, _ = classify_change(5, 5, 10)
         self.assertEqual(kind, "flag")
 
     def test_decrement_per_frame_is_gauge(self):
         from qlnes.emu import classify_change
+
         kind, conf, _ = classify_change(50, 40, 10)
         self.assertEqual(kind, "gauge")
         self.assertGreaterEqual(conf, 0.85)
 
     def test_increment_per_frame_is_counter(self):
         from qlnes.emu import classify_change
-        kind, conf, _ = classify_change(0, 10, 10)
+
+        kind, _conf, _ = classify_change(0, 10, 10)
         self.assertEqual(kind, "counter")
 
     def test_jump_is_flag(self):
         from qlnes.emu import classify_change
+
         kind, _, _ = classify_change(0, 128, 1)
         self.assertEqual(kind, "flag")
 
@@ -38,13 +41,15 @@ class TestClassifyChange(unittest.TestCase):
 class TestClassifyLinearity(unittest.TestCase):
     def test_linear_decrement_high_confidence(self):
         from qlnes.emu import classify_with_linearity
+
         kind, conf, _ = classify_with_linearity(50, 45, 5, 50, 30, 20)
         self.assertEqual(kind, "gauge")
         self.assertGreater(conf, 0.9)
 
     def test_saturation_is_flag(self):
         from qlnes.emu import classify_with_linearity
-        kind, conf, _ = classify_with_linearity(0, 128, 5, 0, 128, 20)
+
+        kind, _conf, _ = classify_with_linearity(0, 128, 5, 0, 128, 20)
         self.assertEqual(kind, "flag")
 
 
@@ -53,8 +58,10 @@ class TestDiscoverSynth(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.rom_path = build_game_synth_rom_path()
-        from qlnes.emu import Discoverer, Scenario
         import cynes
+
+        from qlnes.emu import Discoverer, Scenario
+
         d = Discoverer(
             cls.rom_path,
             static_names={ZP_FRAME_COUNTER: "frame_counter", ZP_CONTROLLER1: "controller1_state"},
@@ -109,6 +116,7 @@ class TestDiscoverSynth(unittest.TestCase):
 
     def test_result_to_dict_serializable(self):
         import json
+
         d = self.result.to_dict()
         json.dumps(d)
         self.assertIn("scenarios", d)
@@ -128,6 +136,7 @@ class TestDiscoverNoise(unittest.TestCase):
         rom_path = build_game_synth_rom_path()
         try:
             from qlnes.emu import Discoverer
+
             d = Discoverer(rom_path)
             baseline, noise = d.calibrate_noise(idle_frames=10, samples=3)
             self.assertEqual(len(baseline.ram), 0x800)

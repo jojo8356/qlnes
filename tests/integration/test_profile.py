@@ -3,13 +3,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from qlnes import Rom, RomProfile
 from tests.test_setup import (
     HAS_CYNES,
     NESTEST_PATH,
     build_game_synth_rom_path,
     fake_rom,
 )
-from qlnes import RomProfile, Rom
 
 
 class TestRomProfileStatic(unittest.TestCase):
@@ -124,9 +124,7 @@ class TestProfileWithDynamic(unittest.TestCase):
     def setUpClass(cls):
         cls.rom_path = build_game_synth_rom_path(with_game_over=False)
         cls.profile = (
-            RomProfile.from_path(cls.rom_path)
-            .analyze_static()
-            .analyze_dynamic(cls.rom_path)
+            RomProfile.from_path(cls.rom_path).analyze_static().analyze_dynamic(cls.rom_path)
         )
 
     @classmethod
@@ -158,14 +156,19 @@ class TestUnknownMapper(unittest.TestCase):
 class TestCLI(unittest.TestCase):
     def test_cli_writes_stack_md(self):
         from qlnes.cli import main
+
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "STACK.md"
-            rc = main(["analyze", 
-                str(NESTEST_PATH),
-                "--output", str(out),
-                "--no-dynamic",
-                "--quiet",
-            ])
+            rc = main(
+                [
+                    "analyze",
+                    str(NESTEST_PATH),
+                    "--output",
+                    str(out),
+                    "--no-dynamic",
+                    "--quiet",
+                ]
+            )
             self.assertEqual(rc, 0)
             self.assertTrue(out.exists())
             content = out.read_text(encoding="utf-8")
@@ -173,21 +176,28 @@ class TestCLI(unittest.TestCase):
 
     def test_cli_missing_rom(self):
         from qlnes.cli import main
+
         rc = main(["analyze", "/nonexistent/rom.nes", "--quiet"])
         self.assertEqual(rc, 2)
 
     def test_cli_writes_asm_when_requested(self):
         from qlnes.cli import main
+
         with tempfile.TemporaryDirectory() as td:
             stack = Path(td) / "STACK.md"
             asm = Path(td) / "out.asm"
-            rc = main(["analyze", 
-                str(NESTEST_PATH),
-                "--output", str(stack),
-                "--asm", str(asm),
-                "--no-dynamic",
-                "--quiet",
-            ])
+            rc = main(
+                [
+                    "analyze",
+                    str(NESTEST_PATH),
+                    "--output",
+                    str(stack),
+                    "--asm",
+                    str(asm),
+                    "--no-dynamic",
+                    "--quiet",
+                ]
+            )
             self.assertEqual(rc, 0)
             self.assertTrue(asm.exists())
             self.assertIn("PPUCTRL", asm.read_text(encoding="utf-8"))

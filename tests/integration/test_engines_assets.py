@@ -1,12 +1,10 @@
-import os
 import tempfile
 import unittest
 from pathlib import Path
 
-from tests.test_setup import NESTEST_PATH, fake_rom
 from qlnes import Rom
+from qlnes.assets import decode_tile, extract_chr, write_chr_asm
 from qlnes.engines import (
-    EngineHint,
     detect_copyright_year,
     detect_engines,
     detect_publisher_by_mapper,
@@ -14,12 +12,12 @@ from qlnes.engines import (
     find_ascii_strings,
 )
 from qlnes.ines import parse_header
-from qlnes.assets import decode_tile, extract_chr, write_chr_asm
+from tests.test_setup import NESTEST_PATH, fake_rom
 
 
 class TestFindAsciiStrings(unittest.TestCase):
     def test_finds_simple_string(self):
-        data = b"\x00\x00HELLO WORLD\x00\xFF"
+        data = b"\x00\x00HELLO WORLD\x00\xff"
         strings = find_ascii_strings(data, min_len=4)
         self.assertEqual(len(strings), 1)
         self.assertEqual(strings[0][1], "HELLO WORLD")
@@ -44,12 +42,12 @@ class TestPublisherByStrings(unittest.TestCase):
         self.assertTrue(any(h.name == "Konami" for h in hints))
 
     def test_detects_capcom(self):
-        data = b"\x00\xFFCAPCOM CO LTD 1990\x00"
+        data = b"\x00\xffCAPCOM CO LTD 1990\x00"
         hints = detect_publisher_by_strings(data)
         self.assertTrue(any(h.name == "Capcom" for h in hints))
 
     def test_no_false_positive_on_random(self):
-        data = b"\x00\xAA\xBB\xCC\xDD" * 100
+        data = b"\x00\xaa\xbb\xcc\xdd" * 100
         hints = detect_publisher_by_strings(data)
         self.assertEqual(hints, [])
 
@@ -81,7 +79,7 @@ class TestCopyrightDetection(unittest.TestCase):
         self.assertIn("1988", cr[1])
 
     def test_returns_none_when_no_copyright(self):
-        self.assertIsNone(detect_copyright_year(b"\x00\xFF\x00\xFF" * 100))
+        self.assertIsNone(detect_copyright_year(b"\x00\xff\x00\xff" * 100))
 
 
 class TestDetectEnginesIntegration(unittest.TestCase):
@@ -138,6 +136,7 @@ class TestChrAsmExtraction(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
         shutil.rmtree(self.tmp)
 
     def test_asm_contains_byte_directives(self):
@@ -189,6 +188,7 @@ class TestExtractChrOnNestest(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
         shutil.rmtree(self.tmp)
 
     def test_extracts_chr_files(self):
@@ -236,6 +236,7 @@ class TestProfileEnginesAssets(unittest.TestCase):
         msg = b"KONAMI 1990"
         rom_bytes[16 + 0x100 : 16 + 0x100 + len(msg)] = msg
         from qlnes import RomProfile
+
         rom = Rom(bytes(rom_bytes), name="fakeKonami")
         profile = RomProfile.from_rom(rom).analyze_static()
         names = {h.name for h in profile.engine_hints}
@@ -247,6 +248,7 @@ class TestProfileEnginesAssets(unittest.TestCase):
     def test_profile_extract_assets(self):
         with tempfile.TemporaryDirectory() as td:
             from qlnes import RomProfile
+
             rom = Rom.from_file(NESTEST_PATH)
             profile = RomProfile.from_rom(rom).analyze_static()
             manifest = profile.extract_assets(Path(td))
@@ -260,16 +262,23 @@ class TestCLIAssets(unittest.TestCase):
     def test_cli_extracts_assets_to_default_dir(self):
         with tempfile.TemporaryDirectory() as td:
             import shutil
+
             tmp_rom = Path(td) / "nestest.nes"
             shutil.copy(NESTEST_PATH, tmp_rom)
             from qlnes.cli import main
-            rc = main(["analyze", 
-                str(tmp_rom),
-                "--output", str(Path(td) / "STACK.md"),
-                "--no-dynamic",
-                "--assets", "auto",
-                "--quiet",
-            ])
+
+            rc = main(
+                [
+                    "analyze",
+                    str(tmp_rom),
+                    "--output",
+                    str(Path(td) / "STACK.md"),
+                    "--no-dynamic",
+                    "--assets",
+                    "auto",
+                    "--quiet",
+                ]
+            )
             self.assertEqual(rc, 0)
             assets_dir = Path(td) / "assets" / "nestest"
             self.assertTrue(assets_dir.exists())
