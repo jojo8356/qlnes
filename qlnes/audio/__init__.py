@@ -21,6 +21,7 @@ from .engine import (
     SoundEngine,
     SoundEngineRegistry,
 )
+from .mp3 import Mp3Encoder
 from .renderer import RenderResult, render_rom_audio_v2, supported_formats
 from .wav import build_wav_bytes, write_wav
 
@@ -28,6 +29,7 @@ __all__ = [
     "AudioResult",
     "DetectionResult",
     "LoopBoundary",
+    "Mp3Encoder",
     "PcmStream",
     "RenderResult",
     "SongEntry",
