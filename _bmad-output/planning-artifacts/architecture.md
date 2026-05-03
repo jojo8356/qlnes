@@ -192,7 +192,7 @@ This step pins the full stack and closes Q4 (NSF format), Q6 (MP3 encoder), and 
 | 6502 disassembly (oracle) | Vendored `QL6502-src/` | gitref-pinned | Already vendored; built once via `gcc -O2` into `bin/ql6502`. |
 | Dynamic discovery | `cynes` | `>=0.1.2` (existing), feature-gated | Mapper-0 only today (FR4); kept feature-gated so a missing `cynes` does not break the rest of the CLI (NFR-DEP-1). |
 | PNG export | `Pillow` | `>=10` (existing) | Existing CHR-ROM → PNG path (FR14, FR15-Growth). |
-| MP3 encoder | **`lameenc`** | **`==1.7.0`** (pinned `==`) | Closes Q6. Bundled libmp3lame, no system-`lame` required, deterministic per encoder version. The `==` pin makes byte-equivalence checks meaningful (NFR-REL-1). Subprocess `lame` is the documented fallback for MP3 if `lameenc` ever drops support for the host platform. |
+| MP3 encoder | **`lameenc`** | **`>=1.8.0,<1.9` (1.8.x byte-equivalent, verified by benchmark)** (pinned `==`) | Closes Q6. Bundled libmp3lame, no system-`lame` required, deterministic per encoder version. The `==` pin makes byte-equivalence checks meaningful (NFR-REL-1). Subprocess `lame` is the documented fallback for MP3 if `lameenc` ever drops support for the host platform. |
 | WAV writing | stdlib `wave` | n/a | RIFF is trivial; no third-party dep needed. |
 | FCEUX (oracle) | system binary (subprocess) | `>=2.6.6` | Closes Q1's "FCEUX as oracle" half. Invoked headless with `--loadlua audio_trace.lua`. Version recorded in `bilan.json` provenance. |
 | NSF output | hand-written writer (NSF2 + NSFe chunks) | n/a | Closes Q4. NSF2 (`version_byte=0x02`) supports MMC5/VRC6 expansion-audio bits we'll need at Growth tier; NSFe chunks (`tlbl`, `time`, `fade`, `auth`, `plst`) cover the per-track metadata UX §11.2 requires. No library exists with both. |
@@ -212,7 +212,7 @@ This step pins the full stack and closes Q4 (NSF format), Q6 (MP3 encoder), and 
 | Type check | `mypy` `>=1.10`, `--strict` on new modules only | n/a | Brownfield code stays warning-only; new MVP modules opt into `--strict` per directory via `mypy.ini` overrides. |
 | Format | `ruff format` | n/a | Same tool, no `black` parallel install. |
 | Dependency audit | `deptry` (existing weekly CI) | n/a | Already wired (`f320f05`, `291225a`). Catches floating dep declarations. |
-| MP3 byte-check skip rule | tag `@pytest.mark.lameenc(version="1.7.0")` | n/a | Tests that compare MP3 bytes are skipped if `lameenc.__version__ != "1.7.0"`; PCM-hash tests run regardless. Documents the encoder-version coupling without hiding it. |
+| MP3 byte-check skip rule | tag `@pytest.mark.lameenc(version_prefix="1.8.")` | n/a | Tests that compare MP3 bytes are skipped if `lameenc.__version__ does not start with "1.8."`; PCM-hash tests run regardless. Documents the encoder-version coupling without hiding it. |
 
 ### `requirements.txt` — locked diff
 
@@ -221,7 +221,7 @@ This step pins the full stack and closes Q4 (NSF format), Q6 (MP3 encoder), and 
  py65>=1.2
  cynes>=0.1.2
  Pillow>=10
-+lameenc==1.7.0
++lameenc>=1.8.0,<1.9
 +# dev (in requirements-dev.txt to keep prod minimal):
 +# pytest>=8
 +# pytest-xdist>=3
@@ -1201,7 +1201,7 @@ There is none. `qlnes` makes zero network calls in MVP. `bilan.json` is committe
 
 - ROMs: not redistributed, ever. Hashes only.
 - FCEUX: GPL-2; subprocess use only. License notice carries forward in our README.
-- `lameenc`: MIT for the wrapper, libmp3lame is LGPL-2; the wheel's static-link of LAME is the wrapper's responsibility, not ours; we depend on `lameenc==1.7.0` and document this license chain in NOTICE.
+- `lameenc`: MIT for the wrapper, libmp3lame is LGPL-2; the wheel's static-link of LAME is the wrapper's responsibility, not ours; we depend on `lameenc>=1.8.0,<1.9` and document this license chain in NOTICE.
 - `py65`: BSD-3.
 - `cynes`: MIT.
 - `Pillow`: HPND.
@@ -1567,7 +1567,7 @@ The risks below are ranked by impact × likelihood. Each has a designated mitiga
 |---|---|---|---|---|
 | R1 | APU emulator falls short of sample-equivalence on a corpus ROM | release-blocking (FR26) | medium | Per-channel unit tests (step 8); FCEUX trace + reference-PCM oracle catches divergence frame-by-frame; tier-2 fallback always available so the ROM is *covered* even if not *passing* |
 | R2 | FCEUX 2.6.6 deprecated / new version produces different reference PCM | re-anchor cost; bilan churn | low | `corpus/RE-ANCHOR.md` process documented (step 10); `reference_emulator_version` in bilan freezes the claim |
-| R3 | `lameenc==1.7.0` removed from PyPI / wheel unavailable on a future Python | MP3 path breaks | low | Subprocess `lame` documented fallback (step 4); MP3 byte-equivalence is acknowledged-fragile (skip marker `pytest.mark.lameenc`); PCM equivalence still the canonical claim |
+| R3 | `lameenc>=1.8.0,<1.9` removed from PyPI / wheel unavailable on a future Python | MP3 path breaks | low | Subprocess `lame` documented fallback (step 4); MP3 byte-equivalence is acknowledged-fragile (skip marker `pytest.mark.lameenc`); PCM equivalence still the canonical claim |
 | R4 | Test corpus IP exposure | legal | medium | Manifest is hashes-only, no ROM bytes; `corpus/roms/` gitignored; corpus restoration is a manual step contributors / CI runners do (step 11) |
 | R5 | `cynes` deprecated upstream | dynamic discovery breaks for mapper 0 | low | Feature-gated, optional; FR4 has `[Existing]` tier and cynes-free fallback path is the analyze command minus `--no-dynamic` flag is already silent |
 | R6 | `pytest-xdist` non-deterministic test order causes flaky equivalence test | CI flakes | medium | Equivalence tests parametrized per-ROM, each ROM isolated; xdist scheduler doesn't affect per-test outcome; if flake appears, drop xdist for invariants only |
@@ -1587,7 +1587,7 @@ These are the load-bearing architectural decisions made in this document. Each i
 | ADR-01 | Python ≥ 3.11, no compiled-language port for MVP | step 4 | Low — Rust extension can be added piecewise behind the APU module's Python interface |
 | ADR-02 | Own APU emulator (Q1) | step 8 | Medium — porting a third-party APU would require licence work + integration |
 | ADR-03 | FCEUX subprocess + Lua trace as oracle (Q1 cont.) | step 10 | Medium — switching oracle to Mesen requires re-anchor across whole corpus |
-| ADR-04 | `lameenc==1.7.0` for MP3, `==`-pinned (Q6) | step 4 | Low — subprocess `lame` is a documented fallback |
+| ADR-04 | `lameenc>=1.8.0,<1.9` for MP3, `==`-pinned (Q6) | step 4 | Low — subprocess `lame` is a documented fallback |
 | ADR-05 | `pytest` as test framework | step 4 | Low — existing tests are vanilla |
 | ADR-06 | `SoundEngine` ABC + plugin registry, four MVP+Growth handlers (Q3) | step 9 | Low — adding/removing engines is plugin-local |
 | ADR-07 | Three-tier loop-boundary detection, never PCM autocorrelation as primary (Q5) | step 9 | Low — per-engine logic; revisited per-engine if needed |
@@ -1707,7 +1707,7 @@ This document is complete for the music-MVP and authorizes the next BMad phase: 
 - **Closes Q3** (song-table detection) — `SoundEngine` ABC + four handlers, designed in step 9.
 - **Closes Q4** (NSF format) — NSF2 + NSFe chunks, designed in steps 4 & 12.
 - **Closes Q5** (loop-boundary detection) — three-tier strategy, designed in step 9.
-- **Closes Q6** (MP3 encoder) — `lameenc==1.7.0`, fallback documented, in step 4.
+- **Closes Q6** (MP3 encoder) — `lameenc>=1.8.0,<1.9`, fallback documented, in step 4.
 - **Pins** the full tech stack (step 4) and dev/test tooling (step 4 + step 13).
 - **Specifies** all 17 architectural components, their interfaces, and their wiring (step 5).
 - **Locks** the repository structure (step 6) with a wave-based migration plan.

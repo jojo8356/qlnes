@@ -189,7 +189,7 @@ The readiness report's *Pre-emptive Epic Guidance* identified four common epic-s
 **FR(s) closed.** FR7 (MP3 output), partial FR8 (adds `mp3` to `--format`).
 
 **NFR(s) touched.**
-- NFR-DEP-2 (`lameenc==1.7.0` `==`-pinned) — verified by `requirements.txt` review + `tests/unit/test_mp3_encoder.py`.
+- NFR-DEP-2 (`lameenc>=1.8.0,<1.9` `==`-pinned) — verified by `requirements.txt` review + `tests/unit/test_mp3_encoder.py`.
 - NFR-REL-1 (PCM equivalence) — MP3 byte-equivalence is encoder-version-bounded; PCM-decoded equivalence is the canonical invariant.
 
 **Pre-conditions.** A.1 merged.
@@ -197,14 +197,14 @@ The readiness report's *Pre-emptive Epic Guidance* identified four common epic-s
 **Embedded scaffolding.**
 - `qlnes/audio/mp3.py` (`Mp3Encoder` wrapping `lameenc`; encode-from-PCM, encode-from-WAV-path).
 - Pre-flight predicate `_check_lameenc_available` activated when `--format mp3`.
-- `requirements.txt` adds `lameenc==1.7.0`.
+- `requirements.txt` adds `lameenc>=1.8.0,<1.9`.
 
 **Acceptance criteria.**
 - **AC1.** `qlnes audio rom.nes --format mp3 --output tracks/` produces N `.mp3` files named with the locked filename convention (`<rom>.<idx>.<engine>.mp3`).
 - **AC2.** Decoding the produced MP3 back to PCM and comparing sample-by-sample to the WAV path's PCM (same ROM × song-index): the absolute mean error is below 1 % of full-scale (≈ 327 LSB on 16-bit signed). This bounds the lossy-encode budget and proves the MP3 was rendered from the same internal PCM source as the WAV — not from a divergent path. Byte-identity of decoded PCM to source PCM is **not** asserted (lossy compression cannot be byte-equivalent by definition; AC4 below covers MP3-byte determinism on the encoded side, which is the meaningful invariant).
 - **AC3.** Running `qlnes audio --format mp3` on a host without `lameenc` installed (or with a different `lameenc` version) exits 70 (`internal_error` with `detail="missing_dependency"` and `dep="lame"`) and a hint pointing at `scripts/install_audio_deps.sh`.
 - **AC4.** Two consecutive `--format mp3` runs on the same host produce byte-identical MP3 files (locked encoder version means deterministic output).
-- **AC5.** `tests/unit/test_mp3_encoder.py` includes a `@pytest.mark.lameenc(version="1.7.0")` skip marker; tests that compare MP3 bytes are skipped under any other lameenc version.
+- **AC5.** `tests/unit/test_mp3_encoder.py` includes a `@pytest.mark.lameenc(version_prefix="1.8.")` skip marker; tests that compare MP3 bytes are skipped under any other lameenc version.
 
 **Dev notes.**
 - Pure subprocess-`lame` fallback documented but not wired in MVP. If `lameenc` ever drops Python 3.13 support, the fallback unblocks us without API change.

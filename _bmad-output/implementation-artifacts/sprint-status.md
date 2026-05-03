@@ -3,7 +3,7 @@ artifact_type: sprint-plan-and-status
 project_name: qlnes
 mvp_target: v0.5.0 (music workstream)
 date_created: 2026-05-03
-date_updated: 2026-05-03 (A.1 phases 7.1-7.6 merged on master — IN_REVIEW pending fixture ROM + perf opt)
+date_updated: 2026-05-03 (A.1 + E.1 merged ; A.2 + D.1 done ; A.3 partial — chunk infra ready, FT-Bxx detection deferred to fixture ROM)
 created_by: bmad-sprint-planning (SP)
 created_after_readiness: implementation-readiness-report-2026-05-03-pass-2.md (CONDITIONAL_GO, H-1 resolved)
 inputDocuments:
@@ -348,9 +348,9 @@ The single source of truth for `bmad-sprint-status` (SS), `bmad-create-story` (C
 |---|---|---|---|---|---|---|---|---|---|
 | A.1 | Render one mapper-0 FT ROM to WAV | 1 | L | IN_REVIEW (7.1-7.6 ✓ ; 7.7 = fixture ROM + perf opt) | (none) | FR6, FR9, FR11, FR8/wav, FR10/ref | PERF-2 ⚠xfail, REL-1, REL-2, REL-4 | `stories/A.1.md` | master |
 | E.1 | Migrate tests to unit/integration/invariants | 1 | S | DONE | A.1 (touches files) | (refactor) | — | (no separate story file) | master |
-| A.2 | Render to MP3 via lameenc | 2 | S | BACKLOG | A.1 | FR7, FR8/mp3 | DEP-2, REL-1 | — | — |
-| A.3 | Loop boundaries → WAV `'smpl'` chunk | 2 | S | BACKLOG | A.1 | FR6/loop, FR10 | REL-1 | — | — |
-| D.1 | Refuse to overwrite + `--force` | 2 | S | BACKLOG | A.1 | FR37 | REL-4 | — | — |
+| A.2 | Render to MP3 via lameenc | 2 | S | DONE (lameenc==1.8.2 pin, M-1 warning wired) | A.1 | FR7, FR8/mp3 | DEP-2, REL-1 | — | master |
+| A.3 | Loop boundaries → WAV `'smpl'` chunk | 2 | S | PARTIAL — chunk infra ready; FT-Bxx detection deferred to fixture ROM | A.1 | FR6/loop, FR10 | REL-1 | — | master |
+| D.1 | Refuse to overwrite + `--force` | 2 | S | DONE (verifs added: --force doesn't bypass other preflight, multi-file first-conflict reported) | A.1 | FR37 | REL-4 | — | master |
 | A.4 | Capcom engine + corpus broadening | 3 | L | BACKLOG | A.1, A.3 | FR11/capcom | PERF-3 | — | — |
 | A.5 | Generic fallback (tier-2 unverified) | 3 | M | BACKLOG | A.1, A.3 | FR10/full, FR11/full | REL-5 | — | — |
 | B.1 | Audit + `bilan.json` (single-ROM) | 4 | M | BACKLOG | A.1 | FR19, FR20, FR25 | REL-1, REL-2, REL-4 | — | — |
