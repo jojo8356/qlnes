@@ -2,13 +2,12 @@
 
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Annotated
 
 import typer
 
 from .profile import RomProfile
 from .rom import Rom
-
 
 app = typer.Typer(
     add_completion=False,
@@ -20,12 +19,13 @@ app = typer.Typer(
 def _have_cynes() -> bool:
     try:
         import cynes  # noqa: F401
+
         return True
     except ImportError:
         return False
 
 
-def _resolve_assets_dir(rom: Path, value: Optional[str]) -> Optional[Path]:
+def _resolve_assets_dir(rom: Path, value: str | None) -> Path | None:
     if value is None:
         return None
     if value in ("auto", "default", ""):
@@ -35,41 +35,47 @@ def _resolve_assets_dir(rom: Path, value: Optional[str]) -> Optional[Path]:
 
 @app.command()
 def analyze(
-    rom: Path = typer.Argument(
-        ...,
-        help="Chemin vers la ROM .nes",
-        exists=True,
-        file_okay=True,
-        dir_okay=False,
-        readable=True,
-    ),
-    output: Optional[Path] = typer.Option(
-        None,
-        "-o",
-        "--output",
-        help="Fichier de sortie (défaut : STACK.md à côté de la ROM)",
-    ),
-    asm: Optional[Path] = typer.Option(
-        None,
-        "--asm",
-        help="Aussi écrire le désassemblage annoté à ce chemin",
-    ),
-    assets: Optional[str] = typer.Option(
-        None,
-        "--assets",
-        help="Extraire les assets (CHR-ROM → .chr/.asm/.png) ; "
-             "valeur 'auto' = assets/<rom>/, ou chemin custom",
-    ),
-    no_dynamic: bool = typer.Option(
-        False, "--no-dynamic", help="Désactive la discovery dynamique (cynes)"
-    ),
-    verify: bool = typer.Option(
-        False, "--verify", help="Vérifie le round-trip (recompile et compare aux bytes originaux)"
-    ),
-    quiet: bool = typer.Option(
-        False, "-q", "--quiet", help="N'affiche rien sauf erreurs"
-    ),
-):
+    rom: Annotated[
+        Path,
+        typer.Argument(
+            help="Chemin vers la ROM .nes",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "-o", "--output", help="Fichier de sortie (défaut : STACK.md à côté de la ROM)"
+        ),
+    ] = None,
+    asm: Annotated[
+        Path | None,
+        typer.Option("--asm", help="Aussi écrire le désassemblage annoté à ce chemin"),
+    ] = None,
+    assets: Annotated[
+        str | None,
+        typer.Option(
+            "--assets",
+            help="Extraire les assets (CHR-ROM → .chr/.asm/.png) ; "
+            "valeur 'auto' = assets/<rom>/, ou chemin custom",
+        ),
+    ] = None,
+    no_dynamic: Annotated[
+        bool, typer.Option("--no-dynamic", help="Désactive la discovery dynamique (cynes)")
+    ] = False,
+    verify: Annotated[
+        bool,
+        typer.Option(
+            "--verify", help="Vérifie le round-trip (recompile et compare aux bytes originaux)"
+        ),
+    ] = False,
+    quiet: Annotated[
+        bool, typer.Option("-q", "--quiet", help="N'affiche rien sauf erreurs")
+    ] = False,
+) -> None:
     """Analyse une ROM NES."""
     if output is None:
         output = rom.parent / "STACK.md"
@@ -79,10 +85,7 @@ def analyze(
     rom_obj = Rom.from_file(rom)
     profile = RomProfile.from_rom(rom_obj)
     if not quiet:
-        typer.echo(
-            f"→ ROM : mapper={rom_obj.mapper}  "
-            f"PRG={rom_obj.num_prg_banks} bank(s)"
-        )
+        typer.echo(f"→ ROM : mapper={rom_obj.mapper}  PRG={rom_obj.num_prg_banks} bank(s)")
         typer.echo("→ analyse statique (QL6502 + heuristiques)…")
     profile.analyze_static()
 
@@ -99,9 +102,7 @@ def analyze(
         elif not _have_cynes():
             typer.echo("→ discovery dynamique : ignorée (cynes non installé)")
         else:
-            typer.echo(
-                f"→ discovery dynamique : ignorée (mapper {rom_obj.mapper})"
-            )
+            typer.echo(f"→ discovery dynamique : ignorée (mapper {rom_obj.mapper})")
 
     assets_dir = _resolve_assets_dir(rom, assets)
     if assets_dir is not None:
@@ -120,15 +121,21 @@ def analyze(
         chr_block = ""
         if assets_dir is not None and profile.assets and profile.assets.chr_raw:
             import os
+
             chr_rel = os.path.relpath(profile.assets.chr_raw, asm.parent)
+            chr_asm_rel = (
+                os.path.relpath(profile.assets.chr_asm, asm.parent)
+                if profile.assets.chr_asm is not None
+                else ""
+            )
             chr_block = (
                 "\n\n"
                 "; ============================================================\n"
                 "; CHR-ROM extraite vers un fichier séparé (lien réassemblable)\n"
                 "; ============================================================\n"
-                ".segment \"CHR\"\n"
-                f".incbin \"{chr_rel}\"\n"
-                f"; ou: .include \"{os.path.relpath(profile.assets.chr_asm, asm.parent)}\"\n"
+                '.segment "CHR"\n'
+                f'.incbin "{chr_rel}"\n'
+                f'; ou: .include "{chr_asm_rel}"\n'
             )
 
         if profile.is_multi_bank:
@@ -160,12 +167,12 @@ def analyze(
 
 @app.command()
 def recompile(
-    rom: Path = typer.Argument(..., help="ROM source à recompiler", exists=True),
-    output: Path = typer.Option(
-        ..., "-o", "--output", help="Chemin de sortie pour la ROM recompilée"
-    ),
-    quiet: bool = typer.Option(False, "-q", "--quiet"),
-):
+    rom: Annotated[Path, typer.Argument(help="ROM source à recompiler", exists=True)],
+    output: Annotated[
+        Path, typer.Option("-o", "--output", help="Chemin de sortie pour la ROM recompilée")
+    ],
+    quiet: Annotated[bool, typer.Option("-q", "--quiet")] = False,
+) -> None:
     """Re-assemble la ROM depuis le désassemblage annoté."""
     rom_obj = Rom.from_file(rom)
     profile = RomProfile.from_rom(rom_obj).analyze_static()
@@ -178,12 +185,15 @@ def recompile(
 
 @app.command()
 def verify(
-    original: Path = typer.Argument(..., help="ROM originale", exists=True),
-    recompiled: Optional[Path] = typer.Argument(
-        None, help="ROM recompilée à comparer (optionnel : recompile à la volée si absent)"
-    ),
-    quiet: bool = typer.Option(False, "-q", "--quiet"),
-):
+    original: Annotated[Path, typer.Argument(help="ROM originale", exists=True)],
+    recompiled: Annotated[
+        Path | None,
+        typer.Argument(
+            help="ROM recompilée à comparer (optionnel : recompile à la volée si absent)"
+        ),
+    ] = None,
+    quiet: Annotated[bool, typer.Option("-q", "--quiet")] = False,
+) -> None:
     """Compare deux ROM byte-pour-byte (ou round-trip si recompiled absent)."""
     if recompiled is None:
         rom_obj = Rom.from_file(original)
@@ -191,6 +201,7 @@ def verify(
         diff = profile.verify_round_trip()
     else:
         from .recompile import compare_roms
+
         a = original.read_bytes()
         b = recompiled.read_bytes()
         diff = compare_roms(a, b)
@@ -203,54 +214,171 @@ def verify(
 
 @app.command()
 def audio(
-    rom: Path = typer.Argument(..., help="ROM .nes à rendre", exists=True),
-    output: Path = typer.Option(
-        ..., "-o", "--output", help="Sortie WAV ou MP3 (extension détermine le format)"
-    ),
-    frames: int = typer.Option(
-        600, "--frames", help="Durée en frames NTSC (60 fps → 600 = 10 s)"
-    ),
-    keep: bool = typer.Option(
-        False, "--keep-intermediate", help="Garde la trace TSV et le WAV intermédiaire"
-    ),
-    quiet: bool = typer.Option(False, "-q", "--quiet"),
-):
-    """Rend l'audio de la ROM (fceux trace APU + synth pur Python → WAV/MP3)."""
-    from .audio import render_rom_audio
+    rom: Annotated[Path, typer.Argument(help="ROM .nes à rendre")],
+    output: Annotated[
+        Path,
+        typer.Option(
+            "-o",
+            "--output",
+            help="Dossier de sortie pour les WAV par-piste (créé si absent)",
+        ),
+    ],
+    fmt: Annotated[
+        str,
+        typer.Option("--format", help="Format de sortie : wav (mp3 → A.2, nsf → C.1)"),
+    ] = "wav",
+    frames: Annotated[
+        int,
+        typer.Option("--frames", help="Durée en frames NTSC (60 fps → 600 = 10 s)"),
+    ] = 600,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Écraser les fichiers de sortie existants"),
+    ] = False,
+    quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Silencer les lignes info")] = False,
+    no_hints: Annotated[
+        bool, typer.Option("--no-hints", help="Supprime la ligne `hint:` sur erreurs/warnings")
+    ] = False,
+    color: Annotated[
+        str, typer.Option("--color", help="Couleur ANSI : auto | always | never")
+    ] = "auto",
+) -> None:
+    """Rend l'audio de la ROM via FCEUX trace + APU emulator → WAV par-piste.
 
-    if not quiet:
-        typer.echo(f"→ capture APU via fceux ({frames} frames)…")
-    result = render_rom_audio(rom, output, frames=frames, keep_intermediate=keep)
-    if not quiet:
-        typer.echo(
-            f"✓ {result.n_events} writes APU sur {result.duration_s:.2f}s"
+    Pipeline : ROM → SoundEngine.detect → walk_song_table → FCEUX trace →
+    APU replay → WAV atomique.
+
+    Exit codes (UX §6.2) : 0 success, 64 usage, 65 bad ROM, 66 missing input,
+    70 internal, 73 cant_create, 100 unsupported_mapper, 130 SIGINT.
+    """
+    from .audio.renderer import render_rom_audio_v2
+    from .config import ConfigLoader
+    from .io.errors import QlnesError, emit
+    from .io.preflight import Preflight
+
+    use_color = (color == "always") or (color == "auto" and sys.stderr.isatty())
+
+    try:
+        cfg = ConfigLoader().resolve(
+            "audio",
+            cli_overrides={"format": fmt, "frames": frames},
         )
-        if result.mp3:
-            typer.echo(f"✓ MP3 écrit : {result.mp3}")
-        else:
-            typer.echo(f"✓ WAV écrit : {result.wav}")
+        resolved_fmt = cfg.get("format", "wav")
+        resolved_frames = cfg.get("frames", 600)
+
+        pf = Preflight()
+        pf.add("rom_readable", lambda: _check_rom_readable(rom))
+        pf.add("output_writable", lambda: _check_output_writable(output))
+        pf.add("fceux_on_path", _check_fceux_on_path)
+        pf.run()
+
+        if not quiet:
+            typer.echo(f"→ capture APU via fceux ({resolved_frames} frames)…", err=True)
+        result = render_rom_audio_v2(
+            rom,
+            output,
+            fmt=resolved_fmt,
+            frames=resolved_frames,
+            force=force,
+        )
+        if not quiet:
+            for p in result.output_paths:
+                typer.echo(f"✓ {p}", err=True)
+            typer.echo(
+                f"✓ {len(result.output_paths)} {resolved_fmt.upper()} "
+                f"écrit(s)  (moteur={result.engine_name}, tier={result.tier})",
+                err=True,
+            )
+    except QlnesError as e:
+        emit(e, no_hints=no_hints, color=use_color)
+    except KeyboardInterrupt:
+        emit(QlnesError("interrupted", "interrupted"), no_hints=no_hints, color=use_color)
+    except Exception as exc:
+        emit(
+            QlnesError(
+                "internal_error",
+                f"{type(exc).__name__}: {exc}",
+                extra={"detail": type(exc).__name__},
+            ),
+            no_hints=no_hints,
+            color=use_color,
+        )
+
+
+def _check_rom_readable(rom_path: Path) -> None:
+    from .io.errors import QlnesError
+
+    if not rom_path.exists():
+        raise QlnesError(
+            "missing_input",
+            f"ROM not found: {rom_path}",
+            extra={"path": str(rom_path), "cwd": str(Path.cwd())},
+        )
+    if not rom_path.is_file():
+        raise QlnesError(
+            "bad_rom",
+            f"not a regular file: {rom_path}",
+            extra={"path": str(rom_path)},
+        )
+
+
+def _check_output_writable(output_dir: Path) -> None:
+    from .io.errors import QlnesError
+
+    if output_dir.exists() and not output_dir.is_dir():
+        raise QlnesError(
+            "cant_create",
+            f"output path exists and is not a directory: {output_dir}",
+            extra={"path": str(output_dir), "cause": "not_a_directory"},
+        )
+    parent = output_dir if output_dir.exists() else output_dir.parent
+    if not parent.exists():
+        raise QlnesError(
+            "cant_create",
+            f"parent directory does not exist: {parent}",
+            extra={"path": str(output_dir), "cause": "parent_missing"},
+        )
+
+
+def _check_fceux_on_path() -> None:
+    import shutil
+
+    from .io.errors import QlnesError
+
+    if shutil.which("fceux") is None:
+        raise QlnesError(
+            "internal_error",
+            "fceux binary not found on PATH",
+            hint="Install fceux >= 2.6.6 (apt install fceux on Debian/Ubuntu).",
+            extra={"detail": "missing_dependency", "dep": "fceux"},
+        )
 
 
 @app.command()
 def nsf(
-    rom: Path = typer.Argument(..., help="ROM .nes source", exists=True),
-    output: Path = typer.Option(..., "-o", "--output", help="Sortie .nsf"),
-    title: str = typer.Option("", "--title", help="Titre du morceau"),
-    artist: str = typer.Option("qlnes", "--artist"),
-    copyright_: str = typer.Option("", "--copyright"),
-    init_addr: Optional[str] = typer.Option(
-        None, "--init", help="Adresse INIT (hex, ex: 0x8000) — défaut RESET vector"
-    ),
-    play_addr: Optional[str] = typer.Option(
-        None, "--play", help="Adresse PLAY (hex, ex: 0x8082) — défaut NMI vector"
-    ),
-    songs: int = typer.Option(1, "--songs", help="Nombre total de morceaux"),
-    experimental: bool = typer.Option(
-        False, "--experimental",
-        help="Pour mappers ≠ 0 : packagise la banque fixe en best-effort"
-    ),
-    quiet: bool = typer.Option(False, "-q", "--quiet"),
-):
+    rom: Annotated[Path, typer.Argument(help="ROM .nes source", exists=True)],
+    output: Annotated[Path, typer.Option("-o", "--output", help="Sortie .nsf")],
+    title: Annotated[str, typer.Option("--title", help="Titre du morceau")] = "",
+    artist: Annotated[str, typer.Option("--artist")] = "qlnes",
+    copyright_: Annotated[str, typer.Option("--copyright")] = "",
+    init_addr: Annotated[
+        str | None,
+        typer.Option("--init", help="Adresse INIT (hex, ex: 0x8000) — défaut RESET vector"),
+    ] = None,
+    play_addr: Annotated[
+        str | None,
+        typer.Option("--play", help="Adresse PLAY (hex, ex: 0x8082) — défaut NMI vector"),
+    ] = None,
+    songs: Annotated[int, typer.Option("--songs", help="Nombre total de morceaux")] = 1,
+    experimental: Annotated[
+        bool,
+        typer.Option(
+            "--experimental",
+            help="Pour mappers ≠ 0 : packagise la banque fixe en best-effort",
+        ),
+    ] = False,
+    quiet: Annotated[bool, typer.Option("-q", "--quiet")] = False,
+) -> None:
     """Construit un fichier NSF depuis la ROM (mapper 0 auto, autres mappers expérimental)."""
     from .nsf import write_nsf
 
@@ -258,10 +386,15 @@ def nsf(
     play_int = int(play_addr, 0) if play_addr else None
 
     build = write_nsf(
-        rom, output,
-        title=title, artist=artist, copyright_=copyright_,
-        init_addr=init_int, play_addr=play_int,
-        songs=songs, experimental=experimental,
+        rom,
+        output,
+        title=title,
+        artist=artist,
+        copyright_=copyright_,
+        init_addr=init_int,
+        play_addr=play_int,
+        songs=songs,
+        experimental=experimental,
     )
     if not quiet:
         typer.echo(
@@ -273,12 +406,18 @@ def nsf(
             typer.echo(build.note)
 
 
-def main(argv=None) -> int:
+def main(argv: list[str] | None = None) -> int:
     try:
         app(argv, standalone_mode=False)
         return 0
-    except (typer.Exit, SystemExit) as e:
+    except typer.Exit as e:
         return getattr(e, "exit_code", 0) or 0
+    except SystemExit as e:
+        # sys.exit(int) raised by qlnes/io/errors.py::emit() lands here.
+        # SystemExit exposes the code on .code (not .exit_code like typer.Exit).
+        if isinstance(e.code, int):
+            return e.code
+        return 0 if e.code is None else 1
     except typer.Abort:
         return 1
     except FileNotFoundError as e:
