@@ -1,9 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
 
-
-INES_MAGIC = b"NES\x1A"
+INES_MAGIC = b"NES\x1a"
 HEADER_SIZE = 16
 PRG_BANK = 0x4000
 CHR_BANK = 0x2000
@@ -29,7 +27,7 @@ class INesHeader:
         return self.chr_banks * CHR_BANK
 
 
-def parse_header(data: bytes) -> Optional[INesHeader]:
+def parse_header(data: bytes) -> INesHeader | None:
     if len(data) < HEADER_SIZE or data[:4] != INES_MAGIC:
         return None
     return INesHeader(
@@ -50,12 +48,12 @@ def strip_ines(data: bytes) -> bytes:
     return data[offset : offset + h.prg_size]
 
 
-def _split_banks(prg: bytes) -> List[bytes]:
+def _split_banks(prg: bytes) -> list[bytes]:
     n = len(prg) // PRG_BANK
     return [prg[i * PRG_BANK : (i + 1) * PRG_BANK] for i in range(n)]
 
 
-def _layout_nrom(prg: bytes) -> List[Tuple[int, bytes]]:
+def _layout_nrom(prg: bytes) -> list[tuple[int, bytes]]:
     image = bytearray(0x10000)
     if len(prg) == 0x8000:
         image[0x8000:0x10000] = prg
@@ -67,12 +65,12 @@ def _layout_nrom(prg: bytes) -> List[Tuple[int, bytes]]:
     return [(0, bytes(image))]
 
 
-def _layout_uxrom(prg: bytes) -> List[Tuple[int, bytes]]:
+def _layout_uxrom(prg: bytes) -> list[tuple[int, bytes]]:
     banks = _split_banks(prg)
     if len(banks) < 2:
         raise ValueError(f"UxROM expects ≥2 banks, got {len(banks)}")
     last = banks[-1]
-    out: List[Tuple[int, bytes]] = []
+    out: list[tuple[int, bytes]] = []
     for idx, bank in enumerate(banks[:-1]):
         image = bytearray(0x10000)
         image[0x8000:0xC000] = bank
@@ -82,18 +80,18 @@ def _layout_uxrom(prg: bytes) -> List[Tuple[int, bytes]]:
     return out
 
 
-def _layout_mmc1_default(prg: bytes) -> List[Tuple[int, bytes]]:
+def _layout_mmc1_default(prg: bytes) -> list[tuple[int, bytes]]:
     return _layout_uxrom(prg)
 
 
-def _layout_gxrom(prg: bytes) -> List[Tuple[int, bytes]]:
+def _layout_gxrom(prg: bytes) -> list[tuple[int, bytes]]:
     # Mapper 66 (GxROM/GNROM) : PRG switchable par blocs de 32 KB en $8000-$FFFF.
     # Un seul registre en $8000-$FFFF : bits 5-4 = PRG bank, bits 1-0 = CHR bank.
     # Pas de half fixe : on émet une image 64 KB par bank PRG de 32 KB.
     if len(prg) % 0x8000 != 0 or len(prg) == 0:
         raise ValueError(f"GxROM PRG size {len(prg):#x} not a multiple of 32K")
     n = len(prg) // 0x8000
-    out: List[Tuple[int, bytes]] = []
+    out: list[tuple[int, bytes]] = []
     for idx in range(n):
         bank = prg[idx * 0x8000 : (idx + 1) * 0x8000]
         image = bytearray(0x10000)
@@ -109,7 +107,7 @@ def _fixed_only(last: bytes) -> bytes:
     return bytes(image)
 
 
-def rom_to_images(data: bytes) -> List[Tuple[int, bytes]]:
+def rom_to_images(data: bytes) -> list[tuple[int, bytes]]:
     h = parse_header(data)
     if h is None:
         if len(data) > 0x10000:
@@ -133,11 +131,9 @@ def rom_to_images(data: bytes) -> List[Tuple[int, bytes]]:
     raise NotImplementedError(f"mapper {h.mapper} unhandled")
 
 
-def load_rom_to_image(path) -> bytes:
+def load_rom_to_image(path: Path | str) -> bytes:
     raw = Path(path).read_bytes()
     images = rom_to_images(raw)
     if len(images) > 1:
-        raise ValueError(
-            f"ROM has {len(images)} switchable banks, use Rom.banks() instead"
-        )
+        raise ValueError(f"ROM has {len(images)} switchable banks, use Rom.banks() instead")
     return images[0][1]

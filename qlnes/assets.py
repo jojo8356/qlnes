@@ -1,14 +1,14 @@
 """Extraction des assets graphiques d'une ROM NES.
 
 Le format CHR-ROM NES :
-- chaque tile = 8×8 pixels, 2 bits per pixel (4 couleurs : 0..3)
+- chaque tile = 8x8 pixels, 2 bits per pixel (4 couleurs : 0..3)
 - 16 octets par tile : 8 octets pour le bit 0 de chaque pixel,
   puis 8 octets pour le bit 1
 - pour la ligne r et la colonne c : pixel = ((plane0[r] >> (7-c)) & 1)
                                            | (((plane1[r] >> (7-c)) & 1) << 1)
 
 Une banque CHR fait 8 KB = 512 tiles = 2 pattern tables (background +
-sprites). Chaque pattern table est un grid 16×16 = 256 tiles.
+sprites). Chaque pattern table est un grid 16x16 = 256 tiles.
 
 Le module sort :
 - `chr_rom.chr` : binaire brut (réutilisable dans un éditeur de tile)
@@ -20,7 +20,7 @@ Le module sort :
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from .ines import HEADER_SIZE
 from .rom import Rom
@@ -29,16 +29,14 @@ if TYPE_CHECKING:
     from .annotate import AnnotationReport
 
 
-_NAMED_LABEL_RE = re.compile(
-    r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*):(?P<rest>\s+\S.*)$"
-)
+_NAMED_LABEL_RE = re.compile(r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*):(?P<rest>\s+\S.*)$")
 
 
-def _restore_named_labels(asm: str, name_to_addr: Dict[str, int]) -> str:
+def _restore_named_labels(asm: str, name_to_addr: dict[str, int]) -> str:
     """Réécrit `update_scroll: ...` en `L_8EDD: ...` pour que `Disasm`
     (qui n'attend que des labels `L_XXXX`) puisse retrouver les adresses
     des subroutines déjà renommées par l'annotateur."""
-    out: List[str] = []
+    out: list[str] = []
     for line in asm.splitlines():
         m = _NAMED_LABEL_RE.match(line)
         if m:
@@ -49,9 +47,7 @@ def _restore_named_labels(asm: str, name_to_addr: Dict[str, int]) -> str:
     return "\n".join(out)
 
 
-MUSIC_KINDS = frozenset(
-    {"play_pulse", "play_triangle", "play_noise", "play_dmc", "play_sound"}
-)
+MUSIC_KINDS = frozenset({"play_pulse", "play_triangle", "play_noise", "play_dmc", "play_sound"})
 
 
 NES_PALETTE_GRAYSCALE = [
@@ -75,25 +71,27 @@ TILE_BYTES = 16
 @dataclass
 class AssetsManifest:
     out_dir: Path
-    chr_raw: Optional[Path] = None
-    chr_asm: Optional[Path] = None
-    full_image: Optional[Path] = None
-    bg_image: Optional[Path] = None
-    spr_image: Optional[Path] = None
+    chr_raw: Path | None = None
+    chr_asm: Path | None = None
+    full_image: Path | None = None
+    bg_image: Path | None = None
+    spr_image: Path | None = None
     n_tiles: int = 0
-    music_asm: Optional[Path] = None
+    music_asm: Path | None = None
     music_routines: int = 0
-    notes: List[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
-    def to_rows(self) -> List[str]:
-        rows: List[str] = []
+    def to_rows(self) -> list[str]:
+        rows: list[str] = []
         rows.append(f"- Dossier : `{self.out_dir}`")
         if self.chr_raw:
             rows.append(f"- CHR brute : `{self.chr_raw.name}` (binaire 8KB / banque)")
         if self.chr_asm:
             rows.append(f"- CHR en ASM (réassemblable) : `{self.chr_asm.name}`")
         if self.full_image:
-            rows.append(f"- Aperçu image complète : `{self.full_image.name}` ({self.n_tiles} tiles)")
+            rows.append(
+                f"- Aperçu image complète : `{self.full_image.name}` ({self.n_tiles} tiles)"
+            )
         if self.bg_image:
             rows.append(f"- Pattern table BG : `{self.bg_image.name}`")
         if self.spr_image:
@@ -108,14 +106,14 @@ class AssetsManifest:
         return rows
 
 
-def decode_tile(tile_bytes: bytes) -> List[List[int]]:
+def decode_tile(tile_bytes: bytes) -> list[list[int]]:
     if len(tile_bytes) != TILE_BYTES:
         raise ValueError(f"tile must be {TILE_BYTES} bytes, got {len(tile_bytes)}")
-    out: List[List[int]] = []
+    out: list[list[int]] = []
     for r in range(8):
         plane0 = tile_bytes[r]
         plane1 = tile_bytes[r + 8]
-        row: List[int] = []
+        row: list[int] = []
         for c in range(8):
             bit0 = (plane0 >> (7 - c)) & 1
             bit1 = (plane1 >> (7 - c)) & 1
@@ -126,7 +124,7 @@ def decode_tile(tile_bytes: bytes) -> List[List[int]]:
 
 def _draw_chr_to_pixels(
     chr_data: bytes, tiles_per_row: int = 16
-) -> tuple:
+) -> tuple[bytearray | None, int, int, int]:
     n_tiles = len(chr_data) // TILE_BYTES
     if n_tiles == 0:
         return None, 0, 0, 0
@@ -144,7 +142,7 @@ def _draw_chr_to_pixels(
     return pixels, width, height, n_tiles
 
 
-def _tile_ascii_preview(tile_rows: List[List[int]]) -> List[str]:
+def _tile_ascii_preview(tile_rows: list[list[int]]) -> list[str]:
     glyphs = (" ", "░", "▒", "█")
     return ["    ; " + "".join(glyphs[p] for p in row) for row in tile_rows]
 
@@ -161,8 +159,8 @@ def write_chr_asm(
     pt_size = PATTERN_TABLE_BYTES // TILE_BYTES
     total_pt = (len(chr_data) + PATTERN_TABLE_BYTES - 1) // PATTERN_TABLE_BYTES
 
-    lines: List[str] = []
-    lines.append(f"; ============================================================")
+    lines: list[str] = []
+    lines.append("; ============================================================")
     lines.append(f"; CHR-ROM dump — {rom_name}")
     lines.append(f"; {len(chr_data)} octets / {n_tiles} tiles / {total_pt} pattern table(s)")
     lines.append(";")
@@ -202,15 +200,19 @@ def write_chr_asm(
 
 
 def _save_png_or_ppm(
-    pixels: bytearray, width: int, height: int, out_path: Path,
-    palette=NES_PALETTE_DEFAULT,
+    pixels: bytearray,
+    width: int,
+    height: int,
+    out_path: Path,
+    palette: list[tuple[int, int, int]] = NES_PALETTE_DEFAULT,
 ) -> Path:
     try:
         from PIL import Image
+
         img = Image.new("P", (width, height))
-        flat: List[int] = []
-        for color in palette:
-            flat.extend(color)
+        flat: list[int] = []
+        for rgb in palette:
+            flat.extend(rgb)
         flat.extend([0] * (256 * 3 - len(flat)))
         img.putpalette(flat)
         img.putdata(bytes(pixels))
@@ -221,17 +223,17 @@ def _save_png_or_ppm(
         ppm_path = out_path.with_suffix(".ppm")
         with open(ppm_path, "wb") as f:
             f.write(f"P6\n{width} {height}\n255\n".encode())
-            for color in pixels:
-                f.write(bytes(palette[color]))
+            for px in pixels:
+                f.write(bytes(palette[px]))
         return ppm_path
 
 
 def extract_music(
-    bank_asms: List[str],
-    bank_reports: List["AnnotationReport"],
+    bank_asms: list[str],
+    bank_reports: list["AnnotationReport"],
     out_dir: Path,
     rom_name: str = "rom",
-) -> Tuple[Optional[Path], int]:
+) -> tuple[Path | None, int]:
     """Extrait toutes les routines audio (kind ∈ play_pulse/triangle/noise/dmc/sound)
     dans `out_dir/music.asm`.
 
@@ -245,7 +247,7 @@ def extract_music(
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "music.asm"
 
-    head: List[str] = [
+    head: list[str] = [
         "; ============================================================",
         f"; Sound / music engine — {rom_name}",
         "; Extrait par qlnes (copie informative).",
@@ -255,10 +257,10 @@ def extract_music(
         "; ============================================================",
         "",
     ]
-    body: List[str] = []
+    body: list[str] = []
     routine_count = 0
 
-    for bank_idx, (asm, report) in enumerate(zip(bank_asms, bank_reports)):
+    for bank_idx, (asm, report) in enumerate(zip(bank_asms, bank_reports, strict=False)):
         music_subs = sorted(
             (entry, name)
             for entry, name in report.subroutines.items()
@@ -275,19 +277,15 @@ def extract_music(
 
         name_to_addr = {n: a for a, n in report.subroutines.items()}
         disasm = Disasm(_restore_named_labels(asm, name_to_addr))
-        addr_to_idx = {l.addr: i for i, l in enumerate(disasm.lines) if l.addr >= 0}
+        addr_to_idx = {ln.addr: i for i, ln in enumerate(disasm.lines) if ln.addr >= 0}
 
         for entry, name in music_subs:
             sub = report.subroutine_details[entry]
-            body.append(
-                "; ------------------------------------------------------------"
-            )
+            body.append("; ------------------------------------------------------------")
             body.append(f"; {name} @ ${entry:04X}  ({sub.kind})")
             if sub.why:
                 body.append(f";   {sub.why}")
-            body.append(
-                "; ------------------------------------------------------------"
-            )
+            body.append("; ------------------------------------------------------------")
 
             start = addr_to_idx.get(entry)
             if start is None:
@@ -317,7 +315,9 @@ def extract_chr(rom: Rom, out_dir: Path) -> AssetsManifest:
     out_dir.mkdir(parents=True, exist_ok=True)
     h = rom.header
     if h is None or h.chr_size == 0:
-        manifest.notes.append("Pas de CHR-ROM (CHR-RAM ou ROM brute) — graphismes générés à l'exécution.")
+        manifest.notes.append(
+            "Pas de CHR-ROM (CHR-RAM ou ROM brute) — graphismes générés à l'exécution."
+        )
         return manifest
     chr_offset = HEADER_SIZE + (512 if h.has_trainer else 0) + h.prg_size
     chr_data = rom.raw[chr_offset : chr_offset + h.chr_size]
@@ -345,14 +345,10 @@ def extract_chr(rom: Rom, out_dir: Path) -> AssetsManifest:
         bg = chr_data[:PATTERN_TABLE_BYTES]
         bg_pixels, bw, bh, _ = _draw_chr_to_pixels(bg, tiles_per_row=16)
         if bg_pixels is not None:
-            manifest.bg_image = _save_png_or_ppm(
-                bg_pixels, bw, bh, out_dir / "pattern_table_bg"
-            )
+            manifest.bg_image = _save_png_or_ppm(bg_pixels, bw, bh, out_dir / "pattern_table_bg")
     if len(chr_data) >= 2 * PATTERN_TABLE_BYTES:
         spr = chr_data[PATTERN_TABLE_BYTES : 2 * PATTERN_TABLE_BYTES]
         sp_pixels, sw, sh, _ = _draw_chr_to_pixels(spr, tiles_per_row=16)
         if sp_pixels is not None:
-            manifest.spr_image = _save_png_or_ppm(
-                sp_pixels, sw, sh, out_dir / "pattern_table_spr"
-            )
+            manifest.spr_image = _save_png_or_ppm(sp_pixels, sw, sh, out_dir / "pattern_table_spr")
     return manifest

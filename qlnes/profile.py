@@ -12,27 +12,27 @@ Génère un STACK.md avec un panorama complet de la ROM.
 import datetime as _dt
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any
 
 from .annotate import AnnotationReport, annotate, rewrite_asm
 from .asm_text import replace_unknown_opcodes
 from .assets import AssetsManifest, extract_chr, extract_music
 from .cross_ref import RoutineNameProposal, cross_reference, merge_proposals
-from .dataflow import find_nmi_address, find_reset_address
+from .dataflow import Detection
 from .engines import EngineHint, detect_copyright_year, detect_engines
-from .ines import HEADER_SIZE, INesHeader, parse_header, strip_ines
+from .ines import HEADER_SIZE, INesHeader, strip_ines
 from .lang_detect import LangHypothesis, detect_language
-from .nes_hw import NES_REGS
 from .parser import Disasm
 from .ql6502 import QL6502
 from .recompile import (
     RomDiff,
     assemble_to_rom,
     assemble_to_rom_multibank,
-    verify_round_trip,
 )
 from .rom import Rom
 
+if TYPE_CHECKING:
+    from .emu import Scenario as _Scenario
 
 _MAPPER_NAMES = {
     0: "NROM",
@@ -85,12 +85,16 @@ class HardwareUsage:
     apu_triangle: bool = False
     apu_noise: bool = False
 
-    def to_rows(self) -> List[Tuple[str, bool, str]]:
+    def to_rows(self) -> list[tuple[str, bool, str]]:
         return [
             ("NMI activé (vblank)", self.nmi_enabled, "STA PPUCTRL avec bit 7"),
             ("OAM DMA (sprites)", self.oam_dma_used, "STA OAMDMA ($4014)"),
             ("Scrolling actif", self.scrolling_used, "STA PPUSCROLL ($2005)"),
-            ("Écritures palette/nametable", self.palette_writes or self.nametable_writes, "STA PPUDATA ($2007)"),
+            (
+                "Écritures palette/nametable",
+                self.palette_writes or self.nametable_writes,
+                "STA PPUDATA ($2007)",
+            ),
             ("Contrôleur 1 lu", self.controller1_read, "LDA JOY1 ($4016)"),
             ("Contrôleur 2 lu", self.controller2_read, "LDA JOY2 ($4017)"),
             ("APU pulses", self.apu_pulse, "STA $4000-$4007"),
@@ -103,24 +107,24 @@ class HardwareUsage:
 @dataclass
 class RomProfile:
     rom: Rom
-    header: Optional[INesHeader]
-    vectors: List[IRQVector] = field(default_factory=list)
-    static_report: Optional[AnnotationReport] = None
+    header: INesHeader | None
+    vectors: list[IRQVector] = field(default_factory=list)
+    static_report: AnnotationReport | None = None
     annotated_asm: str = ""
     hardware: HardwareUsage = field(default_factory=HardwareUsage)
     indirect_jumps: int = 0
     asm_line_count: int = 0
-    dynamic_summary: Optional[Dict] = None
-    routine_proposals: List[RoutineNameProposal] = field(default_factory=list)
-    language_hypotheses: List[LangHypothesis] = field(default_factory=list)
-    engine_hints: List[EngineHint] = field(default_factory=list)
-    copyright_string: Optional[str] = None
-    assets: Optional[AssetsManifest] = None
-    bank_asms: List[str] = field(default_factory=list)
-    bank_reports: List[AnnotationReport] = field(default_factory=list)
+    dynamic_summary: dict[str, Any] | None = None
+    routine_proposals: list[RoutineNameProposal] = field(default_factory=list)
+    language_hypotheses: list[LangHypothesis] = field(default_factory=list)
+    engine_hints: list[EngineHint] = field(default_factory=list)
+    copyright_string: str | None = None
+    assets: AssetsManifest | None = None
+    bank_asms: list[str] = field(default_factory=list)
+    bank_reports: list[AnnotationReport] = field(default_factory=list)
 
     @classmethod
-    def from_path(cls, path) -> "RomProfile":
+    def from_path(cls, path: Path | str) -> "RomProfile":
         return cls.from_rom(Rom.from_file(path))
 
     @classmethod
@@ -134,12 +138,7 @@ class RomProfile:
         total_lines = 0
         for i, bank in enumerate(banks):
             image = bank.image
-            asm = (
-                QL6502()
-                .load_image(image)
-                .mark_blank(0x0000, 0x7FFF)
-                .generate_asm()
-            )
+            asm = QL6502().load_image(image).mark_blank(0x0000, 0x7FFF).generate_asm()
             asm = replace_unknown_opcodes(asm, image)
             annotated, report = annotate(asm, image=image)
             self.bank_asms.append(annotated)
@@ -152,9 +151,7 @@ class RomProfile:
                 base_disasm = Disasm(asm)
                 self.hardware = self._detect_hardware(self.annotated_asm, base_disasm)
                 self.language_hypotheses = detect_language(base_disasm, self.header)
-                self.engine_hints = detect_engines(
-                    self.rom.raw, self.header, base_disasm
-                )
+                self.engine_hints = detect_engines(self.rom.raw, self.header, base_disasm)
                 cr = detect_copyright_year(self.rom.raw)
                 if cr:
                     self.copyright_string = cr[1]
@@ -165,9 +162,8 @@ class RomProfile:
     def is_multi_bank(self) -> bool:
         return len(self.bank_asms) > 1
 
-    def extract_assets(self, out_dir) -> AssetsManifest:
-        from pathlib import Path as _Path
-        out = _Path(out_dir)
+    def extract_assets(self, out_dir: Path | str) -> AssetsManifest:
+        out = Path(out_dir)
         self.assets = extract_chr(self.rom, out)
         if self.bank_asms and self.bank_reports:
             music_path, n = extract_music(
@@ -182,8 +178,8 @@ class RomProfile:
         return self.assets
 
     @staticmethod
-    def _names_from_report(report: AnnotationReport) -> Dict[str, int]:
-        out: Dict[str, int] = {}
+    def _names_from_report(report: AnnotationReport) -> dict[str, int]:
+        out: dict[str, int] = {}
         for d in (
             report.hardware,
             report.oam,
@@ -195,24 +191,26 @@ class RomProfile:
                 out.setdefault(name, addr)
         return out
 
-    def names_to_addr(self) -> Dict[str, int]:
+    def names_to_addr(self) -> dict[str, int]:
         # Map agrégée (utilisée pour le single-bank et l'analyse globale).
         # Pour le round-trip multi-bank, on utilise les maps par bank afin
         # d'éviter les collisions où un même nom pointe sur des adresses
         # différentes selon le bank.
-        out: Dict[str, int] = {}
-        reports = self.bank_reports if self.bank_reports else (
-            [self.static_report] if self.static_report else []
+        out: dict[str, int] = {}
+        reports = (
+            self.bank_reports
+            if self.bank_reports
+            else ([self.static_report] if self.static_report else [])
         )
         for r in reports:
             for name, addr in self._names_from_report(r).items():
                 out.setdefault(name, addr)
         return out
 
-    def per_bank_names(self) -> List[Dict[str, int]]:
+    def per_bank_names(self) -> list[dict[str, int]]:
         return [self._names_from_report(r) for r in self.bank_reports]
 
-    def _assemble(self) -> Tuple[bytes, List[str]]:
+    def _assemble(self) -> tuple[bytes, list[str]]:
         if not self.annotated_asm:
             raise RuntimeError("appeler analyze_static() d'abord")
         if self.is_multi_bank:
@@ -221,20 +219,18 @@ class RomProfile:
                 self.rom.raw,
                 bank_names=self.per_bank_names(),
             )
-        return assemble_to_rom(
-            self.annotated_asm, self.rom.raw, names_to_addr=self.names_to_addr()
-        )
+        return assemble_to_rom(self.annotated_asm, self.rom.raw, names_to_addr=self.names_to_addr())
 
-    def recompile(self, output_path) -> Path:
+    def recompile(self, output_path: Path | str) -> Path:
         recompiled, _errors = self._assemble()
-        from pathlib import Path as _Path
-        out = _Path(output_path)
+        out = Path(output_path)
         out.write_bytes(recompiled)
         return out
 
     def verify_round_trip(self) -> RomDiff:
         recompiled, errors = self._assemble()
         from .recompile import compare_roms
+
         diff = compare_roms(self.rom.raw, recompiled)
         if errors:
             diff.notes.append(f"{len(errors)} lignes non assemblées")
@@ -242,13 +238,14 @@ class RomProfile:
 
     def analyze_dynamic(
         self,
-        rom_path,
-        scenarios: Optional[List] = None,
+        rom_path: Path | str,
+        scenarios: "list[_Scenario] | None" = None,
     ) -> "RomProfile":
-        from .emu import Discoverer, Scenario  # type: ignore
         import cynes
 
-        static_names = {}
+        from .emu import Discoverer, Scenario
+
+        static_names: dict[int, str] = {}
         if self.static_report:
             static_names.update(self.static_report.hardware)
             static_names.update(self.static_report.dataflow)
@@ -264,17 +261,12 @@ class RomProfile:
         self.dynamic_summary = result.to_dict()
 
         if self.static_report and result.names():
-            disasm = Disasm(self.annotated_asm if self.annotated_asm else "")
+            Disasm(self.annotated_asm if self.annotated_asm else "")
             try:
                 image = self.rom.single_image()
             except ValueError:
                 image = next(self.rom.banks()).image
-            asm = (
-                QL6502()
-                .load_image(image)
-                .mark_blank(0x0000, 0x7FFF)
-                .generate_asm()
-            )
+            asm = QL6502().load_image(image).mark_blank(0x0000, 0x7FFF).generate_asm()
             base_disasm = Disasm(asm)
             self.routine_proposals = cross_reference(
                 base_disasm,
@@ -293,14 +285,17 @@ class RomProfile:
                 }
         return self
 
-    def _extract_vectors(self, image: bytes) -> List[IRQVector]:
+    def _extract_vectors(self, image: bytes) -> list[IRQVector]:
         if len(image) < 0x10000 or self.header is None:
             return []
         prg_offset_base = HEADER_SIZE + (512 if self.header.has_trainer else 0)
         prg = strip_ines(self.rom.raw)
         prg_size = len(prg)
-        cpu_to_prg_offset = lambda cpu_addr: (cpu_addr - 0x8000) % max(prg_size, 1)
-        out: List[IRQVector] = []
+
+        def cpu_to_prg_offset(cpu_addr: int) -> int:
+            return (cpu_addr - 0x8000) % max(prg_size, 1)
+
+        out: list[IRQVector] = []
         for name, vec_addr in [("NMI", 0xFFFA), ("RESET", 0xFFFC), ("IRQ", 0xFFFE)]:
             target = image[vec_addr] | (image[vec_addr + 1] << 8)
             out.append(
@@ -314,10 +309,9 @@ class RomProfile:
 
     def _detect_hardware(self, annotated_asm: str, disasm: Disasm) -> HardwareUsage:
         h = HardwareUsage()
-        text = annotated_asm
         for line in disasm.code_lines():
             mn = (line.mnemonic or "").upper()
-            ops = (line.operands or "")
+            ops = line.operands or ""
             if mn == "STA":
                 if "OAMDMA" in ops or "$4014" in ops or "L_4014" in ops:
                     h.oam_dma_used = True
@@ -327,9 +321,6 @@ class RomProfile:
                     h.palette_writes = True
                 if "PPUADDR" in ops or "L_2006" in ops:
                     h.nametable_writes = True
-                if "PPUCTRL" in ops or "L_2000" in ops:
-                    if line.refs and any(0x2000 == r for r in line.refs):
-                        pass
             if mn == "LDA":
                 if "JOY1" in ops or "L_4016" in ops:
                     h.controller1_read = True
@@ -360,7 +351,11 @@ class RomProfile:
                 code = disasm.code_lines()
                 for back in range(max(0, idx - 4), idx):
                     prev = code[back]
-                    if (prev.mnemonic or "").upper() == "LDA" and prev.operands and prev.operands.startswith("#"):
+                    if (
+                        (prev.mnemonic or "").upper() == "LDA"
+                        and prev.operands
+                        and prev.operands.startswith("#")
+                    ):
                         try:
                             val = int(prev.operands[1:].strip().replace("0x", ""), 16)
                         except ValueError:
@@ -369,11 +364,15 @@ class RomProfile:
                             h.nmi_enabled = True
                             break
         for line in disasm.code_lines():
-            if (line.mnemonic or "").upper() == "JMP" and line.operands and line.operands.startswith("("):
+            if (
+                (line.mnemonic or "").upper() == "JMP"
+                and line.operands
+                and line.operands.startswith("(")
+            ):
                 self.indirect_jumps += 1
         return h
 
-    def characterize(self) -> List[str]:
+    def characterize(self) -> list[str]:
         traits = []
         if self.hardware.scrolling_used:
             traits.append("jeu avec scrolling")
@@ -396,7 +395,7 @@ class RomProfile:
         return traits
 
     def to_markdown(self) -> str:
-        lines: List[str] = []
+        lines: list[str] = []
         name = self.rom.name
         now = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
         lines.append(f"# STACK — {name}")
@@ -411,12 +410,18 @@ class RomProfile:
             mapper_name = _MAPPER_NAMES.get(self.header.mapper, "?")
             lines.append("| Champ | Valeur |")
             lines.append("|---|---|")
-            lines.append(f"| Magic | `NES\\x1A` ✓ |")
+            lines.append("| Magic | `NES\\x1A` ✓ |")
             lines.append(f"| Mapper | {self.header.mapper} ({mapper_name}) |")
-            lines.append(f"| PRG-ROM | {self.header.prg_size // 1024} KB ({self.header.prg_banks} bank{'s' if self.header.prg_banks != 1 else ''}) |")
-            lines.append(f"| CHR-ROM | {self.header.chr_size // 1024} KB ({self.header.chr_banks} bank{'s' if self.header.chr_banks != 1 else ''}) |")
+            lines.append(
+                f"| PRG-ROM | {self.header.prg_size // 1024} KB ({self.header.prg_banks} bank{'s' if self.header.prg_banks != 1 else ''}) |"
+            )
+            lines.append(
+                f"| CHR-ROM | {self.header.chr_size // 1024} KB ({self.header.chr_banks} bank{'s' if self.header.chr_banks != 1 else ''}) |"
+            )
             lines.append(f"| Mirroring | {_mirroring(self.header.flags6)} |")
-            lines.append(f"| Battery (SRAM) | {'oui' if _has_battery(self.header.flags6) else 'non'} |")
+            lines.append(
+                f"| Battery (SRAM) | {'oui' if _has_battery(self.header.flags6) else 'non'} |"
+            )
             lines.append(f"| Trainer | {'oui' if _has_trainer(self.header.flags6) else 'non'} |")
         lines.append("")
 
@@ -455,7 +460,7 @@ class RomProfile:
             if r.dataflow:
                 lines.append("### Patterns dataflow détectés")
                 lines.append("")
-                detections_by_addr: Dict[int, object] = {}
+                detections_by_addr: dict[int, Detection] = {}
                 for d in r.detections:
                     cur = detections_by_addr.get(d.addr)
                     if cur is None or d.confidence > cur.confidence:
@@ -504,8 +509,8 @@ class RomProfile:
             if self.engine_hints:
                 lines.append("| Hypothèse | Type | Confiance | Indice |")
                 lines.append("|---|---|---:|---|")
-                for h in self.engine_hints:
-                    lines.append(h.to_row())
+                for engine_hint in self.engine_hints:
+                    lines.append(engine_hint.to_row())
                 lines.append("")
 
         if self.language_hypotheses:
@@ -513,8 +518,8 @@ class RomProfile:
             lines.append("")
             lines.append("| Hypothèse | Confiance | Indices |")
             lines.append("|---|---:|---|")
-            for h in self.language_hypotheses:
-                lines.append(h.to_row())
+            for lang_hyp in self.language_hypotheses:
+                lines.append(lang_hyp.to_row())
             lines.append("")
 
         traits = self.characterize()
@@ -528,14 +533,14 @@ class RomProfile:
         if self.routine_proposals:
             lines.append("## Cross-référence dynamique → routines")
             lines.append("")
-            lines.append("Adresses nommées par diff comportemental, propagées aux routines qui les modifient :")
+            lines.append(
+                "Adresses nommées par diff comportemental, propagées aux routines qui les modifient :"
+            )
             lines.append("")
             lines.append("| Routine | Nom proposé | Confiance | Raison |")
             lines.append("|---|---|---:|---|")
             for p in self.routine_proposals:
-                lines.append(
-                    f"| `${p.entry:04X}` | **{p.name}** | {p.confidence:.2f} | {p.why} |"
-                )
+                lines.append(f"| `${p.entry:04X}` | **{p.name}** | {p.confidence:.2f} | {p.why} |")
             lines.append("")
 
         if self.dynamic_summary:
@@ -568,7 +573,7 @@ class RomProfile:
         lines.append("")
         return "\n".join(lines)
 
-    def write_markdown(self, path) -> Path:
+    def write_markdown(self, path: Path | str) -> Path:
         out = Path(path)
         out.write_text(self.to_markdown(), encoding="utf-8")
         return out

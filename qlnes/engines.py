@@ -17,9 +17,12 @@ Les hits sont retournés avec confiance et indices motivants.
 """
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING
 
 from .ines import INesHeader, strip_ines
+
+if TYPE_CHECKING:
+    from .parser import Disasm
 
 
 @dataclass
@@ -39,13 +42,23 @@ MAPPER_PUBLISHER_HINTS = {
     5: ("Nintendo (MMC5)", "publisher", 0.85, "MMC5 → Nintendo (Castlevania III JP)"),
     9: ("Nintendo (MMC2)", "publisher", 0.9, "MMC2 → exclu de Punch-Out!! Nintendo"),
     10: ("Nintendo (MMC4)", "publisher", 0.9, "MMC4 → Fire Emblem Gaiden Nintendo"),
-    16: ("Bandai (FCG)", "publisher", 0.9, "mapper 16 = Bandai FCG-1/-2 (Dragon Ball, Famicom Jump)"),
+    16: (
+        "Bandai (FCG)",
+        "publisher",
+        0.9,
+        "mapper 16 = Bandai FCG-1/-2 (Dragon Ball, Famicom Jump)",
+    ),
     18: ("Jaleco (SS 88006)", "publisher", 0.9, "mapper 18 = Jaleco custom (Bases Loaded II/III)"),
     19: ("Namco (N163)", "publisher", 0.9, "mapper 19 = Namco 163 (Battle Fleet, Megami Tensei)"),
     20: ("Famicom Disk System", "platform", 0.95, "mapper 20 = FDS"),
     21: ("Konami (VRC4)", "publisher", 0.95, "mapper 21 = VRC4a/c"),
     23: ("Konami (VRC2)", "publisher", 0.95, "mapper 23 = VRC2b (Wai Wai World)"),
-    24: ("Konami (VRC6)", "publisher", 0.95, "mapper 24 = VRC6a (Akumajou Densetsu / Castlevania III JP)"),
+    24: (
+        "Konami (VRC6)",
+        "publisher",
+        0.95,
+        "mapper 24 = VRC6a (Akumajou Densetsu / Castlevania III JP)",
+    ),
     25: ("Konami (VRC4)", "publisher", 0.95, "mapper 25 = VRC4b/d"),
     26: ("Konami (VRC6 alt)", "publisher", 0.95, "mapper 26 = VRC6b (Madara, Esper Dream 2)"),
     32: ("Irem (G-101)", "publisher", 0.9, "mapper 32 = Image Fight, Major League"),
@@ -62,7 +75,12 @@ MAPPER_PUBLISHER_HINTS = {
     85: ("Konami (VRC7)", "publisher", 0.95, "mapper 85 = VRC7 (Lagrange Point — synthé FM)"),
     87: ("Jaleco/Konami (J87)", "publisher", 0.7, "mapper 87 = J87 small"),
     95: ("Namco (108)", "publisher", 0.9, "mapper 95 = Namco 108 (Dragon Buster)"),
-    105: ("Nintendo World Cup", "publisher", 0.95, "mapper 105 = Nintendo World Championships 1990"),
+    105: (
+        "Nintendo World Cup",
+        "publisher",
+        0.95,
+        "mapper 105 = Nintendo World Championships 1990",
+    ),
 }
 
 
@@ -102,9 +120,9 @@ PUBLISHER_KEYWORDS = {
 }
 
 
-def find_ascii_strings(data: bytes, min_len: int = 4) -> List[Tuple[int, str]]:
-    out: List[Tuple[int, str]] = []
-    cur: List[str] = []
+def find_ascii_strings(data: bytes, min_len: int = 4) -> list[tuple[int, str]]:
+    out: list[tuple[int, str]] = []
+    cur: list[str] = []
     start = 0
     for i, b in enumerate(data):
         if 0x20 <= b <= 0x7E:
@@ -120,10 +138,10 @@ def find_ascii_strings(data: bytes, min_len: int = 4) -> List[Tuple[int, str]]:
     return out
 
 
-def detect_publisher_by_strings(data: bytes) -> List[EngineHint]:
+def detect_publisher_by_strings(data: bytes) -> list[EngineHint]:
     strings = find_ascii_strings(data, min_len=4)
-    seen_publishers: set = set()
-    hints: List[EngineHint] = []
+    seen_publishers: set[str] = set()
+    hints: list[EngineHint] = []
     for start, s in strings:
         s_upper = s.upper()
         for keyword, publisher in PUBLISHER_KEYWORDS.items():
@@ -141,7 +159,7 @@ def detect_publisher_by_strings(data: bytes) -> List[EngineHint]:
     return hints
 
 
-def detect_copyright_year(data: bytes) -> Optional[Tuple[int, str]]:
+def detect_copyright_year(data: bytes) -> tuple[int, str] | None:
     strings = find_ascii_strings(data, min_len=4)
     for start, s in strings:
         for prefix in ("(C)", "©", "(c)", "COPYRIGHT"):
@@ -153,7 +171,7 @@ def detect_copyright_year(data: bytes) -> Optional[Tuple[int, str]]:
     return None
 
 
-def detect_publisher_by_mapper(header: Optional[INesHeader]) -> List[EngineHint]:
+def detect_publisher_by_mapper(header: INesHeader | None) -> list[EngineHint]:
     if header is None:
         return []
     hint = MAPPER_PUBLISHER_HINTS.get(header.mapper)
@@ -163,7 +181,7 @@ def detect_publisher_by_mapper(header: Optional[INesHeader]) -> List[EngineHint]
     return [EngineHint(name=name, kind=kind, confidence=conf, evidence=why)]
 
 
-def detect_famitone(disasm) -> Optional[EngineHint]:
+def detect_famitone(disasm: "Disasm | None") -> EngineHint | None:
     code = disasm.code_lines() if disasm else []
     if not code:
         return None
@@ -189,10 +207,10 @@ def detect_famitone(disasm) -> Optional[EngineHint]:
 
 def detect_engines(
     rom_raw: bytes,
-    header: Optional[INesHeader],
-    disasm=None,
-) -> List[EngineHint]:
-    hints: List[EngineHint] = []
+    header: INesHeader | None,
+    disasm: "Disasm | None" = None,
+) -> list[EngineHint]:
+    hints: list[EngineHint] = []
     hints.extend(detect_publisher_by_mapper(header))
     if header is not None:
         prg = strip_ines(rom_raw)
@@ -206,8 +224,8 @@ def detect_engines(
     famitone = detect_famitone(disasm) if disasm else None
     if famitone:
         hints.append(famitone)
-    seen: set = set()
-    out: List[EngineHint] = []
+    seen: set[tuple[str, str]] = set()
+    out: list[EngineHint] = []
     for h in sorted(hints, key=lambda x: -x.confidence):
         key = (h.name.lower(), h.kind)
         if key in seen:

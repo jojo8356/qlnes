@@ -16,12 +16,9 @@ API utilisée (déclarations C de gme.h) :
 from __future__ import annotations
 
 import ctypes
-import struct
 import wave
 from ctypes.util import find_library
 from pathlib import Path
-from typing import Optional
-
 
 _lib_handle = None
 
@@ -36,7 +33,7 @@ def _load() -> ctypes.CDLL:
         "libgme.so",
         "/usr/lib/x86_64-linux-gnu/libgme.so.0",
     ]
-    last_err: Optional[OSError] = None
+    last_err: OSError | None = None
     for name in candidates:
         if not name:
             continue
@@ -47,14 +44,14 @@ def _load() -> ctypes.CDLL:
             continue
         # Signatures
         lib.gme_open_file.argtypes = [
-            ctypes.c_char_p, ctypes.POINTER(ctypes.c_void_p), ctypes.c_int
+            ctypes.c_char_p,
+            ctypes.POINTER(ctypes.c_void_p),
+            ctypes.c_int,
         ]
         lib.gme_open_file.restype = ctypes.c_char_p  # NULL si OK, sinon msg
         lib.gme_start_track.argtypes = [ctypes.c_void_p, ctypes.c_int]
         lib.gme_start_track.restype = ctypes.c_char_p
-        lib.gme_play.argtypes = [
-            ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.c_short)
-        ]
+        lib.gme_play.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.c_short)]
         lib.gme_play.restype = ctypes.c_char_p
         lib.gme_set_fade.argtypes = [ctypes.c_void_p, ctypes.c_int]
         lib.gme_set_fade.restype = None
@@ -72,7 +69,7 @@ def _load() -> ctypes.CDLL:
     )
 
 
-def _check(err: Optional[bytes], context: str) -> None:
+def _check(err: bytes | None, context: str) -> None:
     if err:
         raise RuntimeError(f"libgme {context}: {err.decode(errors='replace')}")
 
@@ -95,16 +92,12 @@ def render_nsf(
         raise FileNotFoundError(nsf_path)
 
     emu = ctypes.c_void_p()
-    err = lib.gme_open_file(
-        str(nsf_path).encode(), ctypes.byref(emu), sample_rate
-    )
+    err = lib.gme_open_file(str(nsf_path).encode(), ctypes.byref(emu), sample_rate)
     _check(err, "open_file")
     try:
         n_tracks = lib.gme_track_count(emu)
         if track < 0 or track >= n_tracks:
-            raise ValueError(
-                f"track {track} hors range (NSF contient {n_tracks} morceaux)"
-            )
+            raise ValueError(f"track {track} hors range (NSF contient {n_tracks} morceaux)")
         # gme_set_fade attend un timestamp en millisecondes où le fade out
         # commence. La piste s'éteint sur ~8 s après ce point.
         fade_start_ms = int((duration_s - fade_s) * 1000)

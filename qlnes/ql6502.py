@@ -1,10 +1,7 @@
 import os
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import List, Tuple, Optional
-
 
 DEFAULT_BIN = Path(__file__).resolve().parent.parent / "bin" / "ql6502"
 
@@ -16,18 +13,18 @@ class QL6502Error(RuntimeError):
 class QL6502:
     def __init__(
         self,
-        binary: Optional[Path] = None,
+        binary: Path | None = None,
         timeout: float = 30.0,
     ) -> None:
         self.binary = Path(binary) if binary else DEFAULT_BIN
         if not self.binary.exists():
             raise QL6502Error(f"ql6502 binary not found at {self.binary}")
         self.timeout = timeout
-        self._image: Optional[bytes] = None
-        self._image_name: Optional[str] = None
-        self._blanks: List[Tuple[int, int]] = []
-        self._jump_tables: List[Tuple[int, int]] = []
-        self._sub_entries: List[int] = []
+        self._image: bytes | None = None
+        self._image_name: str | None = None
+        self._blanks: list[tuple[int, int]] = []
+        self._jump_tables: list[tuple[int, int]] = []
+        self._sub_entries: list[int] = []
 
     def load_image(self, image: bytes, name: str = "image.bin") -> "QL6502":
         if len(image) > 0x10000:
@@ -36,7 +33,7 @@ class QL6502:
         self._image_name = name
         return self
 
-    def load_file(self, path: os.PathLike) -> "QL6502":
+    def load_file(self, path: os.PathLike[str]) -> "QL6502":
         data = Path(path).read_bytes()
         return self.load_image(data, Path(path).name)
 
@@ -53,7 +50,7 @@ class QL6502:
         return self
 
     def generate_asm(self, start: int = 0, end: int = 0xFFFF) -> str:
-        if self._image is None:
+        if self._image is None or self._image_name is None:
             raise QL6502Error("load an image first")
         with tempfile.TemporaryDirectory(prefix="qlnes_") as td:
             tdp = Path(td)
@@ -89,19 +86,17 @@ class QL6502:
             timeout=self.timeout,
         )
         if proc.returncode != 0:
-            raise QL6502Error(
-                f"ql6502 exited with {proc.returncode}\nSTDERR:\n{proc.stderr}"
-            )
+            raise QL6502Error(f"ql6502 exited with {proc.returncode}\nSTDERR:\n{proc.stderr}")
         return proc.stdout
 
     @classmethod
     def disassemble(
         cls,
         image: bytes,
-        blanks: Optional[List[Tuple[int, int]]] = None,
-        jump_tables: Optional[List[Tuple[int, int]]] = None,
-        sub_entries: Optional[List[int]] = None,
-        binary: Optional[Path] = None,
+        blanks: list[tuple[int, int]] | None = None,
+        jump_tables: list[tuple[int, int]] | None = None,
+        sub_entries: list[int] | None = None,
+        binary: Path | None = None,
     ) -> str:
         q = cls(binary=binary).load_image(image)
         for s, e in blanks or []:

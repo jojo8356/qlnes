@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from .asm_text import rewrite_db_strings
 from .dataflow import (
@@ -13,26 +13,25 @@ from .dataflow import (
 from .nes_hw import NES_REGS, oam_name
 from .parser import Disasm
 
-
 _LABEL_REF = re.compile(r"L_([0-9A-Fa-f]{4})")
 _ZP_REF = re.compile(r"(?<![#A-Za-z_])0x([0-9A-Fa-f]{1,2})\b")
 
 
 @dataclass
 class AnnotationReport:
-    hardware: Dict[int, str] = field(default_factory=dict)
-    oam: Dict[int, str] = field(default_factory=dict)
-    dataflow: Dict[int, str] = field(default_factory=dict)
-    subroutines: Dict[int, str] = field(default_factory=dict)
-    subroutine_details: Dict[int, Subroutine] = field(default_factory=dict)
-    fallback: Dict[int, str] = field(default_factory=dict)
-    code_labels: Set[int] = field(default_factory=set)
-    unmapped: Set[int] = field(default_factory=set)
-    detections: List[Detection] = field(default_factory=list)
+    hardware: dict[int, str] = field(default_factory=dict)
+    oam: dict[int, str] = field(default_factory=dict)
+    dataflow: dict[int, str] = field(default_factory=dict)
+    subroutines: dict[int, str] = field(default_factory=dict)
+    subroutine_details: dict[int, Subroutine] = field(default_factory=dict)
+    fallback: dict[int, str] = field(default_factory=dict)
+    code_labels: set[int] = field(default_factory=set)
+    unmapped: set[int] = field(default_factory=set)
+    detections: list[Detection] = field(default_factory=list)
 
     @property
-    def names(self) -> Dict[int, str]:
-        merged: Dict[int, str] = {}
+    def names(self) -> dict[int, str]:
+        merged: dict[int, str] = {}
         merged.update(self.fallback)
         merged.update(self.oam)
         merged.update(self.dataflow)
@@ -40,8 +39,8 @@ class AnnotationReport:
         merged.update(self.hardware)
         return merged
 
-    def to_dict(self) -> dict:
-        def hexkeys(d: Dict[int, str]) -> Dict[str, str]:
+    def to_dict(self) -> dict[str, Any]:
+        def hexkeys(d: dict[int, str]) -> dict[str, str]:
             return {f"0x{k:04X}": v for k, v in sorted(d.items())}
 
         return {
@@ -74,16 +73,16 @@ class AnnotationReport:
         }
 
 
-def _pass_hardware(addrs: Set[int]) -> Dict[int, str]:
+def _pass_hardware(addrs: set[int]) -> dict[int, str]:
     return {a: NES_REGS[a] for a in addrs if a in NES_REGS}
 
 
-def _pass_oam(addrs: Set[int]) -> Dict[int, str]:
+def _pass_oam(addrs: set[int]) -> dict[int, str]:
     return {a: oam_name(a) for a in addrs if 0x0200 <= a <= 0x02FF}
 
 
-def _pass_fallback(addrs: Set[int], already: Set[int]) -> Dict[int, str]:
-    out: Dict[int, str] = {}
+def _pass_fallback(addrs: set[int], already: set[int]) -> dict[int, str]:
+    out: dict[int, str] = {}
     for a in addrs:
         if a in already:
             continue
@@ -96,7 +95,7 @@ def _pass_fallback(addrs: Set[int], already: Set[int]) -> Dict[int, str]:
     return out
 
 
-def _disambiguate(name: str, taken: Set[str]) -> str:
+def _disambiguate(name: str, taken: set[str]) -> str:
     if name not in taken:
         return name
     i = 2
@@ -105,9 +104,7 @@ def _disambiguate(name: str, taken: Set[str]) -> str:
     return f"{name}_{i}"
 
 
-def build_report(
-    disasm: Disasm, image: Optional[bytes] = None
-) -> AnnotationReport:
+def build_report(disasm: Disasm, image: bytes | None = None) -> AnnotationReport:
     addrs = set(disasm.referenced_addrs)
     report = AnnotationReport()
     report.hardware = _pass_hardware(addrs)
@@ -119,7 +116,7 @@ def build_report(
     # Détecte d'abord les subroutines : leur kind sert à renommer les args
     # (`arg_pre_jsr` → `play_pulse_arg`, etc.) avant la dédup nom-unique.
     sub_kinds = detect_subroutine_kinds(disasm)
-    used_names: Set[str] = set()
+    used_names: set[str] = set()
     for entry, sub in sorted(sub_kinds.items()):
         if entry not in addrs:
             continue
@@ -135,11 +132,11 @@ def build_report(
     # Si tous les JSR qui suivent un STA <addr> visent la même *famille* de
     # sub (même `kind`), renomme l'arg en `<kind>_arg`. Sinon laisse
     # `arg_pre_jsr` (la dédup ci-dessous suffixe l'adresse).
-    arg_targets: Dict[int, Set[int]] = {}
+    arg_targets: dict[int, set[int]] = {}
     for d in detections:
         if d.name == "arg_pre_jsr" and d.target_addr is not None:
             arg_targets.setdefault(d.addr, set()).add(d.target_addr)
-    renamed: Dict[int, str] = {}
+    renamed: dict[int, str] = {}
     for addr, name in raw_dataflow.items():
         if name == "arg_pre_jsr":
             kinds = {
@@ -155,19 +152,18 @@ def build_report(
 
     # Dédup : un même nom ne peut pas pointer vers plusieurs adresses
     # (sinon le round-trip ne sait plus quelle adresse rétablir).
-    counts: Dict[str, int] = {}
+    counts: dict[str, int] = {}
     for n in renamed.values():
         counts[n] = counts.get(n, 0) + 1
-    report.dataflow = {
-        a: (f"{n}_{a:04X}" if counts[n] > 1 else n)
-        for a, n in renamed.items()
-    }
+    report.dataflow = {a: (f"{n}_{a:04X}" if counts[n] > 1 else n) for a, n in renamed.items()}
 
     mapped = set(report.hardware) | set(report.oam) | set(report.dataflow) | set(report.subroutines)
     report.fallback = _pass_fallback(addrs, mapped)
 
-    code_label_addrs = {l.addr for l in disasm.lines if l.is_label and l.addr >= 0}
-    report.code_labels = {a for a in addrs if a in code_label_addrs and a >= 0x4020 and a not in report.subroutines}
+    code_label_addrs = {ln.addr for ln in disasm.lines if ln.is_label and ln.addr >= 0}
+    report.code_labels = {
+        a for a in addrs if a in code_label_addrs and a >= 0x4020 and a not in report.subroutines
+    }
 
     all_classified = mapped | set(report.fallback) | report.code_labels
     report.unmapped = {a for a in addrs if a not in all_classified}
@@ -177,10 +173,10 @@ def build_report(
 _DATA_DIRECTIVE = re.compile(r"(?:\b(?:DB|DW)\b|\.byte\b|\.word\b)", re.IGNORECASE)
 
 
-def rewrite_asm(asm_text: str, names: Dict[int, str]) -> str:
+def rewrite_asm(asm_text: str, names: dict[int, str]) -> str:
     asm_text = rewrite_db_strings(asm_text)
 
-    def sub_lbl(m: re.Match) -> str:
+    def sub_lbl(m: re.Match[str]) -> str:
         addr = int(m.group(1), 16)
         return names.get(addr, m.group(0))
 
@@ -195,7 +191,7 @@ def rewrite_asm(asm_text: str, names: Dict[int, str]) -> str:
             instr = _ZP_REF.sub(sub_lbl, instr)
         return instr + comment
 
-    return "\n".join(rewrite_line(l) for l in asm_text.splitlines()) + (
+    return "\n".join(rewrite_line(ln) for ln in asm_text.splitlines()) + (
         "\n" if asm_text.endswith("\n") else ""
     )
 
@@ -203,9 +199,9 @@ def rewrite_asm(asm_text: str, names: Dict[int, str]) -> str:
 def annotate(
     asm_text: str,
     *,
-    image: Optional[bytes] = None,
-    extra_names: Optional[Dict[int, str]] = None,
-) -> Tuple[str, AnnotationReport]:
+    image: bytes | None = None,
+    extra_names: dict[int, str] | None = None,
+) -> tuple[str, AnnotationReport]:
     disasm = Disasm(asm_text)
     report = build_report(disasm, image=image)
     names = report.names

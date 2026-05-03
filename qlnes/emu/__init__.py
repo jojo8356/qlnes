@@ -1,27 +1,27 @@
-from .runner import Runner, Scenario, Snapshot
 from .discover import (
+    DiscoveredVariable,
     Discoverer,
     DiscoveryResult,
-    DiscoveredVariable,
     DurationMeasurement,
     InteractionResult,
     Transition,
     classify_change,
-    classify_with_linearity,
     classify_durations,
+    classify_with_linearity,
 )
+from .runner import Runner, Scenario, Snapshot
 
 __all__ = [
+    "DiscoveredVariable",
+    "Discoverer",
+    "DiscoveryResult",
+    "DurationMeasurement",
+    "InteractionResult",
     "Runner",
     "Scenario",
     "Snapshot",
-    "Discoverer",
-    "DiscoveryResult",
-    "DiscoveredVariable",
-    "DurationMeasurement",
-    "InteractionResult",
     "Transition",
     "classify_change",
-    "classify_with_linearity",
     "classify_durations",
+    "classify_with_linearity",
 ]

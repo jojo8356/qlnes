@@ -17,7 +17,6 @@ les indices qui la motivent.
 
 from collections import Counter
 from dataclasses import dataclass
-from typing import List, Optional
 
 from .dataflow import find_subroutines
 from .ines import INesHeader
@@ -44,7 +43,9 @@ def _zp_indexed_uses(disasm: Disasm) -> int:
         ops = line.operands or ""
         if not ops:
             continue
-        if not (ops.endswith(",X") or ops.endswith(",Y") or ops.endswith(",x") or ops.endswith(",y")):
+        if not (
+            ops.endswith(",X") or ops.endswith(",Y") or ops.endswith(",x") or ops.endswith(",y")
+        ):
             continue
         for ref in line.refs:
             if 0 <= ref <= 0x1F:
@@ -68,10 +69,8 @@ def _stack_frame_count(disasm: Disasm) -> int:
     return n
 
 
-def _instruction_histogram(disasm: Disasm) -> Counter:
-    return Counter(
-        (l.mnemonic or "").upper() for l in disasm.code_lines() if l.mnemonic
-    )
+def _instruction_histogram(disasm: Disasm) -> Counter[str]:
+    return Counter((ln.mnemonic or "").upper() for ln in disasm.code_lines() if ln.mnemonic)
 
 
 def _has_oamdma_idiom(disasm: Disasm) -> bool:
@@ -88,19 +87,16 @@ def _has_oamdma_idiom(disasm: Disasm) -> bool:
     return False
 
 
-def _branch_density(hist: Counter) -> float:
-    branches = sum(
-        hist.get(m, 0)
-        for m in ("BCC", "BCS", "BEQ", "BNE", "BMI", "BPL", "BVC", "BVS")
-    )
+def _branch_density(hist: Counter[str]) -> float:
+    branches = sum(hist.get(m, 0) for m in ("BCC", "BCS", "BEQ", "BNE", "BMI", "BPL", "BVC", "BVS"))
     total = sum(hist.values()) or 1
     return branches / total
 
 
 def detect_language(
     disasm: Disasm,
-    header: Optional[INesHeader] = None,
-) -> List[LangHypothesis]:
+    header: INesHeader | None = None,
+) -> list[LangHypothesis]:
     if not disasm.code_lines():
         return [LangHypothesis("indéterminé", 0.0, "pas de code identifié")]
 
@@ -112,10 +108,10 @@ def detect_language(
     branch_pct = _branch_density(hist)
     n_subs = len(find_subroutines(disasm))
     n_lda = hist.get("LDA", 0)
-    n_jsr = hist.get("JSR", 0)
+    hist.get("JSR", 0)
     chr_ram = header is not None and header.chr_banks == 0
 
-    hypotheses: List[LangHypothesis] = []
+    hypotheses: list[LangHypothesis] = []
 
     if short >= 20 and zp_idx >= 30 and frames >= 1:
         hypotheses.append(

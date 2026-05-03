@@ -6,12 +6,11 @@ On peut aussi nommer la routine d'init si elle écrit la valeur initiale
 de plusieurs vars de game state.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set
 
-from .dataflow import Subroutine, find_subroutines
-from .parser import Disasm
-
+from .dataflow import find_subroutines
+from .parser import Disasm, Line
 
 _PRIORITY_NAMES = ("lives", "score", "level", "ammo", "menu_state")
 
@@ -24,8 +23,8 @@ class RoutineNameProposal:
     confidence: float
 
 
-def _addrs_written_by(body) -> Set[int]:
-    out: Set[int] = set()
+def _addrs_written_by(body: Iterable[Line]) -> set[int]:
+    out: set[int] = set()
     for line in body:
         up = (line.mnemonic or "").upper()
         if up not in ("STA", "STX", "STY", "INC", "DEC"):
@@ -36,11 +35,24 @@ def _addrs_written_by(body) -> Set[int]:
     return out
 
 
-def _addrs_read_by(body) -> Set[int]:
-    out: Set[int] = set()
+def _addrs_read_by(body: Iterable[Line]) -> set[int]:
+    out: set[int] = set()
     for line in body:
         up = (line.mnemonic or "").upper()
-        if up not in ("LDA", "LDX", "LDY", "CMP", "CPX", "CPY", "BIT", "ADC", "SBC", "AND", "ORA", "EOR"):
+        if up not in (
+            "LDA",
+            "LDX",
+            "LDY",
+            "CMP",
+            "CPX",
+            "CPY",
+            "BIT",
+            "ADC",
+            "SBC",
+            "AND",
+            "ORA",
+            "EOR",
+        ):
             continue
         for ref in line.refs:
             if 0x0000 <= ref <= 0x07FF:
@@ -50,13 +62,13 @@ def _addrs_read_by(body) -> Set[int]:
 
 def cross_reference(
     disasm: Disasm,
-    dynamic_names: Dict[int, str],
-    existing: Optional[Dict[int, str]] = None,
-) -> List[RoutineNameProposal]:
+    dynamic_names: dict[int, str],
+    existing: dict[int, str] | None = None,
+) -> list[RoutineNameProposal]:
     if not dynamic_names:
         return []
     existing = existing or {}
-    proposals: List[RoutineNameProposal] = []
+    proposals: list[RoutineNameProposal] = []
     subs = find_subroutines(disasm)
     for sub in subs:
         if sub.entry in existing:
@@ -66,9 +78,7 @@ def cross_reference(
         if not named_writes:
             continue
         priority_hits = [
-            (a, n)
-            for a, n in named_writes.items()
-            if any(n.startswith(p) for p in _PRIORITY_NAMES)
+            (a, n) for a, n in named_writes.items() if any(n.startswith(p) for p in _PRIORITY_NAMES)
         ]
         candidates = priority_hits or list(named_writes.items())
         if len(candidates) == 1:
@@ -88,7 +98,7 @@ def cross_reference(
                 RoutineNameProposal(
                     entry=sub.entry,
                     name=f"update_{joined}",
-                    why=f"écrit à {len(candidates)} vars nommées : {[n for _,n in candidates]}",
+                    why=f"écrit à {len(candidates)} vars nommées : {[n for _, n in candidates]}",
                     confidence=0.5,
                 )
             )
@@ -96,9 +106,9 @@ def cross_reference(
 
 
 def merge_proposals(
-    proposals: List[RoutineNameProposal],
-) -> Dict[int, str]:
-    by_entry: Dict[int, RoutineNameProposal] = {}
+    proposals: list[RoutineNameProposal],
+) -> dict[int, str]:
+    by_entry: dict[int, RoutineNameProposal] = {}
     for p in proposals:
         cur = by_entry.get(p.entry)
         if cur is None or p.confidence > cur.confidence:

@@ -6,11 +6,10 @@ Each detector reports candidates with a confidence and an explanation.
 """
 
 import re
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
+from dataclasses import dataclass
+from typing import TypeGuard
 
 from .parser import Disasm, Line
-
 
 _HEX = re.compile(r"\$?0x([0-9A-Fa-f]+)|\$([0-9A-Fa-f]+)")
 _ZP_OPERAND = re.compile(r"^0x([0-9A-Fa-f]{1,2})$")
@@ -23,10 +22,10 @@ class Detection:
     confidence: float
     why: str
     pattern: str
-    target_addr: Optional[int] = None
+    target_addr: int | None = None
 
 
-def _operand_addr(line: Line) -> Optional[int]:
+def _operand_addr(line: Line) -> int | None:
     if not line.operands:
         return None
     op = line.operands.strip()
@@ -43,32 +42,28 @@ def _operand_addr(line: Line) -> Optional[int]:
     return None
 
 
-def _is_zp_or_ram(addr: Optional[int]) -> bool:
+def _is_zp_or_ram(addr: int | None) -> TypeGuard[int]:
     if addr is None:
         return False
     if 0x0000 <= addr <= 0x00FF:
         return True
-    if 0x0300 <= addr <= 0x07FF:
-        return True
-    return False
+    return 768 <= addr <= 2047
 
 
-def detect_frame_counter(
-    disasm: Disasm, nmi_addr: Optional[int] = None
-) -> List[Detection]:
-    out: List[Detection] = []
+def detect_frame_counter(disasm: Disasm, nmi_addr: int | None = None) -> list[Detection]:
+    out: list[Detection] = []
     code = disasm.code_lines()
     if not code:
         return out
 
-    handlers: List[int] = []
+    handlers: list[int] = []
     if nmi_addr is not None:
         handlers.append(nmi_addr)
-    by_addr = {l.addr: i for i, l in enumerate(code)}
+    by_addr = {ln.addr: i for i, ln in enumerate(code)}
 
-    candidates: Set[int] = set()
+    candidates: set[int] = set()
     if not handlers:
-        for i, line in enumerate(code[:50]):
+        for _i, line in enumerate(code[:50]):
             if line.mnemonic and line.mnemonic.upper() == "INC":
                 a = _operand_addr(line)
                 if _is_zp_or_ram(a):
@@ -104,19 +99,19 @@ def detect_frame_counter(
 _JOY_TOKENS = ("JOY1", "JOY2_FRAMECTR", "L_4016", "L_4017", "0x4016", "0x4017", "$4016", "$4017")
 
 
-def detect_controller_reads(disasm: Disasm) -> List[Detection]:
-    out: List[Detection] = []
+def detect_controller_reads(disasm: Disasm) -> list[Detection]:
+    out: list[Detection] = []
     code = disasm.code_lines()
-    by_addr: Dict[int, Dict[str, int]] = {}
+    by_addr: dict[int, dict[str, int]] = {}
     for i, line in enumerate(code):
         up = (line.mnemonic or "").upper()
-        operands = (line.operands or "")
+        operands = line.operands or ""
         if up != "LDA":
             continue
         joy = None
         for tok in _JOY_TOKENS:
             if tok in operands:
-                joy = "1" if "4016" in tok or "JOY1" == tok else "2"
+                joy = "1" if "4016" in tok or tok == "JOY1" else "2"
                 break
         if joy is None:
             continue
@@ -135,7 +130,7 @@ def detect_controller_reads(disasm: Disasm) -> List[Detection]:
                     addr=a,
                     name="controller1_state",
                     confidence=0.9,
-                    why=f"LDA $4016 / ROL ${a:04X} répété {slot['1']}×",
+                    why=f"LDA $4016 / ROL ${a:04X} répété {slot['1']}x",
                     pattern="LDA JOY1 ; LSR A ; ROL <addr>",
                 )
             )
@@ -145,7 +140,7 @@ def detect_controller_reads(disasm: Disasm) -> List[Detection]:
                     addr=a,
                     name="controller2_state",
                     confidence=0.9,
-                    why=f"LDA $4017 / ROL ${a:04X} répété {slot['2']}×",
+                    why=f"LDA $4017 / ROL ${a:04X} répété {slot['2']}x",
                     pattern="LDA JOY2 ; LSR A ; ROL <addr>",
                 )
             )
@@ -155,10 +150,10 @@ def detect_controller_reads(disasm: Disasm) -> List[Detection]:
 _OAM_TOKENS = ("sprite_", "0x0200", "$0200", "L_0200", "L_0201", "L_0202", "L_0203")
 
 
-def detect_oam_indices(disasm: Disasm) -> List[Detection]:
-    out: List[Detection] = []
+def detect_oam_indices(disasm: Disasm) -> list[Detection]:
+    out: list[Detection] = []
     code = disasm.code_lines()
-    found: Dict[int, str] = {}
+    found: dict[int, str] = {}
     for i, line in enumerate(code):
         up = (line.mnemonic or "").upper()
         if up not in ("LDX", "LDY"):
@@ -169,7 +164,7 @@ def detect_oam_indices(disasm: Disasm) -> List[Detection]:
         for j in range(i + 1, min(len(code), i + 10)):
             nl = code[j]
             up2 = (nl.mnemonic or "").upper()
-            ops = (nl.operands or "")
+            ops = nl.operands or ""
             if up2 in ("STA", "LDA") and any(t in ops for t in _OAM_TOKENS):
                 found[idx_addr] = up
                 break
@@ -188,10 +183,10 @@ def detect_oam_indices(disasm: Disasm) -> List[Detection]:
     return out
 
 
-def detect_pointer_pairs(disasm: Disasm) -> List[Detection]:
-    out: List[Detection] = []
+def detect_pointer_pairs(disasm: Disasm) -> list[Detection]:
+    out: list[Detection] = []
     code = disasm.code_lines()
-    indirect_targets: Set[int] = set()
+    indirect_targets: set[int] = set()
     for line in code:
         up = (line.mnemonic or "").upper()
         ops = (line.operands or "").strip()
@@ -201,8 +196,7 @@ def detect_pointer_pairs(disasm: Disasm) -> List[Detection]:
                 a = int(m.group(1) or m.group(2), 16)
                 if 0 <= a <= 0xFF:
                     indirect_targets.add(a)
-    counter = 0
-    for a in sorted(indirect_targets):
+    for counter, a in enumerate(sorted(indirect_targets)):
         out.append(
             Detection(
                 addr=a,
@@ -217,23 +211,22 @@ def detect_pointer_pairs(disasm: Disasm) -> List[Detection]:
                 addr=a + 1,
                 name=f"ptr{counter}_hi",
                 confidence=0.75,
-                why=f"high byte du pointeur ${a:02X}/${a+1:02X}",
+                why=f"high byte du pointeur ${a:02X}/${a + 1:02X}",
                 pattern="zp+1 par convention",
             )
         )
-        counter += 1
     return out
 
 
 _OAMDMA_TOKENS = ("OAMDMA", "L_4014", "0x4014", "$4014")
 
 
-def detect_oamdma_buffer(disasm: Disasm) -> List[Detection]:
-    out: List[Detection] = []
+def detect_oamdma_buffer(disasm: Disasm) -> list[Detection]:
+    out: list[Detection] = []
     code = disasm.code_lines()
     for i, line in enumerate(code):
         up = (line.mnemonic or "").upper()
-        ops = (line.operands or "")
+        ops = line.operands or ""
         if up != "STA" or not any(t in ops for t in _OAMDMA_TOKENS):
             continue
         for j in range(max(0, i - 4), i):
@@ -256,8 +249,8 @@ def detect_oamdma_buffer(disasm: Disasm) -> List[Detection]:
                         )
                     )
                     break
-    seen: Set[int] = set()
-    out_dedup: List[Detection] = []
+    seen: set[int] = set()
+    out_dedup: list[Detection] = []
     for d in out:
         if d.addr in seen:
             continue
@@ -274,9 +267,9 @@ _PPU_SHADOW_TARGETS = {
 }
 
 
-def detect_ppu_shadows(disasm: Disasm) -> List[Detection]:
-    out: List[Detection] = []
-    seen: Set[int] = set()
+def detect_ppu_shadows(disasm: Disasm) -> list[Detection]:
+    out: list[Detection] = []
+    seen: set[int] = set()
     code = disasm.code_lines()
     for i, line in enumerate(code):
         if (line.mnemonic or "").upper() != "STA":
@@ -311,8 +304,8 @@ def detect_ppu_shadows(disasm: Disasm) -> List[Detection]:
     return out
 
 
-def detect_loop_counters(disasm: Disasm) -> List[Detection]:
-    out: List[Detection] = []
+def detect_loop_counters(disasm: Disasm) -> list[Detection]:
+    out: list[Detection] = []
     code = disasm.code_lines()
     for i, line in enumerate(code):
         up = (line.mnemonic or "").upper()
@@ -341,12 +334,17 @@ def detect_loop_counters(disasm: Disasm) -> List[Detection]:
                 break
             if (nxt.mnemonic or "").upper() in ("RTS", "RTI", "JMP", "JSR"):
                 break
-    seen: Set[int] = set()
-    return [d for d in out if d.addr not in seen and not seen.add(d.addr)]
+    seen: set[int] = set()
+    deduped: list[Detection] = []
+    for d in out:
+        if d.addr not in seen:
+            seen.add(d.addr)
+            deduped.append(d)
+    return deduped
 
 
-def detect_subroutine_args(disasm: Disasm) -> List[Detection]:
-    out: List[Detection] = []
+def detect_subroutine_args(disasm: Disasm) -> list[Detection]:
+    out: list[Detection] = []
     code = disasm.code_lines()
     for i, line in enumerate(code):
         if (line.mnemonic or "").upper() != "JSR":
@@ -377,31 +375,31 @@ def detect_subroutine_args(disasm: Disasm) -> List[Detection]:
 @dataclass
 class Subroutine:
     entry: int
-    body: List[Line]
-    name: Optional[str] = None
-    kind: Optional[str] = None
-    why: Optional[str] = None
+    body: list[Line]
+    name: str | None = None
+    kind: str | None = None
+    why: str | None = None
 
     @property
     def size(self) -> int:
         return len(self.body)
 
 
-def find_subroutines(disasm: Disasm, max_body: int = 200) -> List[Subroutine]:
+def find_subroutines(disasm: Disasm, max_body: int = 200) -> list[Subroutine]:
     code = disasm.code_lines()
-    line_idx = {l.addr: i for i, l in enumerate(code)}
-    targets: Set[int] = set()
+    line_idx = {ln.addr: i for i, ln in enumerate(code)}
+    targets: set[int] = set()
     for line in code:
         if (line.mnemonic or "").upper() != "JSR":
             continue
         if line.refs:
             targets.add(line.refs[0])
-    subs: List[Subroutine] = []
+    subs: list[Subroutine] = []
     for entry in sorted(targets):
         if entry not in line_idx:
             continue
         start = line_idx[entry]
-        body: List[Line] = []
+        body: list[Line] = []
         for j in range(start, min(len(code), start + max_body)):
             ln = code[j]
             body.append(ln)
@@ -414,7 +412,7 @@ def find_subroutines(disasm: Disasm, max_body: int = 200) -> List[Subroutine]:
     return subs
 
 
-def _is_wait_vblank(body: List[Line]) -> bool:
+def _is_wait_vblank(body: list[Line]) -> bool:
     # Pattern : BIT $2002 (PPUSTATUS) suivi d'un BPL/BMI court ($-3..$-5)
     # qui reboucle sur le BIT lui-même → busy-wait sur le bit 7 de PPUSTATUS.
     for i, line in enumerate(body):
@@ -429,15 +427,18 @@ def _is_wait_vblank(body: List[Line]) -> bool:
     return False
 
 
-def _is_clear_ram(body: List[Line]) -> bool:
+def _is_clear_ram(body: list[Line]) -> bool:
     # Pattern : LDA #0 ; STA $00,X (ou $0100,X etc.) ; INX/DEX ; BNE.
     has_zero_load = False
     has_indexed_store = False
     has_loop = False
     for i, line in enumerate(body):
         up = (line.mnemonic or "").upper()
-        if up == "LDA" and (line.operands or "").startswith("#") and (
-            line.operands or "" ).strip("# ").rstrip(",") in ("0", "0x0", "0x00", "$00", "$0"):
+        if (
+            up == "LDA"
+            and (line.operands or "").startswith("#")
+            and (line.operands or "").strip("# ").rstrip(",") in ("0", "0x0", "0x00", "$00", "$0")
+        ):
             has_zero_load = True
         if up == "STA" and (line.operands or "").rstrip().endswith(",X"):
             has_indexed_store = True
@@ -448,16 +449,16 @@ def _is_clear_ram(body: List[Line]) -> bool:
     return has_zero_load and has_indexed_store and has_loop
 
 
-def _is_indirect_y_memcpy(body: List[Line]) -> bool:
+def _is_indirect_y_memcpy(body: list[Line]) -> bool:
     # Pattern : LDA (src),Y ; STA (dst),Y ; INY ; (BNE | CPY ... ; BNE).
     for i, line in enumerate(body[:-3]):
         up = (line.mnemonic or "").upper()
-        ops = (line.operands or "")
+        ops = line.operands or ""
         if up != "LDA" or not (ops.startswith("(") and ",Y" in ops):
             continue
         nxt = body[i + 1]
         up2 = (nxt.mnemonic or "").upper()
-        ops2 = (nxt.operands or "")
+        ops2 = nxt.operands or ""
         if up2 != "STA" or not (ops2.startswith("(") and ",Y" in ops2):
             continue
         for k in range(i + 2, min(len(body), i + 6)):
@@ -469,7 +470,7 @@ def _is_indirect_y_memcpy(body: List[Line]) -> bool:
     return False
 
 
-def _is_delay_loop(body: List[Line], hw_refs: int) -> bool:
+def _is_delay_loop(body: list[Line], hw_refs: int) -> bool:
     # Aucune écriture matérielle, et au moins une boucle DEX/DEY ; BNE imbriquée
     if hw_refs > 0 or len(body) > 25:
         return False
@@ -484,9 +485,9 @@ def _is_delay_loop(body: List[Line], hw_refs: int) -> bool:
     return has_dec_loop
 
 
-def _classify_subroutine(body: List[Line]) -> Tuple[Optional[str], Optional[str]]:
-    apu_targets: Set[int] = set()
-    ppu_targets: Set[int] = set()
+def _classify_subroutine(body: list[Line]) -> tuple[str | None, str | None]:
+    apu_targets: set[int] = set()
+    ppu_targets: set[int] = set()
     has_oam_dma = False
     has_joy1_strobe = False
     has_joy_read_loop = 0
@@ -533,8 +534,12 @@ def _classify_subroutine(body: List[Line]) -> Tuple[Optional[str], Optional[str]
         return ("play_noise", "écrit registres noise APU")
     if ppu_targets and not apu_targets:
         if 0x2007 in ppu_targets and 0x2006 in ppu_targets:
-            if any(line.operands and "PPUDATA" in (line.operands or "") and ",X" in (line.operands or "")
-                   for line in body):
+            if any(
+                line.operands
+                and "PPUDATA" in (line.operands or "")
+                and ",X" in (line.operands or "")
+                for line in body
+            ):
                 return ("ppu_blit", "PPUADDR setup + STA PPUDATA en boucle")
             return ("ppu_load", "PPUADDR setup + STA PPUDATA")
         if ppu_targets <= {0x2000, 0x2001}:
@@ -550,8 +555,8 @@ def _classify_subroutine(body: List[Line]) -> Tuple[Optional[str], Optional[str]
     return (None, None)
 
 
-def detect_subroutine_kinds(disasm: Disasm) -> Dict[int, Subroutine]:
-    out: Dict[int, Subroutine] = {}
+def detect_subroutine_kinds(disasm: Disasm) -> dict[int, Subroutine]:
+    out: dict[int, Subroutine] = {}
     for sub in find_subroutines(disasm):
         kind, why = _classify_subroutine(sub.body)
         if kind:
@@ -562,23 +567,21 @@ def detect_subroutine_kinds(disasm: Disasm) -> Dict[int, Subroutine]:
     return out
 
 
-def find_nmi_address(image: bytes) -> Optional[int]:
+def find_nmi_address(image: bytes) -> int | None:
     if len(image) < 0x10000:
         return None
     return image[0xFFFA] | (image[0xFFFB] << 8)
 
 
-def find_reset_address(image: bytes) -> Optional[int]:
+def find_reset_address(image: bytes) -> int | None:
     if len(image) < 0x10000:
         return None
     return image[0xFFFC] | (image[0xFFFD] << 8)
 
 
-def detect_all(
-    disasm: Disasm, image: Optional[bytes] = None
-) -> List[Detection]:
+def detect_all(disasm: Disasm, image: bytes | None = None) -> list[Detection]:
     nmi = find_nmi_address(image) if image else None
-    detections: List[Detection] = []
+    detections: list[Detection] = []
     detections.extend(detect_frame_counter(disasm, nmi))
     detections.extend(detect_controller_reads(disasm))
     detections.extend(detect_oam_indices(disasm))
@@ -591,12 +594,12 @@ def detect_all(
 
 
 def merge_detections(
-    detections: List[Detection],
-) -> Tuple[Dict[int, str], Dict[int, List[Detection]]]:
-    by_addr: Dict[int, List[Detection]] = {}
+    detections: list[Detection],
+) -> tuple[dict[int, str], dict[int, list[Detection]]]:
+    by_addr: dict[int, list[Detection]] = {}
     for d in detections:
         by_addr.setdefault(d.addr, []).append(d)
-    names: Dict[int, str] = {}
+    names: dict[int, str] = {}
     for a, lst in by_addr.items():
         best = max(lst, key=lambda x: x.confidence)
         names[a] = best.name

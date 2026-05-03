@@ -12,7 +12,6 @@ Les Scenario sont des listes de (controller_bitmask, frames) qu'on enchaîne.
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
 
 try:
     import cynes
@@ -32,22 +31,23 @@ class Snapshot:
     ram: bytes
     frame: int
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if len(self.ram) != RAM_SIZE:
             raise ValueError(f"snapshot must be {RAM_SIZE} bytes, got {len(self.ram)}")
 
     def __getitem__(self, idx: int) -> int:
         return self.ram[idx]
 
-    def diff(self, other: "Snapshot") -> dict:
-        return {a: (self.ram[a], other.ram[a]) for a in range(RAM_SIZE)
-                if self.ram[a] != other.ram[a]}
+    def diff(self, other: "Snapshot") -> dict[int, tuple[int, int]]:
+        return {
+            a: (self.ram[a], other.ram[a]) for a in range(RAM_SIZE) if self.ram[a] != other.ram[a]
+        }
 
 
 @dataclass
 class Scenario:
     name: str
-    steps: List[Tuple[int, int]] = field(default_factory=list)
+    steps: list[tuple[int, int]] = field(default_factory=list)
 
     def hold(self, buttons: int, frames: int) -> "Scenario":
         if frames <= 0:
@@ -63,15 +63,14 @@ class Scenario:
 
 
 class Runner:
-    def __init__(self, rom_path: Union[str, Path]):
+    def __init__(self, rom_path: str | Path):
         self.rom_path = Path(rom_path)
         if not self.rom_path.exists():
             raise FileNotFoundError(self.rom_path)
-        self.nes: Optional["cynes.NES"] = None
+        self.nes: cynes.NES = cynes.NES(str(self.rom_path))
         self.frame = 0
-        self._open()
 
-    def _open(self):
+    def _open(self) -> None:
         self.nes = cynes.NES(str(self.rom_path))
         self.frame = 0
 
@@ -109,10 +108,10 @@ class Runner:
         *,
         boot_frames: int = DEFAULT_BOOT_FRAMES,
         snapshot_each_step: bool = False,
-    ) -> List[Snapshot]:
+    ) -> list[Snapshot]:
         self.reset()
         self.boot(boot_frames)
-        snaps: List[Snapshot] = [self.snapshot_ram()]
+        snaps: list[Snapshot] = [self.snapshot_ram()]
         for buttons, frames in scenario.steps:
             self.hold(buttons, frames)
             if snapshot_each_step:

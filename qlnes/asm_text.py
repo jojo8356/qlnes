@@ -18,8 +18,6 @@ qui happen to be in printable range (e.g., 'AB' = 0x41,0x42).
 """
 
 import re
-from typing import List, Optional, Tuple
-
 
 _DB_LINE = re.compile(
     r"^(?P<lead>\s*L_[0-9A-Fa-f]+:?\s+)(?P<mn>DB|DW)\s+(?P<body>[^;]+?)\s*(?P<trail>;.*)?$",
@@ -31,12 +29,12 @@ PRINTABLE_MAX = 0x7E
 DEFAULT_MIN_RUN = 4
 
 
-def parse_db_line(line: str) -> Optional[Tuple[str, str, List[int], str]]:
+def parse_db_line(line: str) -> tuple[str, str, list[int], str] | None:
     m = _DB_LINE.match(line)
     if not m:
         return None
     body = m.group("body")
-    bytes_list: List[int] = []
+    bytes_list: list[int] = []
     for tok in body.split(","):
         tok = tok.strip()
         hm = _HEX_TOKEN.match(tok)
@@ -49,11 +47,9 @@ def parse_db_line(line: str) -> Optional[Tuple[str, str, List[int], str]]:
     return m.group("lead"), m.group("mn"), bytes_list, m.group("trail") or ""
 
 
-def find_ascii_runs(
-    bytes_list: List[int], min_len: int = DEFAULT_MIN_RUN
-) -> List[Tuple[int, int]]:
-    runs: List[Tuple[int, int]] = []
-    start: Optional[int] = None
+def find_ascii_runs(bytes_list: list[int], min_len: int = DEFAULT_MIN_RUN) -> list[tuple[int, int]]:
+    runs: list[tuple[int, int]] = []
+    start: int | None = None
     for i, b in enumerate(bytes_list):
         if PRINTABLE_MIN <= b <= PRINTABLE_MAX:
             if start is None:
@@ -71,7 +67,7 @@ def _escape_string(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def _format_hex_run(bytes_list: List[int], start: int, end: int) -> str:
+def _format_hex_run(bytes_list: list[int], start: int, end: int) -> str:
     return ",".join(f"0x{bytes_list[i]:02X}" for i in range(start, end))
 
 
@@ -84,7 +80,7 @@ def db_line_to_text(line: str, min_run: int = DEFAULT_MIN_RUN) -> str:
     if not runs:
         return line
 
-    parts: List[str] = []
+    parts: list[str] = []
     cursor = 0
     for r_start, r_end in runs:
         if r_start > cursor:
@@ -109,7 +105,7 @@ def replace_unknown_opcodes(asm_text: str, image: bytes) -> str:
     """Réécrit les lignes `L_XXXX  ???` (opcode 6502 invalide / non décodé)
     en `L_XXXX: DB 0xYY` avec l'octet original. Sans ça, py65 encode `???`
     en `0x02` (illegal JAM) et casse le round-trip byte-pour-byte."""
-    out: List[str] = []
+    out: list[str] = []
     for line in asm_text.splitlines():
         m = _UNKNOWN_OPCODE_RE.match(line)
         if m:
@@ -124,7 +120,7 @@ def replace_unknown_opcodes(asm_text: str, image: bytes) -> str:
 
 
 def rewrite_db_strings(asm_text: str, min_run: int = DEFAULT_MIN_RUN) -> str:
-    new_lines: List[str] = []
+    new_lines: list[str] = []
     converted = 0
     for line in asm_text.splitlines():
         new_line = db_line_to_text(line, min_run=min_run)

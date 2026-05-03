@@ -1,7 +1,6 @@
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Iterator, List, Optional, Set
-
 
 _LABEL_RE = re.compile(r"L_([0-9A-Fa-f]{4})")
 _ZP_OP_RE = re.compile(r"(?<![#A-Za-z_])0x([0-9A-Fa-f]{1,2})\b")
@@ -22,11 +21,11 @@ class Line:
     addr: int
     is_label: bool
     raw: str
-    mnemonic: Optional[str] = None
-    operands: Optional[str] = None
-    comment: Optional[str] = None
+    mnemonic: str | None = None
+    operands: str | None = None
+    comment: str | None = None
     is_data: bool = False
-    refs: List[int] = field(default_factory=list)
+    refs: list[int] = field(default_factory=list)
 
     def addr_str(self) -> str:
         return f"${self.addr:04X}"
@@ -35,8 +34,8 @@ class Line:
 class Disasm:
     def __init__(self, asm_text: str) -> None:
         self.text = asm_text
-        self.lines: List[Line] = []
-        self._referenced: Set[int] = set()
+        self.lines: list[Line] = []
+        self._referenced: set[int] = set()
         self._parse()
 
     def _parse(self) -> None:
@@ -87,17 +86,17 @@ class Disasm:
         return len(self.lines)
 
     @property
-    def referenced_addrs(self) -> Set[int]:
+    def referenced_addrs(self) -> set[int]:
         return set(self._referenced)
 
-    def find(self, addr: int) -> Optional[Line]:
+    def find(self, addr: int) -> Line | None:
         for line in self.lines:
             if line.addr == addr:
                 return line
         return None
 
-    def code_lines(self) -> List[Line]:
-        return [l for l in self.lines if l.mnemonic and not l.is_data]
+    def code_lines(self) -> list[Line]:
+        return [ln for ln in self.lines if ln.mnemonic and not ln.is_data]
 
-    def data_lines(self) -> List[Line]:
-        return [l for l in self.lines if l.is_data]
+    def data_lines(self) -> list[Line]:
+        return [ln for ln in self.lines if ln.is_data]

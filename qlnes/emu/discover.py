@@ -20,9 +20,10 @@ Stratégies avancées :
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
+from pathlib import Path
+from typing import Any
 
-from .runner import Runner, Scenario, Snapshot, RAM_SIZE
+from .runner import RAM_SIZE, Runner, Scenario, Snapshot
 
 
 @dataclass
@@ -62,9 +63,7 @@ class InteractionResult:
 
     @property
     def is_independent(self) -> bool:
-        return (
-            self.a_then_b == self.b_then_a == self.a_alone + self.b_alone
-        )
+        return self.a_then_b == self.b_then_a == self.a_alone + self.b_alone
 
     @property
     def order_matters(self) -> bool:
@@ -83,7 +82,7 @@ class InteractionResult:
             return "interactive"
         return "unrelated"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "addr": f"0x{self.addr:04X}",
             "a_alone": self.a_alone,
@@ -99,12 +98,12 @@ class Transition:
     frame: int
     fc_before: int
     fc_after: int
-    ram_diff: Dict[int, Tuple[int, int]] = field(default_factory=dict)
+    ram_diff: dict[int, tuple[int, int]] = field(default_factory=dict)
 
-    def changed_addrs(self) -> List[int]:
+    def changed_addrs(self) -> list[int]:
         return sorted(self.ram_diff.keys())
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "frame": self.frame,
             "fc_before": self.fc_before,
@@ -119,25 +118,25 @@ class Transition:
 
 @dataclass
 class DiscoveryResult:
-    noise: Set[int] = field(default_factory=set)
-    baseline: Optional[Snapshot] = None
-    by_scenario: Dict[str, List[DiscoveredVariable]] = field(default_factory=dict)
+    noise: set[int] = field(default_factory=set)
+    baseline: Snapshot | None = None
+    by_scenario: dict[str, list[DiscoveredVariable]] = field(default_factory=dict)
 
-    def all_variables(self) -> List[DiscoveredVariable]:
-        out: List[DiscoveredVariable] = []
+    def all_variables(self) -> list[DiscoveredVariable]:
+        out: list[DiscoveredVariable] = []
         for vs in self.by_scenario.values():
             out.extend(vs)
         return out
 
-    def names(self) -> Dict[int, str]:
-        merged: Dict[int, Tuple[str, float]] = {}
+    def names(self) -> dict[int, str]:
+        merged: dict[int, tuple[str, float]] = {}
         for v in self.all_variables():
             cur = merged.get(v.addr)
             if cur is None or v.confidence > cur[1]:
                 merged[v.addr] = (v.name, v.confidence)
         return {a: name for a, (name, _) in merged.items()}
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "noise": sorted(f"0x{a:04X}" for a in self.noise),
             "scenarios": {
@@ -166,9 +165,7 @@ def _signed(byte_delta: int) -> int:
     return byte_delta if byte_delta < 128 else byte_delta - 256
 
 
-def classify_change(
-    initial: int, final: int, frames_held: int
-) -> Tuple[str, float, str]:
+def classify_change(initial: int, final: int, frames_held: int) -> tuple[str, float, str]:
     delta = (final - initial) & 0xFF
     signed_delta = _signed(delta)
 
@@ -207,9 +204,13 @@ def classify_change(
 
 
 def classify_with_linearity(
-    short_initial: int, short_final: int, short_frames: int,
-    long_initial: int, long_final: int, long_frames: int,
-) -> Tuple[str, float, str]:
+    short_initial: int,
+    short_final: int,
+    short_frames: int,
+    long_initial: int,
+    long_final: int,
+    long_frames: int,
+) -> tuple[str, float, str]:
     return classify_durations(
         [
             DurationMeasurement(short_frames, short_initial, short_final),
@@ -219,8 +220,8 @@ def classify_with_linearity(
 
 
 def classify_durations(
-    measurements: List[DurationMeasurement],
-) -> Tuple[str, float, str]:
+    measurements: list[DurationMeasurement],
+) -> tuple[str, float, str]:
     if not measurements:
         return ("flag", 0.0, "aucune mesure")
     rates = [m.rate for m in measurements]
@@ -254,13 +255,12 @@ def classify_durations(
             f"saturé à Δ={deltas[0]} pour toutes durées",
         )
 
-    if len(measurements) >= 2 and all(d != 0 for d in deltas):
-        if abs(deltas[-1]) > abs(deltas[0]):
-            return (
-                "changed",
-                0.65,
-                f"évolution non-linéaire deltas={deltas}",
-            )
+    if len(measurements) >= 2 and all(d != 0 for d in deltas) and abs(deltas[-1]) > abs(deltas[0]):
+        return (
+            "changed",
+            0.65,
+            f"évolution non-linéaire deltas={deltas}",
+        )
 
     return (
         "changed",
@@ -289,28 +289,32 @@ def _name_for(scenario_name: str, kind: str) -> str:
 
 
 class Discoverer:
-    def __init__(self, rom_path, static_names: Optional[Dict[int, str]] = None):
+    def __init__(
+        self,
+        rom_path: str | Path,
+        static_names: dict[int, str] | None = None,
+    ) -> None:
         self.rom_path = rom_path
         self.boot_frames = 60
         self.calibration_samples = 3
-        self.static_names: Dict[int, str] = dict(static_names or {})
+        self.static_names: dict[int, str] = dict(static_names or {})
 
-    def _excluded(self, addr: int, noise: Set[int]) -> bool:
+    def _excluded(self, addr: int, noise: set[int]) -> bool:
         return addr in noise or addr in self.static_names
 
     def calibrate_noise(
         self,
         idle_frames: int = 30,
-        samples: Optional[int] = None,
-    ) -> Tuple[Snapshot, Set[int]]:
+        samples: int | None = None,
+    ) -> tuple[Snapshot, set[int]]:
         n = samples or self.calibration_samples
-        snaps: List[Snapshot] = []
+        snaps: list[Snapshot] = []
         for _ in range(n):
             r = Runner(self.rom_path)
             r.boot(self.boot_frames)
             r.hold(0, idle_frames)
             snaps.append(r.snapshot_ram())
-        noise: Set[int] = set()
+        noise: set[int] = set()
         for a in range(RAM_SIZE):
             vals = {s.ram[a] for s in snaps}
             if len(vals) > 1:
@@ -319,8 +323,8 @@ class Discoverer:
 
     def discover(
         self,
-        scenarios: List[Scenario],
-        idle_frames: Optional[int] = None,
+        scenarios: list[Scenario],
+        idle_frames: int | None = None,
     ) -> DiscoveryResult:
         result = DiscoveryResult()
         max_frames = max(s.total_frames() for s in scenarios) if scenarios else 30
@@ -335,7 +339,7 @@ class Discoverer:
             initial = snaps[0]
             final = snaps[-1]
             held_frames = sc.total_frames()
-            findings: List[DiscoveredVariable] = []
+            findings: list[DiscoveredVariable] = []
             for a in range(RAM_SIZE):
                 if self._excluded(a, noise):
                     continue
@@ -364,11 +368,11 @@ class Discoverer:
         self,
         button_label: str,
         buttons: int,
-        durations: Tuple[int, ...] = (5, 10, 20),
-    ) -> List[DiscoveredVariable]:
+        durations: tuple[int, ...] = (5, 10, 20),
+    ) -> list[DiscoveredVariable]:
         if not durations:
             raise ValueError("durations must be non-empty")
-        runs: Dict[int, Tuple[Snapshot, Snapshot]] = {}
+        runs: dict[int, tuple[Snapshot, Snapshot]] = {}
         for d in durations:
             r = Runner(self.rom_path)
             sc = Scenario(f"{button_label}_{d}f").hold(buttons, d)
@@ -376,7 +380,7 @@ class Discoverer:
             runs[d] = (snaps[0], snaps[-1])
         _, noise = self.calibrate_noise(idle_frames=max(durations))
 
-        findings: List[DiscoveredVariable] = []
+        findings: list[DiscoveredVariable] = []
         for a in range(RAM_SIZE):
             if self._excluded(a, noise):
                 continue
@@ -408,10 +412,14 @@ class Discoverer:
 
     def discover_composed(
         self,
-        a_label: str, a_buttons: int, a_frames: int,
-        b_label: str, b_buttons: int, b_frames: int,
-    ) -> Dict[int, InteractionResult]:
-        def run(scenario: Scenario) -> Tuple[Snapshot, Snapshot]:
+        a_label: str,
+        a_buttons: int,
+        a_frames: int,
+        b_label: str,
+        b_buttons: int,
+        b_frames: int,
+    ) -> dict[int, InteractionResult]:
+        def run(scenario: Scenario) -> tuple[Snapshot, Snapshot]:
             r = Runner(self.rom_path)
             snaps = r.run_scenario(scenario, boot_frames=self.boot_frames)
             return snaps[0], snaps[-1]
@@ -430,7 +438,7 @@ class Discoverer:
         )
         _, noise = self.calibrate_noise(idle_frames=a_frames + b_frames)
 
-        results: Dict[int, InteractionResult] = {}
+        results: dict[int, InteractionResult] = {}
         for a in range(RAM_SIZE):
             if self._excluded(a, noise):
                 continue
@@ -453,10 +461,10 @@ class Discoverer:
         self,
         fc_addr: int,
         scenario: Scenario,
-    ) -> List[Transition]:
+    ) -> list[Transition]:
         r = Runner(self.rom_path)
         r.boot(self.boot_frames)
-        transitions: List[Transition] = []
+        transitions: list[Transition] = []
         prev_snap = r.snapshot_ram()
         prev_fc = prev_snap.ram[fc_addr]
         for buttons, frames in scenario.steps:
@@ -467,7 +475,7 @@ class Discoverer:
                 cur_snap = r.snapshot_ram()
                 cur_fc = cur_snap.ram[fc_addr]
                 if cur_fc < prev_fc:
-                    diff: Dict[int, Tuple[int, int]] = {}
+                    diff: dict[int, tuple[int, int]] = {}
                     for a in range(RAM_SIZE):
                         if a == fc_addr:
                             continue
@@ -487,16 +495,16 @@ class Discoverer:
 
     def transition_state_addrs(
         self,
-        transitions: List[Transition],
+        transitions: list[Transition],
         min_consistency: float = 0.8,
-    ) -> Dict[int, Tuple[int, int]]:
+    ) -> dict[int, tuple[int, int]]:
         if not transitions:
             return {}
-        per_addr_changes: Dict[int, List[Tuple[int, int]]] = {}
+        per_addr_changes: dict[int, list[tuple[int, int]]] = {}
         for t in transitions:
             for a, (b, after) in t.ram_diff.items():
                 per_addr_changes.setdefault(a, []).append((b, after))
-        out: Dict[int, Tuple[int, int]] = {}
+        out: dict[int, tuple[int, int]] = {}
         threshold = max(1, int(len(transitions) * min_consistency))
         for a, changes in per_addr_changes.items():
             if len(changes) < threshold:

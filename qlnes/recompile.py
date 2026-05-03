@@ -20,21 +20,20 @@ le premier byte qui diffère.
 import ast
 import hashlib
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 try:
     from py65.assembler import Assembler
     from py65.devices.mpu6502 import MPU
+
     HAS_PY65 = True
 except ImportError:
     HAS_PY65 = False
 
-from .asm_text import find_ascii_runs, parse_db_line
-from .ines import HEADER_SIZE, parse_header, strip_ines
+from .ines import HEADER_SIZE, parse_header
 from .parser import Disasm, Line
-
 
 _LABEL_TO_DOLLAR = re.compile(r"\bL_([0-9A-Fa-f]{4})\b")
 _HEX_0X = re.compile(r"\b0x([0-9A-Fa-f]+)\b")
@@ -42,9 +41,7 @@ _DATA_LINE_RE = re.compile(
     r"^\s*L_[0-9A-Fa-f]+:?\s+(?:\.byte|DB|DW)\s+(?P<rest>.+)$",
     re.IGNORECASE,
 )
-_NAMED_LABEL_RE = re.compile(
-    r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*):(?P<rest>\s+\S.*)$"
-)
+_NAMED_LABEL_RE = re.compile(r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*):(?P<rest>\s+\S.*)$")
 
 
 def _strip_trailing_comment(s: str) -> str:
@@ -72,10 +69,10 @@ class RomDiff:
     original_size: int
     recompiled_size: int
     diff_bytes: int
-    first_diff_offset: Optional[int] = None
+    first_diff_offset: int | None = None
     original_sha256: str = ""
     recompiled_sha256: str = ""
-    notes: List[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
     @property
     def hashes_match(self) -> bool:
@@ -85,14 +82,8 @@ class RomDiff:
         if self.equal:
             return f"identique ({self.original_size} octets, sha256 {self.original_sha256[:12]}…)"
         if not self.sizes_match:
-            return (
-                f"taille différente : {self.original_size} vs "
-                f"{self.recompiled_size}"
-            )
-        return (
-            f"{self.diff_bytes} octets diffèrent "
-            f"(premier diff @ 0x{self.first_diff_offset:04X})"
-        )
+            return f"taille différente : {self.original_size} vs {self.recompiled_size}"
+        return f"{self.diff_bytes} octets diffèrent (premier diff @ 0x{self.first_diff_offset:04X})"
 
 
 def _normalize_operand(operand: str) -> str:
@@ -103,7 +94,7 @@ def _normalize_operand(operand: str) -> str:
     return s
 
 
-def _scan_quoted(body: str, start: int) -> Tuple[str, int]:
+def _scan_quoted(body: str, start: int) -> tuple[str, int]:
     # Délimite une string Python "..." en respectant \\ et \" comme échappements.
     # Retourne (littéral_avec_guillemets, index_après_quote_fermante).
     i = start + 1
@@ -117,8 +108,8 @@ def _scan_quoted(body: str, start: int) -> Tuple[str, int]:
     raise ValueError(f"unterminated string in: {body!r}")
 
 
-def _parse_byte_tokens(body: str) -> List[int]:
-    out: List[int] = []
+def _parse_byte_tokens(body: str) -> list[int]:
+    out: list[int] = []
     cursor = 0
     while cursor < len(body):
         ch = body[cursor]
@@ -142,11 +133,11 @@ def _parse_byte_tokens(body: str) -> List[int]:
             out.append(int(m.group(1)))
             cursor += m.end()
             continue
-        raise ValueError(f"can't parse token at {body[cursor:cursor + 20]!r}")
+        raise ValueError(f"can't parse token at {body[cursor : cursor + 20]!r}")
     return out
 
 
-def _extract_data_bytes(line: str) -> Optional[List[int]]:
+def _extract_data_bytes(line: str) -> list[int] | None:
     m = _DATA_LINE_RE.match(line)
     if not m:
         return None
@@ -155,22 +146,21 @@ def _extract_data_bytes(line: str) -> Optional[List[int]]:
 
 
 class Recompiler:
-    def __init__(self, names_to_addr: Optional[Dict[str, int]] = None):
+    def __init__(self, names_to_addr: dict[str, int] | None = None):
         if not HAS_PY65:
             raise ImportError(
-                "py65 non installé : pip install py65 "
-                "(ou utiliser le venv .venv du projet)."
+                "py65 non installé : pip install py65 (ou utiliser le venv .venv du projet)."
             )
         self.mpu = MPU()
         self.assembler = Assembler(self.mpu)
-        self.errors: List[str] = []
+        self.errors: list[str] = []
         self.names_to_addr = dict(names_to_addr or {})
 
     def _resolve_names(self, operand: str) -> str:
         if not self.names_to_addr or not operand:
             return operand
 
-        def repl(match: re.Match) -> str:
+        def repl(match: re.Match[str]) -> str:
             name = match.group(0)
             addr = self.names_to_addr.get(name)
             if addr is None:
@@ -187,7 +177,7 @@ class Recompiler:
         result = self.assembler.assemble(statement, pc=line.addr)
         return bytes(result)
 
-    def encode_line(self, line: Line) -> Optional[bytes]:
+    def encode_line(self, line: Line) -> bytes | None:
         if line.addr < 0:
             return None
         data_bytes = _extract_data_bytes(line.raw)
@@ -198,9 +188,7 @@ class Recompiler:
         try:
             return self.encode_instruction(line)
         except Exception as e:
-            self.errors.append(
-                f"erreur à 0x{line.addr:04X} ({line.raw!r}) : {e}"
-            )
+            self.errors.append(f"erreur à 0x{line.addr:04X} ({line.raw!r}) : {e}")
             return None
 
     def assemble(self, asm_text: str, image_size: int = 0x10000) -> bytes:
@@ -215,7 +203,7 @@ class Recompiler:
             end = line.addr + len(data)
             if end > image_size:
                 continue
-            image[line.addr:end] = data
+            image[line.addr : end] = data
         return bytes(image)
 
     def _restore_label_addresses(self, asm_text: str) -> str:
@@ -223,7 +211,7 @@ class Recompiler:
         # lignes de subroutines. Pour réassembler à la bonne adresse il faut
         # restaurer la forme `L_XXXX:`. On ne touche que les noms qui
         # résolvent à une adresse en zone PRG ($8000-$FFFF).
-        out: List[str] = []
+        out: list[str] = []
         for raw in asm_text.splitlines():
             m = _NAMED_LABEL_RE.match(raw)
             if m:
@@ -241,8 +229,8 @@ class Recompiler:
 def recompile_asm(
     asm_text: str,
     image_size: int = 0x10000,
-    names_to_addr: Optional[Dict[str, int]] = None,
-) -> Tuple[bytes, List[str]]:
+    names_to_addr: dict[str, int] | None = None,
+) -> tuple[bytes, list[str]]:
     rec = Recompiler(names_to_addr=names_to_addr)
     image = rec.assemble(asm_text, image_size=image_size)
     return image, rec.errors
@@ -251,16 +239,14 @@ def recompile_asm(
 def assemble_to_rom(
     asm_text: str,
     original_rom: bytes,
-    names_to_addr: Optional[Dict[str, int]] = None,
-) -> Tuple[bytes, List[str]]:
+    names_to_addr: dict[str, int] | None = None,
+) -> tuple[bytes, list[str]]:
     h = parse_header(original_rom)
     if h is None:
         image, errors = recompile_asm(asm_text, names_to_addr=names_to_addr)
         return image, errors
 
-    image, errors = recompile_asm(
-        asm_text, image_size=0x10000, names_to_addr=names_to_addr
-    )
+    image, errors = recompile_asm(asm_text, image_size=0x10000, names_to_addr=names_to_addr)
     prg_size = h.prg_size
     chr_offset = HEADER_SIZE + (512 if h.has_trainer else 0) + prg_size
     chr_data = original_rom[chr_offset : chr_offset + h.chr_size] if h.chr_size else b""
@@ -295,10 +281,10 @@ def _bank_prg_chunk(image: bytes, mapper: int, bank_idx: int, total_banks: int) 
 
 
 def assemble_to_rom_multibank(
-    bank_asms: List[str],
+    bank_asms: list[str],
     original_rom: bytes,
-    bank_names: Optional[List[Optional[Dict[str, int]]]] = None,
-) -> Tuple[bytes, List[str]]:
+    bank_names: Sequence[dict[str, int] | None] | None = None,
+) -> tuple[bytes, list[str]]:
     """Recompile une ROM multi-bank depuis N ASMs (un par bank PRG).
 
     Chaque ASM est assemblé en image 64KB avec sa **propre** name-map
@@ -316,25 +302,19 @@ def assemble_to_rom_multibank(
         raise ValueError("bank_names length must match bank_asms")
 
     n = len(bank_asms)
-    chunks: List[bytes] = []
-    all_errors: List[str] = []
+    chunks: list[bytes] = []
+    all_errors: list[str] = []
     for idx, asm in enumerate(bank_asms):
         names = bank_names[idx] if bank_names else None
-        image, errors = recompile_asm(
-            asm, image_size=0x10000, names_to_addr=names
-        )
+        image, errors = recompile_asm(asm, image_size=0x10000, names_to_addr=names)
         chunks.append(_bank_prg_chunk(image, h.mapper, idx, n))
         all_errors.extend(errors)
     new_prg = b"".join(chunks)
     if len(new_prg) != h.prg_size:
-        raise ValueError(
-            f"multibank PRG size mismatch: expected {h.prg_size}, got {len(new_prg)}"
-        )
+        raise ValueError(f"multibank PRG size mismatch: expected {h.prg_size}, got {len(new_prg)}")
 
     chr_offset = HEADER_SIZE + (512 if h.has_trainer else 0) + h.prg_size
-    chr_data = (
-        original_rom[chr_offset : chr_offset + h.chr_size] if h.chr_size else b""
-    )
+    chr_data = original_rom[chr_offset : chr_offset + h.chr_size] if h.chr_size else b""
     out = bytearray(original_rom[:HEADER_SIZE])
     if h.has_trainer:
         out += original_rom[HEADER_SIZE : HEADER_SIZE + 512]
@@ -343,7 +323,7 @@ def assemble_to_rom_multibank(
     return bytes(out), all_errors
 
 
-def _first_diff_offset(a: bytes, b: bytes) -> Tuple[Optional[int], int]:
+def _first_diff_offset(a: bytes, b: bytes) -> tuple[int | None, int]:
     n = min(len(a), len(b))
     chunk = 4096
     for base in range(0, n, chunk):
@@ -402,14 +382,12 @@ def fast_equal(rom1: bytes, rom2: bytes) -> bool:
 
 def verify_round_trip(
     asm_text: str,
-    original_rom_path,
-    output_recompiled: Optional[Path] = None,
-    names_to_addr: Optional[Dict[str, int]] = None,
-) -> Tuple[RomDiff, List[str]]:
+    original_rom_path: Path | str,
+    output_recompiled: Path | None = None,
+    names_to_addr: dict[str, int] | None = None,
+) -> tuple[RomDiff, list[str]]:
     original_rom = Path(original_rom_path).read_bytes()
-    recompiled, errors = assemble_to_rom(
-        asm_text, original_rom, names_to_addr=names_to_addr
-    )
+    recompiled, errors = assemble_to_rom(asm_text, original_rom, names_to_addr=names_to_addr)
     if output_recompiled is not None:
         Path(output_recompiled).write_bytes(recompiled)
     diff = compare_roms(original_rom, recompiled)

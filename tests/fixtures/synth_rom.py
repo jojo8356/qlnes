@@ -12,9 +12,6 @@ Layout :
 - $FFFE  : IRQ  → $8000
 """
 
-from typing import Dict
-
-
 ZP_FRAME_COUNTER = 0x10
 ZP_LIVES = 0x11
 ZP_SCORE = 0x12
@@ -30,43 +27,80 @@ def build_image() -> bytes:
 
     reset = bytes(
         [
-            0x78,                                # SEI
-            0xD8,                                # CLD
-            0xA9, 0x03, 0x85, ZP_LIVES,          # LDA #3 ; STA lives
-            0xA9, 0x00, 0x85, ZP_SCORE,          # LDA #0 ; STA score
-            0xA9, 0x02, 0x8D, 0x14, 0x40,        # LDA #$02 ; STA OAMDMA
-            0xA2, 0x00, 0x86, ZP_OAM_INDEX,      # LDX #0 ; STX oam_index
-            0xA9, 0x40, 0x85, ZP_PTR_LO,         # LDA #$40 ; STA ptr_lo
-            0xA9, 0x80, 0x85, ZP_PTR_HI,         # LDA #$80 ; STA ptr_hi
-            0x20, 0x00, 0x81,                    # JSR oam_setup
-            0x20, 0x20, 0x81,                    # JSR pointer_use
-            0x4C, 0x40, 0x80,                    # JMP main_loop
+            0x78,  # SEI
+            0xD8,  # CLD
+            0xA9,
+            0x03,
+            0x85,
+            ZP_LIVES,  # LDA #3 ; STA lives
+            0xA9,
+            0x00,
+            0x85,
+            ZP_SCORE,  # LDA #0 ; STA score
+            0xA9,
+            0x02,
+            0x8D,
+            0x14,
+            0x40,  # LDA #$02 ; STA OAMDMA
+            0xA2,
+            0x00,
+            0x86,
+            ZP_OAM_INDEX,  # LDX #0 ; STX oam_index
+            0xA9,
+            0x40,
+            0x85,
+            ZP_PTR_LO,  # LDA #$40 ; STA ptr_lo
+            0xA9,
+            0x80,
+            0x85,
+            ZP_PTR_HI,  # LDA #$80 ; STA ptr_hi
+            0x20,
+            0x00,
+            0x81,  # JSR oam_setup
+            0x20,
+            0x20,
+            0x81,  # JSR pointer_use
+            0x4C,
+            0x40,
+            0x80,  # JMP main_loop
         ]
     )
     image[0x8000 : 0x8000 + len(reset)] = reset
 
     main_loop = bytes(
         [
-            0xAD, 0x02, 0x20,                    # LDA PPUSTATUS
-            0x4C, 0x40, 0x80,                    # JMP main_loop
+            0xAD,
+            0x02,
+            0x20,  # LDA PPUSTATUS
+            0x4C,
+            0x40,
+            0x80,  # JMP main_loop
         ]
     )
     image[0x8040 : 0x8040 + len(main_loop)] = main_loop
 
     nmi = bytes(
         [
-            0x48,                                # PHA
-            0xE6, ZP_FRAME_COUNTER,              # INC frame_counter
-            0x20, 0x80, 0x80,                    # JSR controller_read
-            0xA9, 0x02, 0x8D, 0x14, 0x40,        # LDA #2 ; STA OAMDMA
-            0x68, 0x40,                          # PLA ; RTI
+            0x48,  # PHA
+            0xE6,
+            ZP_FRAME_COUNTER,  # INC frame_counter
+            0x20,
+            0x80,
+            0x80,  # JSR controller_read
+            0xA9,
+            0x02,
+            0x8D,
+            0x14,
+            0x40,  # LDA #2 ; STA OAMDMA
+            0x68,
+            0x40,  # PLA ; RTI
         ]
     )
     image[0x8050 : 0x8050 + len(nmi)] = nmi
 
     cr = []
-    cr += [0xA9, 0x01, 0x8D, 0x16, 0x40]         # LDA #1 ; STA $4016
-    cr += [0xA9, 0x00, 0x8D, 0x16, 0x40]         # LDA #0 ; STA $4016
+    cr += [0xA9, 0x01, 0x8D, 0x16, 0x40]  # LDA #1 ; STA $4016
+    cr += [0xA9, 0x00, 0x8D, 0x16, 0x40]  # LDA #0 ; STA $4016
     for _ in range(8):
         cr += [0xAD, 0x16, 0x40, 0x4A, 0x26, ZP_CONTROLLER1]
     for _ in range(8):
@@ -76,22 +110,36 @@ def build_image() -> bytes:
 
     oam_setup = bytes(
         [
-            0xA6, ZP_OAM_INDEX,                  # LDX oam_index
-            0xA9, 0x40, 0x9D, 0x00, 0x02,        # LDA #$40 ; STA $0200,X
-            0xE8, 0x9D, 0x00, 0x02,              # INX ; STA $0200,X
-            0xE8, 0x86, ZP_OAM_INDEX,            # INX ; STX oam_index
-            0x60,                                # RTS
+            0xA6,
+            ZP_OAM_INDEX,  # LDX oam_index
+            0xA9,
+            0x40,
+            0x9D,
+            0x00,
+            0x02,  # LDA #$40 ; STA $0200,X
+            0xE8,
+            0x9D,
+            0x00,
+            0x02,  # INX ; STA $0200,X
+            0xE8,
+            0x86,
+            ZP_OAM_INDEX,  # INX ; STX oam_index
+            0x60,  # RTS
         ]
     )
     image[0x8100 : 0x8100 + len(oam_setup)] = oam_setup
 
     pointer_use = bytes(
         [
-            0xA0, 0x00,                          # LDY #0
-            0xB1, ZP_PTR_LO,                     # LDA (ptr_lo),Y
-            0xA0, 0x01,                          # LDY #1
-            0xB1, ZP_PTR_LO,                     # LDA (ptr_lo),Y
-            0x60,                                # RTS
+            0xA0,
+            0x00,  # LDY #0
+            0xB1,
+            ZP_PTR_LO,  # LDA (ptr_lo),Y
+            0xA0,
+            0x01,  # LDY #1
+            0xB1,
+            ZP_PTR_LO,  # LDA (ptr_lo),Y
+            0x60,  # RTS
         ]
     )
     image[0x8120 : 0x8120 + len(pointer_use)] = pointer_use
@@ -106,7 +154,7 @@ def build_image() -> bytes:
     return bytes(image)
 
 
-EXPECTED_NAMES: Dict[int, str] = {
+EXPECTED_NAMES: dict[int, str] = {
     ZP_FRAME_COUNTER: "frame_counter",
     ZP_CONTROLLER1: "controller1_state",
     ZP_CONTROLLER2: "controller2_state",
@@ -119,6 +167,8 @@ EXPECTED_NAMES: Dict[int, str] = {
 
 if __name__ == "__main__":
     import sys
+
     out = sys.argv[1] if len(sys.argv) > 1 else "/tmp/synth.bin"
-    open(out, "wb").write(build_image())
+    with open(out, "wb") as f:
+        f.write(build_image())
     print(f"wrote {out}")

@@ -22,15 +22,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple
 
-from .ines import HEADER_SIZE, parse_header, strip_ines
-
+from .ines import parse_header, strip_ines
 
 NSF_MAGIC = b"NESM\x1a"
 NSF_HEADER_SIZE = 0x80
 NTSC_FRAME_US = 16639  # 1 / 60.0988 fps en microsecondes
-PAL_FRAME_US = 19997   # 1 / 50.007 fps
+PAL_FRAME_US = 19997  # 1 / 50.007 fps
 
 
 def build_nsf_header(
@@ -45,13 +43,13 @@ def build_nsf_header(
     copyright_: str = "",
     ntsc_speed: int = NTSC_FRAME_US,
     pal_speed: int = PAL_FRAME_US,
-    bankswitch: Tuple[int, int, int, int, int, int, int, int] = (0,) * 8,
-    region: int = 0,         # bit 0 = PAL, bit 1 = both
-    extra_chip: int = 0,     # bitfield : VRC6, VRC7, FDS, MMC5, Namco163, Sunsoft5B
+    bankswitch: tuple[int, int, int, int, int, int, int, int] = (0,) * 8,
+    region: int = 0,  # bit 0 = PAL, bit 1 = both
+    extra_chip: int = 0,  # bitfield : VRC6, VRC7, FDS, MMC5, Namco163, Sunsoft5B
 ) -> bytes:
     h = bytearray(NSF_HEADER_SIZE)
     h[0:5] = NSF_MAGIC
-    h[5] = 1                 # version
+    h[5] = 1  # version
     h[6] = songs & 0xFF
     h[7] = start_song & 0xFF
     h[8:10] = load_addr.to_bytes(2, "little")
@@ -98,8 +96,8 @@ def build_nsf_from_rom(
     title: str = "",
     artist: str = "qlnes",
     copyright_: str = "",
-    init_addr: Optional[int] = None,
-    play_addr: Optional[int] = None,
+    init_addr: int | None = None,
+    play_addr: int | None = None,
     songs: int = 1,
     start_song: int = 1,
     experimental: bool = False,
@@ -133,9 +131,7 @@ def build_nsf_from_rom(
             load_addr = 0x8000
             data = prg
         else:
-            raise ValueError(
-                f"NROM PRG attendu 16 ou 32 KB, trouvé {len(prg)}"
-            )
+            raise ValueError(f"NROM PRG attendu 16 ou 32 KB, trouvé {len(prg)}")
         # Vecteurs lus depuis la fin du PRG (qui se mappe à $FFxx)
         last_bank = data[-0x4000:]
         nmi = _read_vector(last_bank, 0x3FFA)
@@ -170,20 +166,49 @@ def build_nsf_from_rom(
         )
 
     header = build_nsf_header(
-        songs=songs, start_song=start_song,
-        load_addr=load_addr, init_addr=init_addr, play_addr=play_addr,
-        title=title, artist=artist, copyright_=copyright_,
+        songs=songs,
+        start_song=start_song,
+        load_addr=load_addr,
+        init_addr=init_addr,
+        play_addr=play_addr,
+        title=title,
+        artist=artist,
+        copyright_=copyright_,
     )
     return NSFBuild(
         nsf_bytes=header + nsf_data,
-        load_addr=load_addr, init_addr=init_addr, play_addr=play_addr,
+        load_addr=load_addr,
+        init_addr=init_addr,
+        play_addr=play_addr,
         note=note,
     )
 
 
-def write_nsf(rom_path: Path, out_path: Path, **kwargs) -> NSFBuild:
+def write_nsf(
+    rom_path: Path,
+    out_path: Path,
+    *,
+    title: str = "",
+    artist: str = "qlnes",
+    copyright_: str = "",
+    init_addr: int | None = None,
+    play_addr: int | None = None,
+    songs: int = 1,
+    start_song: int = 1,
+    experimental: bool = False,
+) -> NSFBuild:
     rom_bytes = Path(rom_path).read_bytes()
-    build = build_nsf_from_rom(rom_bytes, **kwargs)
+    build = build_nsf_from_rom(
+        rom_bytes,
+        title=title,
+        artist=artist,
+        copyright_=copyright_,
+        init_addr=init_addr,
+        play_addr=play_addr,
+        songs=songs,
+        start_song=start_song,
+        experimental=experimental,
+    )
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_bytes(build.nsf_bytes)
