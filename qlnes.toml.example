@@ -1,0 +1,18 @@
+# qlnes.toml — copy this file to your repo root or beside your ROM.
+#
+# Layered config (FR27): defaults < this TOML < QLNES_* env vars < CLI flags.
+# Each command picks up [default] plus its own section ([audio], [verify], ...).
+#
+# A.1 ships [default] and [audio]. Other sections land in later stories (D.4).
+
+[default]
+output_dir = "./out"
+quiet = false
+color = "auto"        # auto | always | never
+hints = true          # show hint: lines on errors/warnings
+progress = true       # show progress animations in TTY mode
+
+[audio]
+format = "wav"        # wav | mp3 | nsf  (mp3 lands in A.2, nsf in C.1)
+frames = 600          # render duration in NTSC frames (60 fps; 600 = 10 s)
+reference_emulator = "fceux"

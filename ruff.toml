@@ -1,0 +1,12 @@
+target-version = "py311"
+line-length = 100
+
+[lint]
+select = ["E", "F", "W", "B", "UP", "SIM", "I", "RUF"]
+ignore = [
+    "E501",  # line-length handled by formatter
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["B011", "SIM117"]    # pytest patterns — nested with-statements, assert False
+"qlnes/__init__.py" = ["F401"]     # legacy re-exports
