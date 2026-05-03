@@ -1,6 +1,6 @@
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, List, Optional, Tuple
 
 from .ines import INesHeader, parse_header, rom_to_images, strip_ines
 
@@ -13,23 +13,24 @@ class Bank:
 
 
 class Rom:
-    def __init__(self, raw: bytes, name: str = "rom") -> None:
+    def __init__(self, raw: bytes, name: str = "rom", path: Path | None = None) -> None:
         self.raw = raw
         self.name = name
-        self.header: Optional[INesHeader] = parse_header(raw)
-        self._images: List[Tuple[int, bytes]] = rom_to_images(raw)
+        self.path = path
+        self.header: INesHeader | None = parse_header(raw)
+        self._images: list[tuple[int, bytes]] = rom_to_images(raw)
         if self.header is not None:
             self.prg = strip_ines(raw)
         else:
             self.prg = raw
 
     @classmethod
-    def from_file(cls, path) -> "Rom":
+    def from_file(cls, path: Path | str) -> "Rom":
         p = Path(path)
-        return cls(p.read_bytes(), name=p.stem)
+        return cls(p.read_bytes(), name=p.stem, path=p)
 
     @property
-    def mapper(self) -> Optional[int]:
+    def mapper(self) -> int | None:
         return self.header.mapper if self.header else None
 
     @property
@@ -47,9 +48,7 @@ class Rom:
 
     def single_image(self) -> bytes:
         if len(self._images) != 1:
-            raise ValueError(
-                f"ROM has {len(self._images)} banks; use banks() instead"
-            )
+            raise ValueError(f"ROM has {len(self._images)} banks; use banks() instead")
         return self._images[0][1]
 
     def __repr__(self) -> str:

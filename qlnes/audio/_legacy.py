@@ -24,10 +24,8 @@ import shutil
 import struct
 import subprocess
 import wave
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
-
 
 NTSC_CPU_HZ = 1_789_773.0
 SAMPLE_RATE = 44_100
@@ -51,9 +49,9 @@ def record_apu_trace(
     rom_path: Path,
     *,
     frames: int = 600,
-    out_trace: Optional[Path] = None,
+    out_trace: Path | None = None,
     fceux_bin: str = "fceux",
-    timeout: Optional[float] = None,
+    timeout: float | None = None,
 ) -> Path:
     """Lance fceux en mode offscreen avec le script Lua de capture.
     Retourne le chemin de la trace TSV (créée par le script Lua).
@@ -64,9 +62,7 @@ def record_apu_trace(
     if not LUA_SCRIPT.exists():
         raise FileNotFoundError(f"audio_trace.lua introuvable : {LUA_SCRIPT}")
     if shutil.which(fceux_bin) is None:
-        raise RuntimeError(
-            f"`{fceux_bin}` introuvable. Lance scripts/install_audio_deps.sh."
-        )
+        raise RuntimeError(f"`{fceux_bin}` introuvable. Lance scripts/install_audio_deps.sh.")
 
     if out_trace is None:
         out_trace = rom_path.with_suffix(".apu.tsv")
@@ -84,18 +80,24 @@ def record_apu_trace(
     }
     cmd = [
         fceux_bin,
-        "--no-config", "1",
-        "--sound", "0",
-        "--loadlua", str(LUA_SCRIPT),
+        "--no-config",
+        "1",
+        "--sound",
+        "0",
+        "--loadlua",
+        str(LUA_SCRIPT),
         str(rom_path),
     ]
     # Marge généreuse : fceux offscreen tourne en gros à la vitesse réelle.
-    # On laisse 2× la durée NTSC + 30s pour le boot/teardown.
+    # On laisse 2x la durée NTSC + 30s pour le boot/teardown.
     if timeout is None:
         timeout = (frames / 60.0) * 2.0 + 30.0
     proc = subprocess.run(
-        cmd, env=env, stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        cmd,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         timeout=timeout,
     )
     # fceux Qt segfaule parfois au cleanup (race Qt offscreen) MAIS le
@@ -104,15 +106,14 @@ def record_apu_trace(
     if not out_trace.exists() or out_trace.stat().st_size == 0:
         log_tail = proc.stdout.decode(errors="replace")[-2000:]
         raise RuntimeError(
-            f"fceux n'a pas produit de trace (exit {proc.returncode}).\n"
-            f"--- log ---\n{log_tail}"
+            f"fceux n'a pas produit de trace (exit {proc.returncode}).\n--- log ---\n{log_tail}"
         )
     return out_trace
 
 
-def parse_trace(path: Path) -> List[TraceEvent]:
-    events: List[TraceEvent] = []
-    with open(path, "r") as fh:
+def parse_trace(path: Path) -> list[TraceEvent]:
+    events: list[TraceEvent] = []
+    with open(path) as fh:
         for line in fh:
             if line.startswith("#") or not line.strip():
                 continue
@@ -151,22 +152,94 @@ DUTY_TABLE = (
 
 # Triangle : 32 phases, valeur 0..15 (formes en V).
 TRIANGLE_TABLE = (
-    15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+    15,
+    14,
+    13,
+    12,
+    11,
+    10,
+    9,
+    8,
+    7,
+    6,
+    5,
+    4,
+    3,
+    2,
+    1,
+    0,
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
 )
 
 # Noise period table (NTSC), indexé par bits 0-3 de $400E.
 NOISE_PERIODS = (
-    4, 8, 16, 32, 64, 96, 128, 160,
-    202, 254, 380, 508, 762, 1016, 2034, 4068,
+    4,
+    8,
+    16,
+    32,
+    64,
+    96,
+    128,
+    160,
+    202,
+    254,
+    380,
+    508,
+    762,
+    1016,
+    2034,
+    4068,
 )
 
 # Length counter table : 5 bits hauts de $4003/$4007/$400B/$400F.
 LENGTH_TABLE = (
-    10, 254, 20,  2, 40,  4, 80,  6,
-    160,  8, 60, 10, 14, 12, 26, 14,
-    12, 16, 24, 18, 48, 20, 96, 22,
-    192, 24, 72, 26, 16, 28, 32, 30,
+    10,
+    254,
+    20,
+    2,
+    40,
+    4,
+    80,
+    6,
+    160,
+    8,
+    60,
+    10,
+    14,
+    12,
+    26,
+    14,
+    12,
+    16,
+    24,
+    18,
+    48,
+    20,
+    96,
+    22,
+    192,
+    24,
+    72,
+    26,
+    16,
+    28,
+    32,
+    30,
 )
 
 # Frame counter : tick à 240 Hz (= 1789773 / 240 ≈ 7457 cycles CPU).
@@ -179,17 +252,17 @@ FRAME_COUNTER_PERIOD = 7457
 class PulseState:
     enabled: bool = False
     duty: int = 0
-    halt: bool = False     # bit 5 de $4000 : halt length counter ET loop envelope
+    halt: bool = False  # bit 5 de $4000 : halt length counter ET loop envelope
     constant: bool = True  # bit 4 de $4000 : volume constant vs envelope
-    volume: int = 0        # bits 0-3 : volume si constant, sinon période envelope
+    volume: int = 0  # bits 0-3 : volume si constant, sinon période envelope
     timer: int = 0
     counter: float = 0.0
     phase: int = 0
 
     length: int = 0
     env_start: bool = False
-    env_decay: int = 0     # 0..15
-    env_div: int = 0       # divider current
+    env_decay: int = 0  # 0..15
+    env_div: int = 0  # divider current
 
     def write(self, reg_idx: int, val: int) -> None:
         if reg_idx == 0:
@@ -256,7 +329,7 @@ class TriangleState:
     timer: int = 0
     counter: float = 0.0
     phase: int = 0
-    halt: bool = False           # $4008 bit 7 (control flag)
+    halt: bool = False  # $4008 bit 7 (control flag)
     linear_reload: int = 0
     linear: int = 0
     linear_reload_flag: bool = False
@@ -294,8 +367,7 @@ class TriangleState:
             self.linear_reload_flag = False
 
     def step(self, cycles: float) -> int:
-        if (not self.enabled or self.timer < 2
-                or self.length == 0 or self.linear == 0):
+        if not self.enabled or self.timer < 2 or self.length == 0 or self.linear == 0:
             return TRIANGLE_TABLE[self.phase]  # gel sur la phase courante
         period = self.timer + 1
         self.counter -= cycles
@@ -364,7 +436,7 @@ class NoiseState:
         while self.counter <= 0:
             self.counter += self.period
             bit_a = self.lfsr & 1
-            bit_b = ((self.lfsr >> (6 if self.mode else 1)) & 1)
+            bit_b = (self.lfsr >> (6 if self.mode else 1)) & 1
             feedback = bit_a ^ bit_b
             self.lfsr = (self.lfsr >> 1) | (feedback << 14)
         if self.lfsr & 1:
@@ -382,7 +454,7 @@ def mix_sample(p1: int, p2: int, tri: int, noise: int, dmc: int) -> float:
 
 
 def synthesize_wav(
-    events: List[TraceEvent],
+    events: list[TraceEvent],
     out_wav: Path,
     *,
     sample_rate: int = SAMPLE_RATE,
@@ -497,8 +569,7 @@ def wav_to_mp3(wav_path: Path, mp3_path: Path, *, bitrate: str = "192k") -> Path
     mp3_path = Path(mp3_path)
     mp3_path.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error",
-         "-i", str(wav_path), "-b:a", bitrate, str(mp3_path)],
+        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(wav_path), "-b:a", bitrate, str(mp3_path)],
         check=True,
     )
     return mp3_path
@@ -513,7 +584,7 @@ def wav_to_mp3(wav_path: Path, mp3_path: Path, *, bitrate: str = "192k") -> Path
 class AudioResult:
     trace: Path
     wav: Path
-    mp3: Optional[Path] = None
+    mp3: Path | None = None
     n_events: int = 0
     duration_s: float = 0.0
 
@@ -537,7 +608,7 @@ def render_rom_audio(
     wav_path = out.with_suffix(".wav") if out.suffix.lower() == ".mp3" else out
     synthesize_wav(events, wav_path, sample_rate=sample_rate)
 
-    mp3_path: Optional[Path] = None
+    mp3_path: Path | None = None
     if out.suffix.lower() == ".mp3":
         mp3_path = wav_to_mp3(wav_path, out)
         if not keep_intermediate:
@@ -548,6 +619,9 @@ def render_rom_audio(
 
     duration = events[-1].cycle / NTSC_CPU_HZ if events else 0.0
     return AudioResult(
-        trace=trace_path, wav=wav_path, mp3=mp3_path,
-        n_events=len(events), duration_s=duration,
+        trace=trace_path,
+        wav=wav_path,
+        mp3=mp3_path,
+        n_events=len(events),
+        duration_s=duration,
     )
