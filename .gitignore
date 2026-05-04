@@ -46,3 +46,14 @@ assets/
 # Local Claude Code configuration and skill installs (re-installable via
 # `npx bmad-method install ...` — not part of the project source).
 .claude/
+
+# F.2 spike scratch venv (PyPy + py65 + cython benchmarks).
+# Reinstantiable via `python3 -m venv .venv-spike && .venv-spike/bin/pip install py65 cynes cython setuptools pytest`
+.venv-spike/
+
+# F.2 spike Cython benchmark generated artefacts.
+# `bench_cython.pyx` is the source-of-truth; .c and .so regenerate via
+# `.venv-spike/bin/python build_cython.py build_ext --inplace`.
+_bmad-output/spikes/v06-cpu-perf/bench_cython.c
+_bmad-output/spikes/v06-cpu-perf/bench_cython.cpython-*.so
+_bmad-output/spikes/v06-cpu-perf/build/

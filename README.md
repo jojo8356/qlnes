@@ -39,23 +39,33 @@ $ python -m qlnes verify tests/fixtures/nestest.nes
 
 ## Installation
 
-Le projet a deux composantes : un binaire C (`QL6502`) compilé localement, et
-un package Python.
+Le projet a trois composantes : un binaire C (`QL6502`) compilé localement,
+un package Python, et **un submodule git** (`ucolor`, librairie de couleurs
+terminal). Toujours cloner avec `--recursive` ou initialiser les submodules
+explicitement :
 
 ```bash
-# Compiler QL6502 (vendor/QL6502-src/, MIT, forthchina)
+# 1. Cloner avec submodules (ucolor)
+git clone --recursive <repo-url> qlnes
+cd qlnes
+# (équivalent si déjà cloné sans --recursive :)
+# git submodule update --init --recursive
+
+# 2. Compiler QL6502 (vendor/QL6502-src/, MIT, forthchina)
 mkdir -p bin && gcc -O2 -o bin/ql6502 vendor/QL6502-src/*.c
 
-# Créer le venv et installer les deps
+# 3. Créer le venv et installer les deps (incl. ucolor depuis le submodule)
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
-# Vérifier
+# 4. Vérifier
 .venv/bin/python -m unittest discover -s tests
 ```
 
 Dépendances Python : `typer`, `py65`, `cynes` (émulateur NES headless pour la
-discovery dynamique), `Pillow` (export PNG des tiles).
+discovery dynamique), `Pillow` (export PNG des tiles), `lameenc` (encodeur
+MP3), **`ucolor`** (couleurs terminal — submodule à `vendor/ucolor-python/`,
+voir références ci-dessous).
 
 ## Sous-commandes CLI
 
@@ -161,11 +171,28 @@ Ce projet est librement réutilisable sous MIT. Composants tiers :
 | Composant | Auteur | License | Rôle |
 |---|---|---|---|
 | QL6502 (vendored) | forthchina | MIT | Désassembleur statique 6502 (analyse code/data) |
-| py65 | Mike Naberezny | BSD-3 | Réassembleur 6502 |
-| cynes | Youlixx | MIT | Émulateur NES headless |
+| py65 | Mike Naberezny | BSD-3 | Réassembleur 6502 + CPU emu (v0.6 in-process pipeline) |
+| cynes | Youlixx | MIT | Émulateur NES headless (discovery dynamique) |
 | typer | Sebastián Ramírez | MIT | CLI |
 | Pillow | Alex Clark + contributors | HPND | PNG des tiles |
+| lameenc | Andrew Logvinov | LGPL-2.1 | Encodeur MP3 (story A.2) |
+| **ucolor** | **jojo8356** | **MIT** | **Couleurs terminal — submodule à `vendor/ucolor-python/`** |
 | nestest.nes | Kevin Horton | public domain | Test ROM |
+
+## Submodules git
+
+`qlnes` embarque ses dépendances vendored sous `vendor/`. Une seule est un
+**submodule git** (lien virtuel cloné à part), pour ne pas dupliquer le code
+sur GitHub :
+
+| Submodule | Repo | Init |
+|---|---|---|
+| `vendor/ucolor-python/` | [github.com/jojo8356/ucolor-python](https://github.com/jojo8356/ucolor-python) | `git submodule update --init --recursive` |
+
+Au premier clone : `git clone --recursive <qlnes-url>` rapatrie aussi le
+submodule. Sur un clone existant non-recursive : la commande ci-dessus
+l'initialise. Mise à jour du submodule à un commit plus récent :
+`cd vendor/ucolor-python && git pull origin master && cd ../.. && git add vendor/ucolor-python && git commit -m "bump ucolor"`.
 
 ## Sources et inspirations
 
@@ -173,3 +200,4 @@ Ce projet est librement réutilisable sous MIT. Composants tiers :
 - [GenNm (NDSS 2025)](https://arxiv.org/abs/2306.02546) — recovery de noms de variables sur binaires strippés (x86, mais idée transposée pour 6502)
 - [christopherpow/nes-test-roms](https://github.com/christopherpow/nes-test-roms) — corpus de test ROMs
 - [retroenv/retrodisasm](https://github.com/retroenv/retrodisasm) — tracing disassembler 6502
+- [jojo8356/ucolor-python](https://github.com/jojo8356/ucolor-python) — librairie de couleurs terminal pure-Python (submodule sous `vendor/ucolor-python/`)

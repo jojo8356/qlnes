@@ -3,3 +3,9 @@ py65>=1.2
 cynes>=0.1.2
 Pillow>=10
 lameenc>=1.8.0,<1.9
+
+# `ucolor` lives at vendor/ucolor-python/ as a git submodule (jojo8356/ucolor-python).
+# After cloning qlnes, run `git submodule update --init --recursive` then
+# `pip install -e ./vendor/ucolor-python` (or use the project's install script).
+# It's a pure-Python package with zero runtime deps.
+-e ./vendor/ucolor-python
