@@ -3,7 +3,7 @@ artifact_type: sprint-plan-and-status
 project_name: qlnes
 mvp_target: v0.5.0 (music workstream)
 date_created: 2026-05-03
-date_updated: 2026-05-04 (v0.6 PRD + architecture + epics doc merged ; F.1 scaffolding pending)
+date_updated: 2026-05-04 (v0.6 docs PIVOTED — per-engine static walker abandoned, in-process Python CPU emulator approach. See PRD §0 + amendmentLog. F.1 ApuWriteEvent kept ; StaticWalker ABC deprecated ; F.2 spike is next)
 created_by: bmad-sprint-planning (SP)
 created_after_readiness: implementation-readiness-report-2026-05-03-pass-2.md (CONDITIONAL_GO, H-1 resolved)
 inputDocuments:

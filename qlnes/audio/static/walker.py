@@ -1,16 +1,18 @@
-"""StaticWalker ABC — engines that emit APU register writes from bytecode.
+"""StaticWalker ABC — DEPRECATED scaffolding (kept as extension point).
 
-Architecture step 20.2 (architecture-v0.6.md amendment).
+**Status (2026-05-04): deprecated, no concrete subclass ships.**
 
-A StaticWalker is a SoundEngine that, in addition to the v0.5 protocol
-(detect, walk_song_table, render_song, detect_loop), also implements
-`emit_apu_writes` — a pure-Python static analyzer that walks the engine's
-in-PRG bytecode and yields the APU register writes the engine *would*
-produce at runtime, without running the CPU.
+This ABC was the foundation of the original v0.6 plan: per-engine static
+walkers that parse engine bytecode (FT, Capcom, KGen, ...) directly to
+emit APU register writes — no CPU emulation. After research
+(`prd-no-fceux.md` §0), v0.6 pivots to an **in-process Python CPU
+emulator** (`qlnes/audio/in_process/`) — universal across engines, no
+per-engine RE.
 
-The renderer's `--engine-mode auto` resolves to the static path when the
-detected engine has `has_static_walker = True` (set automatically by
-this ABC).
+This module stays in tree as an extension point: a contributor pursuing
+the per-game-craft path (community-style RE'd MIDI rippers) can subclass
+StaticWalker. ApuWriteEvent (the canonical interchange type next door
+in apu_event.py) is used by both pipelines.
 """
 
 from __future__ import annotations

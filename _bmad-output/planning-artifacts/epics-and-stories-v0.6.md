@@ -4,370 +4,369 @@ parent_epics: _bmad-output/planning-artifacts/epics-and-stories.md
 parent_prd: _bmad-output/planning-artifacts/prd-no-fceux.md
 parent_architecture: _bmad-output/planning-artifacts/architecture-v0.6.md
 date: 2026-05-04
+status: draft v2 (post-pivot)
 project_name: qlnes-no-fceux
 user_name: Johan
-mvp_target: v0.6.0 (FCEUX-free FT static walker)
+mvp_target: v0.6.0 (in-process CPU emulator replaces FCEUX subprocess)
+amendmentLog:
+  - "2026-05-04: pivot from per-engine static walker to in-process CPU emulator. Story list rewritten."
 ---
 
-# Epics & Stories — qlnes v0.6 (Amendment)
+# Epics & Stories — qlnes v0.6 (Amendment, revised)
 
-> **Relationship to v0.5 epics doc.** This amendment adds **Epic F** and
-> 7 stories (F.1–F.7) on top of the v0.5 plan. Epics A–E are unchanged.
-> v0.6 work begins after `v0.5.0` is tagged (end of v0.5 sprint 8).
-
----
-
-## Epic F — FCEUX-free music extraction
-
-**User value.** Marco runs `qlnes audio rom.nes --engine-mode static`
-on a clean machine without FCEUX installed and gets sample-equivalent
-WAV. Lin's Docker pipeline drops the FCEUX/SDL/xvfb stanza.
-
-**FRs closed.** FR41 (FCEUX-free FT extraction), FR42 (byte-equivalence
-to v0.5 oracle output), FR43 (FT mappers 0/1/4), FR44 (per-song
-determinism), FR46 (`--engine-mode` flag), FR47 (fail fast on missing
-walker), FR48 (oracle path preserved), FR49 (warn on auto fallback),
-FR50–FR52 (`bilan.json` schema v2), FR53 (pip install without FCEUX),
-FR55–FR57 (backward compat).
-
-**Risks tracked.** R20 (static-vs-oracle divergence), R21 (RE harder
-than estimated), R22 (v1→v2 schema migration).
+> **Pivot 2026-05-04.** Stories F.1-F.7 from the previous draft (static
+> walker per engine) are superseded by F.1-F.10 below (in-process CPU
+> emulator). See PRD §0 + architecture-v0.6.md amendmentLog.
 
 ---
 
-### Story F.1 — Scaffold the static walker package + ABC
+## Epic F — Replace FCEUX subprocess by in-process CPU emulator
 
-**User value.** Foundation only. Equivalent to v0.5's A.1 for v0.6 —
-no end-user feature lands here, but every subsequent story builds on
-this scaffold.
+**User value.** Marco runs `qlnes audio rom.nes` on a clean machine
+without FCEUX installed and gets sample-equivalent WAV. Lin's pipeline
+drops 80 MB of FCEUX/SDL/xvfb deps. Both Journeys 1 and 2 complete
+without subprocess overhead, ~16x less RAM.
 
-**FRs closed.** Partial F.* infrastructure; no FR finalized.
+**FRs closed.** FR41-FR53 (PRD v0.6).
 
-**NFRs touched.** NFR-LIFE-80 (≤500 LOC handler budget — established
-by the ABC's surface area).
-
-**Pre-conditions.** v0.5.0 tagged. `qlnes/audio/engine.py` (v0.5
-SoundEngine ABC) exists.
-
-**Embedded scaffolding.**
-
-- `qlnes/audio/static/__init__.py` — re-exports `StaticWalker`,
-  `ApuWriteEvent`.
-- `qlnes/audio/static/apu_event.py` — `ApuWriteEvent` frozen dataclass.
-- `qlnes/audio/static/walker.py` — `StaticWalker` ABC sub-protocol of
-  `SoundEngine`, with abstract `emit_apu_writes` method.
-- `qlnes/oracle/fceux.py::TraceEvent` — converted to a deprecated
-  alias of `ApuWriteEvent` (one-line typedef + DeprecationWarning).
-- Tests: `tests/unit/test_static_walker_abc.py` — ABC contract,
-  registry visibility, `has_static_walker` flag default.
-
-**Acceptance criteria.**
-
-- AC1 — Importing `qlnes.audio.static` returns the new public API
-  (`StaticWalker`, `ApuWriteEvent`).
-- AC2 — A `class FakeWalker(StaticWalker)` that does not implement
-  `emit_apu_writes` raises `TypeError` at instantiation (ABC enforcement).
-- AC3 — A correctly-implemented `FakeWalker` registered via
-  `@SoundEngineRegistry.register` shows up in
-  `SoundEngineRegistry.list_registered()` AND has `has_static_walker is True`.
-- AC4 — `qlnes.oracle.fceux.TraceEvent` still imports cleanly from its
-  v0.5 location and is a `qlnes.audio.static.apu_event.ApuWriteEvent`
-  alias (`TraceEvent is ApuWriteEvent`).
-
-**Estimate.** **S** — 1 dev-day. Pure ABC + tests, no logic.
+**Risks tracked.** R30 (py65 too slow), R31 (PPU state in init), R32
+(NMI timing), R33 (mapper bank-switching in py65), R34 (cynes lacks
+APU-write hook).
 
 ---
 
-### Story F.2 — `--engine-mode {auto,static,oracle}` flag + bilan v2
+## Stories — ordered, ready for sprint planning
 
-**User value.** Marco can pick the pipeline. `auto` (default) prefers
-static when available; `oracle` keeps v0.5 behavior; `static` is a
-hard-fail mode for FCEUX-free environments.
+### F.1 — Salvage v0.6 scaffolding (already on master)
 
-**FRs closed.** FR46, FR47, FR48, FR49, FR50, FR57.
+**Status.** ✓ Done (commit 5cf2c36).
 
-**NFRs touched.** None directly.
+**What's kept.** `qlnes/audio/static/apu_event.py::ApuWriteEvent`
+remains the canonical interchange type — used by both the
+in-process pipeline (this PRD) and future per-engine static walkers
+if anyone ever pursues them.
+
+**What's deprecated.** `qlnes/audio/static/walker.py::StaticWalker`
+ABC stays in tree but is not subclassed by any v0.6 story. A docstring
+note marks it as deprecated/exploratory. Removing it is a future story
+if it gathers no users.
+
+**Acceptance criteria.** None (already done). Move on to F.2.
+
+---
+
+### F.2 — Performance spike: py65 vs cynes
+
+**User value.** Decision artifact for which CPU emulator backs the
+in-process pipeline. NFR-PERF-80 enforces ≤ 60 s for a 3-min song;
+spike measures whether py65 makes that budget.
+
+**Estimate.** **S** (1 dev-day time-boxed).
 
 **Pre-conditions.** F.1.
 
+**Approach.**
+
+1. Pick one v0.5 corpus FT ROM (Alter Ego — already in `corpus/roms/`).
+2. Build a minimal harness that runs the music driver via py65:
+   - load PRG into ObservableMemory
+   - subscribe_to_write on $4000-$4017
+   - JSR init_addr (assumed = $8000 for the ROM under test for the spike)
+   - manually trigger NMI every 29780 cycles, run 600 frames (10 s)
+   - measure wall-clock, count APU writes, sanity-check first
+     ~50 events match the FCEUX trace
+3. If py65 → ≤ 60 s for the 10 s sample's-worth: ✓ commit to py65.
+4. Otherwise: repeat with cynes if it's hookable (R34); if cynes
+   doesn't work either, decision document in `_bmad-output/decisions/`
+   recommending a fallback path.
+
+**Acceptance criteria.**
+
+- AC1 — Decision artifact `_bmad-output/decisions/v06-cpu-backend.md`
+  written, recommending py65 OR cynes OR a custom mini-CPU.
+- AC2 — Spike code lives in `_bmad-output/spikes/v06-cpu-perf/` (not
+  committed to qlnes/, just for posterity).
+- AC3 — Trace-comparison sanity: at least the first 10 APU writes
+  emitted by the spike match the FCEUX trace's first 10 writes (cycle
+  may differ; register and value must match).
+
+---
+
+### F.3 — InProcessRunner module (NROM-only, single mapper)
+
+**User value.** Foundation. Equivalent to v0.5's A.1 for the new
+pipeline. End-to-end FCEUX-free render of one mapper-0 FT ROM.
+
+**Estimate.** **L** (1 dev-week).
+
+**Pre-conditions.** F.2 done; CPU backend chosen.
+
 **Embedded scaffolding.**
 
-- `qlnes/cli.py audio` — adds `--engine-mode` option (Annotated typer
-  pattern), parses to enum literal.
-- `qlnes/audio/renderer.py::render_rom_audio_v2` — adds
-  `engine_mode: Literal["auto","static","oracle"] = "auto"` parameter.
-  Resolution branch (architecture step 20.3) selects the pipeline.
-- `qlnes/io/errors.py` — new error class `static_walker_missing` (exit
-  100, hint "Install fceux >=2.6.6, or wait for the static walker for
-  this engine"). Warning class `static_walker_missing` (when `auto`
-  falls back).
-- `qlnes/audit/bilan.py` — `BilanStore.read` detects `schema_version`
-  and dispatches v1 vs v2; new `BilanStore.write` always writes v2.
+- `qlnes/audio/in_process/__init__.py` — re-exports.
+- `qlnes/audio/in_process/runner.py` — `InProcessRunner` (architecture
+  step 20.2).
+- `qlnes/audio/in_process/memory.py` — observable NROM memory map
+  (PRG mirroring + APU observer + PPU stub).
+- `qlnes/audio/in_process/nmi.py` — NMI trigger helper (architecture
+  step 20.6).
+- Tests in `tests/unit/test_in_process_runner.py` and
+  `tests/integration/test_in_process_alter_ego.py`.
+
+**Acceptance criteria.**
+
+- AC1 — `InProcessRunner(rom).run_song(init_addr, play_addr,
+  frames=600)` yields ApuWriteEvent iterator on Alter Ego (the corpus
+  fixture).
+- AC2 — Resulting PCM (after qlnes APU emulator) is byte-identical
+  to the FCEUX-driven render of Alter Ego at 600 frames.
+- AC3 — No subprocess spawned: `subprocess.run` mocked to assert
+  `call_count == 0` during the entire render.
+- AC4 — Wall-clock ≤ 60 s for 600-frame render on canonical hardware
+  (NFR-PERF-80).
+- AC5 — Peak RSS ≤ 10 MB (NFR-MEM-80).
+- AC6 — Two consecutive runs produce byte-identical output
+  (NFR-REL-1).
+
+---
+
+### F.4 — SoundEngine init/play address protocol
+
+**User value.** Engine handlers expose the addresses the in-process
+runner needs. FT handler returns the addresses for Alter Ego (and any
+other FT-driven ROM the existing detection covers).
+
+**Estimate.** **M** (2-3 dev-days).
+
+**Pre-conditions.** F.3.
+
+**Embedded scaffolding.**
+
+- `qlnes/audio/engine.py::SoundEngine` ABC gains `init_addr(rom,
+  song) -> int` and `play_addr(rom, song) -> int` methods. Default:
+  `raise NotImplementedError("engine has no in-process support")`.
+- `qlnes/audio/engines/famitracker.py` implements both. For Alter
+  Ego specifically, locate the FamiTone init/play vectors via
+  signature scan or known-offset heuristic.
+- `tests/unit/test_engine_init_play.py`.
+
+**Acceptance criteria.**
+
+- AC1 — `FamiTrackerEngine.init_addr(rom, song)` returns a valid
+  CPU address ($8000-$FFFF range) for Alter Ego.
+- AC2 — `play_addr(rom, song)` similarly for Alter Ego.
+- AC3 — Default `SoundEngine.init_addr` raises NotImplementedError
+  with `class:in_process_unavailable` JSON-friendly extra.
+
+---
+
+### F.5 — `--engine-mode` CLI flag + pipeline dispatch
+
+**User value.** User picks the pipeline. `auto` default does the
+right thing.
+
+**Estimate.** **M** (2-3 dev-days).
+
+**Pre-conditions.** F.3, F.4.
+
+**Embedded scaffolding.**
+
+- `qlnes/cli.py audio` — adds `--engine-mode {auto,in-process,oracle}`.
+- `qlnes/audio/renderer.py` — `engine_mode` parameter, resolution
+  branch (architecture step 20.4).
+- `qlnes/io/errors.py` — new error class `in_process_unavailable`
+  (exit 100), warning class `in_process_low_confidence`.
+- Tests in `tests/integration/test_cli_engine_mode.py`.
+
+**Acceptance criteria.**
+
+- AC1 — `--engine-mode in-process` on FT-Alter Ego succeeds.
+- AC2 — `--engine-mode oracle` keeps v0.5 behavior on Alter Ego.
+- AC3 — `--engine-mode auto` (default) picks in-process when
+  available, falls back to oracle with warning when not.
+- AC4 — Both `auto` and `in-process` exit 100 with
+  `class:in_process_unavailable` for engines without
+  `init_addr`/`play_addr`.
+
+---
+
+### F.6 — bilan v2 schema migration
+
+**User value.** Coverage matrix shows in-process vs oracle separately
+per (mapper, engine) pair.
+
+**Estimate.** **S** (1 dev-day).
+
+**Pre-conditions.** F.3 (so we have data to populate v2 fields).
+
+**Embedded scaffolding.**
+
+- `qlnes/audit/bilan.py` — schema_version dispatch (v1 reader vs v2
+  reader).
 - v1→v2 in-place upgrade on `audit --refresh`.
+- v0.5 readers reading v2 log warning, render unknown engine status.
 
 **Acceptance criteria.**
 
-- AC1 — `qlnes audio --help` shows `--engine-mode {auto,static,oracle}`
-  with default `auto`.
-- AC2 — `--engine-mode oracle` on an FT ROM works exactly like v0.5
-  (same WAV bytes, same exit code, same JSON shape on errors).
-- AC3 — `--engine-mode static` on a ROM with no static walker exits
-  100 with `class:static_walker_missing` JSON, hint pointing at the
-  oracle fallback flag.
-- AC4 — `--engine-mode auto` on a ROM with no static walker BUT FCEUX
-  installed: emits `qlnes: warning: static_walker_missing` to stderr,
-  proceeds via oracle. Exit 0 if oracle succeeds.
-- AC5 — `--engine-mode auto` on a ROM with no static walker AND no
-  FCEUX: exits 100 with `class:static_walker_missing` (same as
-  `--engine-mode static`).
-- AC6 — `bilan.json` written by v0.6 has `schema_version: "2"` and
-  the `tier-1-static` / `tier-1-oracle` per-engine sub-keys.
-- AC7 — A v0.5 reader (qlnes 0.5.x) reading a v0.6 bilan logs
-  `bilan_schema_version` warning, renders engines as "unknown" but
-  doesn't crash.
-
-**Estimate.** **M** — 2-3 dev-days.
+- AC1 — `qlnes audit` produces a v2 bilan with both
+  `tier-1-in-process` and `tier-1-oracle` per-engine sub-keys.
+- AC2 — A v0.5 (qlnes 0.5.x) reader reading a v0.6 bilan logs
+  `bilan_schema_version` warning + falls through to "unknown" status
+  per engine.
 
 ---
 
-### Story F.3 — FamiTracker static walker (mapper 0)
+### F.7 — In-process oracle equivalence test
 
-**User value.** The load-bearing story of v0.6. End-to-end
-FCEUX-free render of an FT ROM on the simplest mapper.
+**User value.** Per-release gate that the in-process path produces
+byte-identical output to the FCEUX oracle on the v0.5 corpus.
 
-**FRs closed.** FR41 (full), FR42 (full), FR43 (mapper-0 subset),
-FR44, FR53.
+**Estimate.** **S** (1 dev-day).
 
-**NFRs touched.** NFR-PERF-80, NFR-PERF-81, NFR-PORT-81, NFR-DEP-80,
-NFR-REL-81.
-
-**Pre-conditions.** F.1, F.2. **Pre-sprint RE spike (24-48 h)
-mandatory** — see R21 mitigation.
+**Pre-conditions.** F.3, F.4, F.5.
 
 **Embedded scaffolding.**
 
-- `qlnes/audio/static/engines/__init__.py`.
-- `qlnes/audio/static/engines/famitracker_static.py` — public
-  `FamiTrackerStaticWalker` class, subclasses
-  `FamiTrackerEngine` (v0.5 detection logic) AND `StaticWalker`.
-- `qlnes/audio/static/engines/famitracker_format.py` — pattern
-  bytecode parser (Cxx volume, Bxx loop, Dxx pattern jump, …, full
-  FT effect column).
-- `qlnes/audio/static/engines/famitracker_state.py` — per-channel
-  state machine (envelope, vibrato, arpeggio, instrument).
-- `qlnes/audio/static/engines/famitracker_emit.py` — state →
-  ApuWriteEvent emitter (per-frame ordered registers).
-- `tests/invariants/test_static_oracle_equivalence.py` — parametrized
-  on `corpus/manifest.toml` mapper-0 FT subset; asserts
-  `static_apu_writes == oracle_apu_writes` byte-for-byte.
+- `tests/invariants/test_in_process_oracle_equivalence.py` —
+  parametrized on `corpus/manifest.toml` FT subset. Each test:
+  render via `--engine-mode in-process` AND `--engine-mode oracle`,
+  assert PCM bytes equal.
 
 **Acceptance criteria.**
 
-- AC1 — `qlnes audio <ft-mapper-0-rom> --engine-mode static --output
-  tracks/` succeeds on a host with no FCEUX installed.
-- AC2 — For each ROM in the FT-mapper-0 corpus subset, the static
-  walker's `(cycle, register, value)` emission is byte-for-byte
-  identical to the FCEUX trace (architecture step 20.4 contract).
-- AC3 — The PCM output (after APU emulator + WAV writer) is byte-
-  identical between `--engine-mode static` and `--engine-mode oracle`
-  for the same ROM.
-- AC4 — Render time on the canonical hardware: ≤30 s for a
-  3-minute song (NFR-PERF-80).
-- AC5 — No subprocess spawned during the render. Verified by mocking
-  `subprocess.run` to assert it's not called.
-
-**Estimate.** **L** — 1 dev-week. Bytecode RE is the dominant cost.
-
-**Risk callout (R21).** If the RE spike (pre-sprint) shows the FT
-format takes more than 4 dev-days to model end-to-end, F.3 splits:
-- F.3a — pattern parser only (mapper-0 NROM-128 subset, single song).
-- F.3b — instrument/envelope state machine + per-frame emit.
-- F.3c — multi-pattern songs + master loop.
+- AC1 — Test passes for Alter Ego (FT mapper-0).
+- AC2 — Test infrastructure parametrizes correctly: adding a new
+  ROM to the manifest auto-creates a new test case.
 
 ---
 
-### Story F.4 — Extend FT static walker to mapper 1 (MMC1)
+### F.8 — Multi-mapper support (MMC1, MMC3)
 
-**User value.** FT ROMs on MMC1 (most NES homebrew published 2010+
-falls in this category) work without FCEUX.
+**User value.** Marco's MMC1/MMC3 homebrew ROMs work in-process,
+not just oracle. FT covers more games.
 
-**FRs closed.** Partial FR43 (mapper 1 added).
+**Estimate.** **L** (1 dev-week — likely requires switching to
+cynes or hand-rolling mapper logic).
 
-**NFRs touched.** NFR-REL-81 carries forward (byte-eq invariant).
+**Pre-conditions.** F.7.
 
-**Pre-conditions.** F.3 done. MMC1 banking model needs the existing
-`Rom.banks()` iterator.
+**Risks.** R33 — bank-switching not supported in py65 natively.
+Story may force the cynes switch; if cynes doesn't expose APU
+writes (R34), this story splits or extends.
 
 **Embedded scaffolding.**
 
-- `famitracker_static.py` — extends song-table lookup to span MMC1
-  bank boundaries (FT pattern data may live in different PRG banks
-  than the player code).
-- Corpus expansion: ≥3 FT-driven MMC1 ROMs added to manifest.
+- `qlnes/audio/in_process/mappers/{mmc1,mmc3}.py` — bank-switch
+  observers if py65; or cynes wrapper if we switch.
+- Corpus expansion: ≥3 FT-driven MMC1 ROMs, ≥3 FT-driven MMC3 ROMs.
 
 **Acceptance criteria.**
 
-- AC1 — `qlnes audio <ft-mmc1-rom> --engine-mode static` produces
-  byte-identical PCM to the oracle path.
-- AC2 — `bilan.json` shows `tier-1-static: pass` for the FT engine
-  on mapper 1 after `audit`.
-
-**Estimate.** **M** — 2-3 dev-days. Banking is the new wrinkle; the
-core walker from F.3 is reused.
+- AC1 — `qlnes audio <ft-mmc1-rom> --engine-mode in-process` produces
+  byte-identical PCM to oracle path.
+- AC2 — Same for MMC3.
 
 ---
 
-### Story F.5 — Extend FT static walker to mapper 4 (MMC3)
+### F.9 — `coverage` v2 rendering + CI matrix expansion
 
-**User value.** FT ROMs on MMC3 (Battle Kid, certain NES Maker games)
-work without FCEUX.
+**User value.** Marco/Lin/Sara see the static/oracle split. CI
+catches Windows + macOS regressions. FCEUX-free CI job verifies the
+hard-fail path.
 
-**FRs closed.** Closes FR43.
+**Estimate.** **M** (2-3 dev-days).
 
-**Pre-conditions.** F.4 done.
+**Pre-conditions.** F.6 + F.7.
 
 **Embedded scaffolding.**
 
-- `famitracker_static.py` — MMC3-specific banking. MMC3 also has IRQ
-  scanline counter that the FT player rarely uses but might affect
-  per-frame timing on edge cases.
+- `qlnes/coverage/render.py` — v2 table format with in-process vs
+  oracle columns.
+- `.github/workflows/test.yml` — matrix gain (Linux + macOS-13 +
+  windows-2022). New job `fceux-free` (Linux + `apt remove fceux`).
 
 **Acceptance criteria.**
 
-- AC1 — `qlnes audio <ft-mmc3-rom> --engine-mode static` produces
-  byte-identical PCM to the oracle path on the FT-MMC3 corpus subset.
-- AC2 — Static-vs-oracle `tier-1-static` rate hits 100 % on FT for
-  mappers 0, 1, 4.
-
-**Estimate.** **M** — 2-3 dev-days.
+- AC1 — `qlnes coverage` v2 table shows the split.
+- AC2 — `qlnes coverage --format json` emits v2 schema.
+- AC3 — CI Windows job green on F.3+F.4+F.5 stories.
+- AC4 — CI fceux-free job green: in-process path works without fceux.
 
 ---
 
-### Story F.6 — `coverage` v2 rendering + CI matrix expansion
+### F.10 — Documentation + changelog + tag v0.6.0
 
-**User value.** Marco/Lin/Sara see at a glance which engines are
-static-covered vs oracle-only. CI catches Windows / macOS regressions.
+**User value.** Users upgrading read the changelog. New users read
+the README and pick the install path that fits.
 
-**FRs closed.** FR51, FR52.
+**Estimate.** **S** (1 dev-day).
 
-**NFRs touched.** NFR-PORT-81 (CI matrix gains macOS-13 + windows-2022).
-
-**Pre-conditions.** F.2 (schema v2) + F.3 (so static-covered engines
-exist in bilan).
+**Pre-conditions.** F.9.
 
 **Embedded scaffolding.**
 
-- `qlnes/coverage/render.py` — table format with `static_engines` /
-  `oracle_engines` columns.
-- `.github/workflows/test.yml` — matrix expansion: ubuntu-22.04,
-  macos-13, windows-2022. The Windows job runs only the
-  static-walker tests (no FCEUX install).
-- New job in `.github/workflows/test.yml`: "fceux-free" — runs on
-  Ubuntu but with `apt remove fceux` first. Asserts the static path
-  works without FCEUX.
+- `README.md` — section "Install" with two paths: minimal (no fceux)
+  and full (with fceux fallback).
+- `CHANGELOG.md` — v0.6.0 entry: `--engine-mode` flag, bilan v1→v2,
+  in-process pipeline, FCEUX dependency now optional.
+- Tag `v0.6.0`.
 
 **Acceptance criteria.**
 
-- AC1 — `qlnes coverage` (v2 table) shows the static/oracle split.
-- AC2 — `qlnes coverage --format json` emits the v2 schema.
-- AC3 — CI Windows job is green on F.3+F.4+F.5 stories (FT mapper
-  0/1/4 static walker works on Windows).
-- AC4 — CI fceux-free job: `apt remove fceux && pytest tests/unit
-  tests/integration -k 'not oracle'` is green.
-
-**Estimate.** **M** — 2-3 dev-days.
+- AC1 — README documents install paths and the `--engine-mode` flag.
+- AC2 — CHANGELOG documents bilan migration + new flag.
+- AC3 — `git tag v0.6.0` pushed.
 
 ---
 
-### Story F.7 — Documentation + changelog migration note
+## Sprint plan update
 
-**User value.** Users upgrading from v0.5 read the changelog and know
-what changed. New users read the README and pick the right install path.
-
-**FRs closed.** None directly; closes the v0.6 epic by polishing.
-
-**Pre-conditions.** F.6 done.
-
-**Embedded scaffolding.**
-
-- `README.md` — section "Install" with two paths: "minimal" (no
-  FCEUX, static-only engines) and "full" (with FCEUX for oracle
-  fallback).
-- `CHANGELOG.md` — v0.6.0 entry with bilan v1→v2 migration note +
-  `--engine-mode` documentation + per-engine static-coverage table.
-- `_bmad-output/planning-artifacts/architecture-v0.6.md` — sign-off
-  marker (this amendment becomes the v0.6 architecture's source of
-  truth alongside the v0.5 doc).
-
-**Acceptance criteria.**
-
-- AC1 — README's "Install" section explicitly mentions FCEUX is
-  optional in v0.6.
-- AC2 — CHANGELOG documents the bilan schema bump + the new
-  `--engine-mode` flag.
-- AC3 — `qlnes coverage` output is showcased in the README with a
-  sample table demonstrating static/oracle columns.
-
-**Estimate.** **S** — 1 dev-day.
-
----
-
-## Sprint Plan Update
-
-Insert *after* sprint 8 (v0.5.0 tag).
+(Inserted after sprint 8 / `v0.5.0` tag.)
 
 | Sprint | Goal | Stories | Estimate (d) |
 |---|---|---|---|
-| 9 | Foundation + RE spike | F.1, F.2 + FT RE spike | 5 + 1.5 (spike) |
-| 10 | FT mapper 0 walker | F.3 (the L story) | 5 |
-| 11 | FT mapper 1 + 4 | F.4, F.5 | 6 |
-| 12 | Polish + docs + tag | F.6, F.7 + v0.6.0 release | 4 |
-| **Total** | | **7 stories** | **~22 dev-days = ~4 weeks** |
+| 9 | Spike + InProcessRunner foundation | F.1 ✓ + F.2 + F.3 | 1 + 5 = 6 |
+| 10 | Engine integration + dispatch | F.4 + F.5 + F.6 + F.7 | 7 |
+| 11 | Multi-mapper support | F.8 | 5 |
+| 12 | Polish + tag | F.9 + F.10 | 4 |
+| **Total** | | **10 stories** | **~22 dev-days = ~4-5 weeks solo** |
 
-Sprint 9 includes a dedicated 12-hour RE spike on the FT player driver
-(R21 mitigation). The spike's deliverable is a written technical note
-that decides F.3's exact bytecode-parser scope before sprint 10 starts.
+Sprint 9 has the perf spike (F.2) before F.3 commits; if py65 is too
+slow, the spike's decision artifact reorients F.3 onto cynes or an
+alternative.
 
 ---
 
-## FR Coverage Matrix (v0.6)
+## FR coverage matrix (v0.6)
 
-The v0.6 PRD has 17 FRs (FR41-FR57). Mapping:
+| FR | Story |
+|---|---|
+| FR41 (FCEUX-free) | F.3 + F.4 |
+| FR42 (byte-equivalent) | F.7 |
+| FR43 (CPU backend choice) | F.2 (spike), F.3 (commits) |
+| FR44 (determinism) | F.3 AC6 |
+| FR45 (Growth multi-mapper) | F.8 |
+| FR46 (--engine-mode flag) | F.5 |
+| FR47 (in-process hard fail) | F.5 |
+| FR48 (oracle compat) | F.5 |
+| FR49 (auto fallback warning) | F.5 |
+| FR50 (bilan v2 schema) | F.6 |
+| FR51 (coverage v2 table) | F.9 |
+| FR52 (release gate) | F.7 |
+| FR53 (pip install no-fceux) | F.3 + F.5 |
 
-| FR | Story | Notes |
-|---|---|---|
-| FR41 | F.1 + F.3 | F.1 lands the framework; F.3 is the first end-to-end |
-| FR42 | F.3 | Byte-equivalence corpus test |
-| FR43 | F.3 (m0), F.4 (m1), F.5 (m4) | Mapper-by-mapper coverage |
-| FR44 | F.3 | Determinism test |
-| FR45 | (Growth) | Out of v0.6 MVP scope |
-| FR46 | F.2 | `--engine-mode` flag |
-| FR47 | F.2 | `static_walker_missing` exit-100 path |
-| FR48 | F.2 | Backward-compat oracle path |
-| FR49 | F.2 | Auto-fallback warning |
-| FR50 | F.2 | bilan v2 schema |
-| FR51 | F.6 | Coverage v2 rendering |
-| FR52 | F.6 | Release gate |
-| FR53 | F.3 | pip install without FCEUX |
-| FR54 | (Vision) | Out of v0.6 MVP scope |
-| FR55 | F.2 + F.3 | Backward-compat (auto mode) |
-| FR56 | F.2 | Backward-compat (oracle mode) |
-| FR57 | F.2 | bilan v1 reader graceful degradation |
-
-13 FRs explicitly mapped to v0.6 MVP stories. 2 FRs deferred (FR45
-Growth, FR54 Vision). FR coverage = 13/13 in v0.6 MVP scope.
+13 FRs explicitly mapped. 2 FRs deferred (Vision-tier, FR54-equiv).
 
 ---
 
 ## Sign-off
 
-This amendment is **READY** to feed into sprint planning when v0.5.0
-is tagged. Sprint 9 starts the v0.6 work; F.1+F.2+RE-spike are the
-sprint-9 entry stories.
+This amendment is **READY** for sprint 9 to begin once `v0.5.0` is
+tagged.
 
 The v0.5 sprint plan (sprints 1-8) is unchanged. v0.6 sprints (9-12)
-are appended.
+are appended. Story F.1 is already done (commit 5cf2c36); sprint 9
+starts at F.2.
 
-**Author:** Claude (Opus 4.7), drafting under
-`bmad-create-epics-and-stories`.
-**Date:** 2026-05-04.
+**Author:** Claude (Opus 4.7), under `bmad-create-epics-and-stories`.
+**Date:** 2026-05-04 (revised).
