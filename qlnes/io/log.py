@@ -1,125 +1,91 @@
-"""qlnes logging infrastructure (stdlib `logging` based).
+"""qlnes logging — thin wrapper around `ulog`.
 
-The canonical user-facing output format is preserved byte-for-byte
-from the pre-logging implementation (`qlnes: error: ...`,
-`qlnes: warning: ...`, plain info lines without prefix). Errors and
-warnings get ANSI colors when `use_color=True`. The exit-code error
-path and structured JSON payloads (FR33/FR34) live in
-`qlnes/io/errors.py::emit` — this module just provides the levelled
-streaming layer underneath.
-
-Usage from CLI commands:
-
-    from qlnes.io.log import setup_logging
-    setup_logging(level="INFO", use_color=True)
-
-    import logging
-    logger = logging.getLogger(__name__)
-    logger.info("rendering 600 frames…")
-    logger.warning("lameenc 1.9.0 outside verified range")
-    logger.error("ROM not found")
-
-`setup_logging` is idempotent (safe to call multiple times in tests).
-The qlnes logger hierarchy is rooted at `"qlnes"`; everything under
-that name (e.g. `"qlnes.audio.renderer"`) inherits the configured
-handler.
+Historically `qlnes/io/log.py` shipped its own custom formatter. Since
+the formatter was generally useful, it was extracted into the
+[ulog](https://github.com/jojo8356/ulog-python) library (vendored under
+`vendor/ulog-python/`). This module is now a 30-line wrapper that
+preserves the v0.5/v0.6 `setup_logging(level, use_color, ...)` API
+the rest of qlnes calls into, and threads in the v0.6-default SQL
+handler so every render persists logs to a SQLite file inspectable by
+`ulog-web` (see `qlnes/io/log.py::DEFAULT_LOG_DB`).
 """
 from __future__ import annotations
 
 import logging
+import os
 import sys
-from typing import Literal
+from pathlib import Path
+from typing import IO, Literal
 
-from ucolor import UColor
-from ucolor.color_mode import ColorMode
+import ulog
 
-LOG_LEVELS: tuple[str, ...] = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
-LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-
-# Per-level styling via ucolor. Plain INFO is uncolored (it's the dominant
-# output and noise reduction wins). The mapping below produces the
-# canonical CLI palette: bold red for errors, yellow for warnings,
-# dim grey for debug.
-_LEVEL_STYLES: dict[int, "object"] = {
-    logging.WARNING: UColor.css("yellow"),
-    logging.ERROR: UColor.css("red").bold(),
-    logging.CRITICAL: UColor.css("red").bold(),
-    logging.DEBUG: UColor.css("grey").dim(),
-}
+# Re-export ulog's level enumeration so callers don't depend on ulog
+# directly — keeps the qlnes API surface stable if we ever swap
+# logging libs again.
+LOG_LEVELS = ulog.LOG_LEVELS
+LogLevel = ulog.LogLevel
 
 
-class _QlnesFormatter(logging.Formatter):
-    """Renders messages as `qlnes: <level>: <message>` for non-INFO,
-    bare `<message>` for INFO. Color decoration applied via ucolor when
-    `use_color=True`; ucolor's auto-detection is bypassed and we force
-    the mode explicitly so the formatter is deterministic regardless of
-    isatty()."""
-
-    def __init__(self, *, use_color: bool) -> None:
-        super().__init__()
-        self._use_color = use_color
-
-    def format(self, record: logging.LogRecord) -> str:
-        msg = record.getMessage()
-        if record.levelno == logging.INFO:
-            # User-visible info lines (success ticks, progress) print
-            # without the "qlnes: info:" decoration — matches the
-            # pre-logging typer.echo output.
-            return msg
-        level_name = record.levelname.lower()
-        prefix = f"qlnes: {level_name}: "
-        if self._use_color:
-            style = _LEVEL_STYLES.get(record.levelno)
-            if style is not None:
-                prefix = style.wrap(prefix)
-        return prefix + msg
+def _default_log_db_path() -> Path:
+    """Where qlnes persists logs by default. v0.6 ships SQLite under
+    `~/.cache/qlnes/last-run.sqlite` (matches the PRD §3.1.3 "Erwan
+    persona" workflow: user reports a bug, we open ulog-web on this
+    file to triage).
+    """
+    cache_dir = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    return cache_dir / "qlnes" / "last-run.sqlite"
 
 
 def setup_logging(
     *,
-    level: LogLevel = "INFO",
+    level: str = "INFO",
     use_color: bool = False,
-    stream=None,
+    stream: IO[str] | None = None,
+    log_db: str | Path | None = None,
+    enable_db: bool = True,
 ) -> None:
-    """Configure the `qlnes` logger hierarchy.
-
-    Idempotent: removes any handlers we previously installed before
-    re-installing. Tests that override the level can call this
-    repeatedly without leaking handlers.
+    """Configure the qlnes logger via ulog.
 
     Args:
-      level: minimum level to emit. CLI flag `--log-level` maps here.
-        `--quiet` clamps to `WARNING`; `--debug` (D.3) sets `DEBUG`.
+      level: minimum log level. Standard `LOG_LEVELS`.
       use_color: ANSI escapes on the level prefix. CLI's `--color
         {auto,always,never}` resolves this.
-      stream: defaults to `sys.stderr` (where qlnes always writes).
-        Test fixtures inject a StringIO when they need to capture.
+      stream: defaults to `sys.stderr`.
+      log_db: path to the SQLite file persisting log records. None
+        falls back to `~/.cache/qlnes/last-run.sqlite`. Inspect with
+        `ulog-web <path>` (see `qlnes/io/log.py` docstring).
+      enable_db: when False, only the stream handler is installed —
+        pipeline-mode users on read-only filesystems can opt out.
     """
-    if level not in LOG_LEVELS:
-        raise ValueError(
-            f"unknown log level {level!r}; valid: {', '.join(LOG_LEVELS)}"
-        )
+    color = "always" if use_color else "never"
+    handlers: list[str] = ["stream"]
+    if enable_db:
+        handlers.append("sql")
 
-    # Lock ucolor's mode to match our `use_color` decision so the
-    # formatter is deterministic regardless of TTY detection state.
-    UColor.force_mode(ColorMode.TRUE_COLOR if use_color else ColorMode.NONE)
+    db_path = Path(log_db) if log_db is not None else _default_log_db_path()
+    if enable_db:
+        # Make sure the parent dir exists before SQLAlchemy tries to
+        # open the DB; `Path.mkdir(exist_ok=True)` is idempotent.
+        db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    logger = logging.getLogger("qlnes")
-    # Drop any previous qlnes-installed handler — keeps idempotency.
-    for h in list(logger.handlers):
-        if getattr(h, "_qlnes_managed", False):
-            logger.removeHandler(h)
-
-    handler = logging.StreamHandler(stream or sys.stderr)
-    handler.setFormatter(_QlnesFormatter(use_color=use_color))
-    handler._qlnes_managed = True  # type: ignore[attr-defined]
-    logger.addHandler(handler)
-    logger.setLevel(level)
-    # Don't bubble up to the root logger; qlnes runs as a CLI app and
-    # we don't want consumers' configurations to double-print.
-    logger.propagate = False
+    ulog.setup(
+        level=level,
+        format="qlnes",
+        color=color,
+        stream=stream if stream is not None else sys.stderr,
+        handlers=handlers,
+        sql_url=f"sqlite:///{db_path}",
+        sql_batch_size=50,  # smaller batch than default to flush errors faster
+        prefix="qlnes",
+    )
 
 
 def get_logger(name: str = "qlnes") -> logging.Logger:
     """Convenience for modules that want `logger = get_logger(__name__)`."""
-    return logging.getLogger(name)
+    return ulog.get_logger(name)
+
+
+def default_log_db_path() -> Path:
+    """Public access to the default log DB path — used by `qlnes audio`
+    to print the inspection hint at the end of a run."""
+    return _default_log_db_path()

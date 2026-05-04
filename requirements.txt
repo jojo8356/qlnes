@@ -9,3 +9,11 @@ lameenc>=1.8.0,<1.9
 # `pip install -e ./vendor/ucolor-python` (or use the project's install script).
 # It's a pure-Python package with zero runtime deps.
 -e ./vendor/ucolor-python
+
+# `ulog` (jojo8356/ulog-python) — stdlib logging upgraded with sensible
+# defaults, ucolor formatters, SQL/JSON/CSV storage handlers, and a
+# Django + Tailwind inspection UI (`ulog-web`). Lives at
+# vendor/ulog-python/ as a git submodule.
+# Extras `[storage]` brings sqlalchemy (needed by SQLHandler);
+# extras `[web]` brings django (needed by `ulog-web` to inspect logs).
+-e ./vendor/ulog-python[storage,web]

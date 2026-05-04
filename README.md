@@ -181,18 +181,40 @@ Ce projet est librement réutilisable sous MIT. Composants tiers :
 
 ## Submodules git
 
-`qlnes` embarque ses dépendances vendored sous `vendor/`. Une seule est un
-**submodule git** (lien virtuel cloné à part), pour ne pas dupliquer le code
-sur GitHub :
+`qlnes` embarque ses dépendances vendored sous `vendor/`. Deux sont des
+**submodules git** (liens virtuels clonés à part), pour ne pas dupliquer
+le code sur GitHub :
 
 | Submodule | Repo | Init |
 |---|---|---|
 | `vendor/ucolor-python/` | [github.com/jojo8356/ucolor-python](https://github.com/jojo8356/ucolor-python) | `git submodule update --init --recursive` |
+| `vendor/ulog-python/`   | [github.com/jojo8356/ulog-python](https://github.com/jojo8356/ulog-python) | (idem — récursif récupère aussi le ucolor transitif) |
 
-Au premier clone : `git clone --recursive <qlnes-url>` rapatrie aussi le
-submodule. Sur un clone existant non-recursive : la commande ci-dessus
-l'initialise. Mise à jour du submodule à un commit plus récent :
-`cd vendor/ucolor-python && git pull origin master && cd ../.. && git add vendor/ucolor-python && git commit -m "bump ucolor"`.
+Au premier clone : `git clone --recursive <qlnes-url>` rapatrie tous les
+submodules. Sur un clone existant non-recursive : la commande ci-dessus
+les initialise. Mise à jour d'un submodule à un commit plus récent :
+`cd vendor/<sub> && git pull origin main && cd ../.. && git add vendor/<sub> && git commit -m "bump <sub>"`.
+
+## Inspection des logs (`ulog-web`)
+
+Chaque run de `qlnes audio …` persiste ses logs dans
+**`~/.cache/qlnes/last-run.sqlite`** via le `SQLHandler` d'`ulog`. Pour
+ouvrir l'UI Django + Tailwind d'inspection :
+
+```bash
+.venv/bin/ulog-web ~/.cache/qlnes/last-run.sqlite
+```
+
+Un onglet de navigateur s'ouvre sur un port libre (par défaut 127.0.0.1
+seulement). La sidebar gauche permet de filtrer par niveau, secteur
+(arbre logger-prefix `qlnes.audio.renderer` etc.), fichier source,
+plage horaire, et champs bound-context. Cliquer un record ouvre la vue
+détail (JSON pretty-print + traceback éventuel + champs context).
+
+Flags utiles :
+- `--port 8080` : port fixe (défaut : aléatoire)
+- `--no-open` : pas d'auto-ouverture browser (utile en SSH)
+- `--host 0.0.0.0` : exposer sur le réseau (warning sécurité)
 
 ## Sources et inspirations
 
