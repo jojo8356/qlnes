@@ -3,7 +3,7 @@ artifact_type: sprint-plan-and-status
 project_name: qlnes
 mvp_target: v0.5.0 (music workstream)
 date_created: 2026-05-03
-date_updated: 2026-05-03 (A.1 + E.1 merged ; A.2 + D.1 done ; A.3 partial — chunk infra ready, FT-Bxx detection deferred to fixture ROM)
+date_updated: 2026-05-04 (v0.6 PRD + architecture + epics doc merged ; F.1 scaffolding pending)
 created_by: bmad-sprint-planning (SP)
 created_after_readiness: implementation-readiness-report-2026-05-03-pass-2.md (CONDITIONAL_GO, H-1 resolved)
 inputDocuments:
