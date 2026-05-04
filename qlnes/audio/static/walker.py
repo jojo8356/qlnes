@@ -55,7 +55,9 @@ class StaticWalker(SoundEngine):
         Pure function over (rom, song, frames). Must:
           - emit no I/O, no subprocess, no clock, no random source;
           - yield events in monotonic non-decreasing cpu_cycle order;
-          - produce a sequence byte-identical to what FCEUX's trace
-            captures for the same (rom, song, frames) inputs (the
-            equivalence claim, NFR-REL-81).
+          - produce a sequence consistent with the v0.6 in-process
+            runner's trace for the same (rom, song, frames) inputs.
+            (v0.6 is fceux-free per F.2 pass-2; the in-process
+            pipeline is the reference, and a future StaticWalker
+            should match its committed fixtures byte-for-byte.)
         """

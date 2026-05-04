@@ -141,6 +141,7 @@ def test_exit_codes_match_locked_taxonomy():
         "cant_create": 73,
         "io_error": 74,
         "unsupported_mapper": 100,
+        "in_process_unavailable": 100,  # F.5: engine has no in-process support
         "equivalence_failed": 101,
         "missing_reference": 102,
         "interrupted": 130,

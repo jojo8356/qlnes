@@ -1,13 +1,20 @@
 """ApuWriteEvent — canonical interchange format for APU register writes.
 
-Both the v0.5 FCEUX oracle and the v0.6 static walkers ultimately produce
-APU register writes. v0.5 used `qlnes.oracle.fceux.TraceEvent` (4 fields:
-frame, cycle, addr, value — `frame` is bookkeeping for the trace TSV
-format). v0.6 uses this 3-field type, the lean canonical shape consumed
-by the APU emulator.
+Three potential producers feed this type:
+  - v0.5 FCEUX oracle (`qlnes.oracle.fceux`) — historical; v0.6 ships
+    fceux-free per PRD §0 and the F.2 pass-2 decision.
+  - v0.6 in-process runner (`qlnes.audio.in_process.NROMMemory`)
+    — the production path. py65 + observable memory captures every
+    write to $4000-$4017 as `ApuWriteEvent`.
+  - Future StaticWalkers (`qlnes.audio.static.walker.StaticWalker`)
+    — abandoned per-engine bytecode walkers, kept as extension point.
 
-The two coexist; `from_trace_event(t)` converts. The renderer migrates
-to ApuWriteEvent as the canonical type in F.2 (engine-mode wiring).
+v0.5 used `qlnes.oracle.fceux.TraceEvent` (4 fields: frame, cycle,
+addr, value — `frame` was bookkeeping for the trace TSV format).
+v0.6 uses this 3-field type as the lean canonical shape consumed by
+the APU emulator. `from_trace_event(t)` converts the legacy oracle
+events; F.5 (engine-mode dispatch) gates whether the oracle path is
+still reachable.
 """
 
 from __future__ import annotations

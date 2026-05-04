@@ -27,6 +27,7 @@ from ...apu import ApuEmulator
 from ...rom import Rom
 from ..engine import (
     DetectionResult,
+    InProcessUnavailable,
     LoopBoundary,
     PcmStream,
     SongEntry,
@@ -148,6 +149,61 @@ class FamiTrackerEngine(SoundEngine):
         pcm = emu.render_until(cycle=end_cycle)
         return PcmStream(samples=pcm, sample_rate=44_100, loop=None)
 
+    def init_addr(self, rom: Rom, song: SongEntry) -> int:
+        """In-process init = the ROM's reset vector ($FFFC-$FFFD).
+
+        For self-running FT homebrew (Alter Ego, Shiru's stack, most of
+        the v0.5 FT corpus), the reset handler runs the entire game
+        init including audio init. F.7 corpus expansion may surface
+        ROMs where this heuristic doesn't hold; the right place to
+        widen the heuristic is here, behind a per-ROM-fingerprint
+        table or a static signature scan for FamiTone entry symbols.
+
+        Mapper-1+ ROMs raise `InProcessUnavailable` — bank-switching
+        breaks the mapper-0 vector-read trick, and F.5 falls back to
+        the oracle path. F.8 will land MMC1/MMC3 support.
+        """
+        if rom.mapper not in (0, None):
+            raise InProcessUnavailable(self.name)
+        return _read_le16_at_cpu(rom, 0xFFFC)
+
+    def play_addr(self, rom: Rom, song: SongEntry) -> int:
+        """In-process play = the ROM's NMI vector ($FFFA-$FFFB).
+
+        The NMI handler is what runs at 60 Hz on real hardware, and for
+        FT-driven ROMs it is what calls FamiTone's play routine.
+
+        Mapper-1+ ROMs raise `InProcessUnavailable` (see init_addr).
+        """
+        if rom.mapper not in (0, None):
+            raise InProcessUnavailable(self.name)
+        return _read_le16_at_cpu(rom, 0xFFFA)
+
     def detect_loop(self, song: SongEntry, pcm: PcmStream) -> LoopBoundary | None:
         # A.3 implements FT `Bxx` opcode parsing. A.1 returns no loop boundary.
         return None
+
+
+def _read_le16_at_cpu(rom: Rom, cpu_addr: int) -> int:
+    """Read a little-endian uint16 from CPU address `cpu_addr` (mapper 0).
+
+    NROM PRG maps to $8000-$FFFF. 32 KB PRG occupies the full 32 KB;
+    16 KB PRG mirrors at $8000 and $C000. cpu_addr must lie in
+    [0x8000, 0xFFFF].
+    """
+    if not 0x8000 <= cpu_addr <= 0xFFFE:
+        raise ValueError(
+            f"cpu_addr {cpu_addr:#x} out of NROM PRG range "
+            f"$8000-$FFFE (need 2 bytes)"
+        )
+    prg = rom.prg if rom.header is not None else rom.raw
+    if len(prg) == 0x4000:
+        # NROM-128: 16 KB PRG mirrored. Both $8xxx and $Cxxx map to same offset.
+        offset = (cpu_addr - 0x8000) & 0x3FFF
+    elif len(prg) == 0x8000:
+        offset = cpu_addr - 0x8000
+    else:
+        raise ValueError(f"NROM PRG must be 16 or 32 KB; got {len(prg)} bytes")
+    lo = prg[offset]
+    hi = prg[offset + 1]
+    return lo | (hi << 8)

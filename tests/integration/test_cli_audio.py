@@ -121,7 +121,12 @@ def test_audio_unsupported_mapper_exits_100(tmp_path):
 
 
 def test_audio_no_fceux_exits_70(tmp_path):
-    """If fceux is absent, pre-flight emits internal_error (70)."""
+    """If fceux is absent, pre-flight emits internal_error (70).
+
+    F.5 made the fceux preflight conditional on `--engine-mode oracle`;
+    we pass it explicitly so this v0.5-compat test still exercises the
+    preflight path.
+    """
     rom = tmp_path / "rom.nes"
     rom.write_bytes(_make_minimal_ines_rom_with_signature())
     # Hide fceux by setting PATH to a directory we know lacks it.
@@ -130,6 +135,7 @@ def test_audio_no_fceux_exits_70(tmp_path):
         str(rom),
         "-o",
         str(tmp_path / "out"),
+        "--engine-mode", "oracle",
         env_extra={"PATH": str(tmp_path)},
     )
     assert res.returncode == 70
@@ -146,6 +152,7 @@ def test_audio_no_hints_strips_hint_under_internal_error(tmp_path):
         str(rom),
         "-o",
         str(tmp_path / "out"),
+        "--engine-mode", "oracle",  # F.5: trigger fceux preflight
         "--no-hints",
         env_extra={"PATH": str(tmp_path)},
     )
