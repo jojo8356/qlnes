@@ -17,3 +17,7 @@ lameenc>=1.8.0,<1.9
 # Extras `[storage]` brings sqlalchemy (needed by SQLHandler);
 # extras `[web]` brings django (needed by `ulog-web` to inspect logs).
 -e ./vendor/ulog-python[storage,web]
+# `django-lucide` — lucide-icons SVG rendering as Django template tags
+# {% lucide "name" size=… class="…" %}. Used by the ulog Django UI for
+# every visual icon; renders inline SVGs with currentColor (theme-aware).
+django-lucide>=1.3.0
