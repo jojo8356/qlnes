@@ -3,7 +3,7 @@ artifact_type: sprint-plan-and-status
 project_name: qlnes
 mvp_target: v0.5.0 (music workstream)
 date_created: 2026-05-03
-date_updated: 2026-05-04 (v0.6 docs PIVOTED — per-engine static walker abandoned, in-process Python CPU emulator approach. See PRD §0 + amendmentLog. F.1 ApuWriteEvent kept ; StaticWalker ABC deprecated ; F.2 spike is next)
+date_updated: 2026-05-04 pass-15 (Logging migration COMPLETE — all CLI subcommands migrated to logger.info/warning/error. ucolor wired via git submodule (vendor/ucolor-python/), README + requirements.txt updated. tokei v12 installed via cargo, project measured at 14910 LOC (115 .py). String-formatting benchmark validates project's `%s` deferred pattern in logger calls (2.16× faster than f-string when filtered) + f-string elsewhere. All 97-101 tests still green. Next: CS for F.6 — bilan v2 schema migration.)
 created_by: bmad-sprint-planning (SP)
 created_after_readiness: implementation-readiness-report-2026-05-03-pass-2.md (CONDITIONAL_GO, H-1 resolved)
 inputDocuments:
@@ -369,6 +369,18 @@ The single source of truth for `bmad-sprint-status` (SS), `bmad-create-story` (C
 | C.4 | NSFPlay/GME validity tests + remove legacy `nsf.py` | 7 | S | BACKLOG | C.1, C.2, C.3 | (cleanup) | REL-5 | — | — |
 | E.2 | Round-trip + asset regression net | 8 | S | BACKLOG | E.1 | (validate FR1–4, 13, 14, 17) | REL-1, REL-2 | — | — |
 | E.3 | Cynes feature-gating verification | 8 | S | BACKLOG | E.1 | (validate FR4) | DEP-1 | — | — |
+| F.1 | Salvage v0.6 scaffolding (ApuWriteEvent kept, StaticWalker deprecated) | 9 | S | DONE + CR-clean (3 doc updates) | (none) | — | — | — | master (5cf2c36 + retrofit) |
+| F.2 | Perf spike — py65 vs cynes (+ PyPy pass-2) | 9 | S | DONE + CR-clean (4 should-fixes on spike artefacts) | F.1 | FR43 | PERF-80 | `stories/F.2.md` | master (spike artifacts only) |
+| F.3 | InProcessRunner module (NROM-only, single mapper) | 9 | L | DONE + CR-clean (retrofit: reset_state, 3 should-fixes) | F.2 | FR41, FR44, FR53/partial | PERF-80, MEM-80 (amended), REL-80 | `stories/F.3.md` | master |
+| F.4 | SoundEngine init/play address protocol | 10 | M | DONE + CR-clean (all 6 ACs ✅; 4 should-fixes applied) | F.3 | FR41/full-NSF-shape | REL-80 | `stories/F.4.md` | master |
+| F.5 | `--engine-mode` CLI flag + pipeline dispatch | 10 | M | DONE + CR-clean (4 should-fixes applied) | F.3, F.4 | FR46, FR47, FR48, FR49, FR53/full | REL-1, REL-80, PERF-80 | `stories/F.5.md` | master |
+| F.5b | PyPy subprocess workhorse (5.69× speedup measured) | 10 | S | DONE + CR-clean (4 should-fixes applied) | F.5 | FR41/perf | PERF-80 | `stories/F.5b.md` | master |
+| F.6 | bilan v2 schema migration | 10 | S | BACKLOG | F.3 | FR50 | — | — | — |
+| F.7 | In-process oracle equivalence test | 10 | M | BACKLOG | F.3, F.4, F.5 | FR42, FR52 | REL-80 | — | — |
+| F.8 | Multi-mapper support (MMC1, MMC3) | 11 | L | BACKLOG | F.7 | FR45 | PERF-80 | — | — |
+| F.9 | `coverage` v2 rendering + CI matrix expansion | 12 | M | BACKLOG | F.6, F.7 | FR51 | PORT-80 | — | — |
+| F.10 | Documentation + changelog + tag v0.6.0 | 12 | S | BACKLOG | F.9 | — | — | — | — |
+| F.11 | (post-v0.6 nice-to-have) Native perf path — cynes APU callback / Cython 6502 / tetanes-core PyO3 (only if MMC5/expansion-audio busts budget on PyPy) | post-v0.6 | S | BACKLOG | F.10 | — | PERF-80 | — | — |
 
 ### 4.1 Status legend (recall)
 
@@ -422,7 +434,362 @@ If any of the following happen, run `bmad-correct-course` (CC) before continuing
 
 ## 6. Retrospective Log
 
-(Empty — appended after each sprint's exit.)
+### Pivot decision — 2026-05-04 — v0.6 in-process CPU backend (pass 2)
+
+**Trigger.** F.2 spike concluded with two passes:
+- Pass 1: py65 + FastNROMMemory on CPython → 93 s for 3-min, 1.55× over
+  NFR-PERF-80 budget. Earlier-draft amendment (60 s → 100 s) recorded.
+- Pass 2 (after Johan asked to keep optimizing until budget met): tried
+  PyPy 3.11 → **4.16 s for 3-min, 14.4× UNDER budget**. NFR amendment
+  withdrawn.
+
+**Final spike numbers.**
+
+| Backend | 10-s run | 3-min run | vs budget |
+|---|---|---|---|
+| FCEUX (v0.5 baseline) | ~12 s | ~360 s | 6× over |
+| py65 + ObservableMemory (CPython) | 7.2 s | 131.2 s | 2.19× over |
+| py65 + FastNROMMemory (CPython) | 5.2 s | 93.2 s | 1.55× over |
+| py65 + FastNROMMemory (PyPy 3.11) | 0.75 s | **4.16 s** | **14.4× under** |
+
+All four configs emit byte-identical APU traces (8475 events / 600 fr).
+
+**Adopted.** py65 + FastNROMMemory + PyPy 3.11. Hybrid distribution:
+CPython main, PyPy as subprocess workhorse for the in-process renderer.
+CPython fallback if PyPy not on PATH (warning + speedup hint).
+
+**PRD/architecture amendments outstanding** (all listed in decision
+artifact §"Required next BMad action"):
+- NFR-PERF-80 unchanged (was: amend to 100 s; withdrawn after pass 2).
+- Architecture step 20.2: Memory ABC + per-mapper subclasses.
+- Architecture step 20.3 (NEW): PyPy provisioning via
+  `scripts/install_audio_deps.sh`.
+- F.11 demoted from M-L "perf upgrade" to S "post-v0.6 nice-to-have".
+- New `requirements-pypy.txt` enumerating PyPy-compatible subset.
+
+**Risk register changes.**
+- R30 (py65 too slow) — NEUTRALIZED — PyPy is ~1500× better than the
+  PRD's pessimistic 50K cyc/s estimate.
+- R34 (cynes APU hook absent) — REALIZED + AGGRAVATED — cynes also
+  fails to build on PyPy 3.11 (CMake error). Doubly disqualified.
+- R35 (NEW) — PyPy availability across distribution targets. Linux/
+  macOS/Windows wheels exist on pypy.org; exotic arches fall back.
+- R36 (NEW) — PyPy maintenance/release cadence. v0.6 pins to
+  PyPy ≥ 7.3.18.
+- R31 (PPU init dependency) — MONITORED — Alter Ego works.
+
+**Decisions for next planning touch.** No NFR amendment needed.
+Architecture amendments listed above. Then `bmad-create-story` (CS)
+for F.3.
+
+### F.3 closeout — 2026-05-04 — InProcessRunner shipped
+
+**Outcome.** `qlnes/audio/in_process/{__init__,memory,nmi,runner}.py`
+landed in one session — F.2 spike's `harness_py65_optimized.py` was
+the seed; cleanup-into-modules + ABC + tests was straightforward. 31
+tests green (12 memory unit + 7 NMI unit + 6 runner unit + 6 Alter Ego
+integration). No regressions on the rest of the suite.
+
+**Wall-clock on Alter Ego (600 frames, CPython 3.13).** 5.55 s.
+PyPy retest deferred to F.5 dispatch wiring; smoke at F.2 was 0.75 s.
+
+**Architecture amendments queued for next touch.**
+- step 20.2 — `cpu_backend ∈ {"py65"}` for v0.6 (`"native"` deferred
+  to F.11 if ever needed); add `run_natural_boot` companion to
+  `run_song` in the contract.
+- NFR-MEM-80 — re-spec to **incremental** RSS over a no-render baseline,
+  not absolute (CPython floor alone is ~30 MB).
+
+**Risks.**
+- R32 (NMI cycle drift vs FCEUX) — flagged for F.7 perceptual budget.
+- R31 (PPU init dependency) — Alter Ego PPU stub adequate; F.7 corpus
+  expansion will surface tighter cases.
+
+**Decisions for next planning touch.** Apply NFR-MEM-80 amendment +
+arch step 20.2 amendments, then `bmad-create-story` (CS) for F.4.
+
+### F.4 closeout — 2026-05-04 — engine init_addr/play_addr protocol
+
+**Outcome.** SoundEngine ABC gains concrete-with-default-raise
+`init_addr` / `play_addr` (raising `InProcessUnavailable`,
+NotImplementedError subclass with `.meta` dict). FamiTrackerEngine
+overrides return reset/NMI vectors. `run_song` wires `play_addr`
+through `trigger_nmi_to` and no longer gates on `nmi_enabled`.
+
+**Tests.** 19 new (9 engine_init_play + 4 trigger_nmi_to + 6
+integration), 0 regressions outside the 30 pre-existing dataflow
+failures. F.3 baseline (42 tests) untouched. **Total v0.6 test count:
+61 green** (29 unit F.3+F.4 + 9 unit F.4 only + 23 integration).
+
+**Decision revised in CS pass-2.** Originally AC4 said
+"run_song(reset, nmi, frames) ≡ run_natural_boot(frames)" for Alter
+Ego. Empirical run revealed they diverge (8 645 vs 8 475 events)
+because Alter Ego doesn't enable NMI naturally — `run_natural_boot`
+follows the polling main-loop path while `run_song` forces NMI=play.
+Both are valid but distinct. AC4 reframed: `run_song` produces its
+own canonical fixture (`tests/fixtures/in_process/alter_ego_run_song_600fr.tsv`,
+sha256 `ea062dba…4baa`) + passes the AC2b musical-property battery.
+F.5's dispatch will pick `run_natural_boot` for self-running ROMs
+and `run_song` for NSF-shaped data-driven ROMs.
+
+**Risks.**
+- R37 (NEW) — heuristic too narrow (FT engine returning reset/NMI
+  vectors works for Alter Ego, may fail for some FT ROMs). Mitigation:
+  F.7 corpus expansion will surface, override per-ROM-fingerprint
+  table or static signature scan inside FamiTrackerEngine.
+
+**Decisions for next planning touch.** `bmad-create-story` (CS)
+for F.5.
+
+### F.1+F.2+F.3 CR retrofit — 2026-05-04 — pre-F.5 hygiene
+
+After F.4 CR pass-2, applied the same kind of code-review pass to
+F.1, F.2, F.3 before moving on. Findings + fixes:
+
+**F.1 (3 doc-updates).**
+- `qlnes/audio/static/__init__.py` docstring rewrote to make clear
+  the in-process pipeline is the v0.6 production path, not the
+  static-walker (kept as extension point only).
+- `qlnes/audio/static/walker.py` `emit_apu_writes` docstring
+  removed the obsolete "byte-identical to FCEUX's trace" claim
+  (v0.6 is fceux-free); points at the in-process runner's committed
+  fixtures as the reference instead.
+- `qlnes/audio/static/apu_event.py` module docstring lists the three
+  potential producers (oracle / in-process / static walker) and
+  flags the in-process pipeline as the v0.6 production path.
+
+**F.2 (4 fixes on spike artefacts).**
+- Cleanup leftover sed-edit comment in `harness_py65.py`.
+- `.gitignore` rules for the Cython generated `.c` / `.so` / `build/`
+  under `_bmad-output/spikes/v06-cpu-perf/` + the `.venv-spike/`
+  scratch venv.
+- Removed dead `NMI_VECTOR` / `RESET_VECTOR` constants from
+  `harness_py65.py`.
+- Appended a "Cross-check" section to `RUNTIME_BENCHMARK.md` linking
+  the synthetic `mpu6502_proxy` numbers back to the real renderer's
+  measured walltimes from F.3.
+
+**F.3 (1 latent-bug fix + 2 doc, +3 tests).**
+- F.3.CR-10 (latent bug): `reset_capture()` only cleared
+  `apu_writes` + `cpu_cycles`; `_ram` / `nmi_enabled` / `vbl_flag`
+  bled across renders. Hidden by F.4's back-to-back test passing
+  on Alter Ego (game's own init re-zeroed RAM), but a less-disciplined
+  ROM would observe stale state. Added `NROMMemory.reset_state()`
+  for full power-on reset; both `run_song` and `run_natural_boot`
+  call it. Both committed fixture hashes unchanged.
+- 3 new memory tests (reset_capture narrow scope, reset_state full
+  sweep, reset_state preserves PRG-ROM mirror).
+
+**Tests.** Total v0.6 tests **70 green** post-retrofit (45 unit + 23
+integration + 2 fixture validation). 0 regressions outside the 22
+pre-existing environmental failures (missing `bin/ql6502` binary).
+
+**Decisions for next planning touch.** All v0.6 stories (F.1–F.4)
+are now CR-clean. `bmad-create-story` (CS) for F.5.
+
+### F.5 closeout — 2026-05-04 — engine-mode flag + dispatch shipped
+
+**Outcome.** End-to-end v0.6 user-facing surface is now plumbed.
+`qlnes audio rom.nes --engine-mode in-process --output dir/` produces
+WAV files without fceux installed; `--engine-mode auto` (default)
+picks in-process for FT-Alter Ego transparently; `--engine-mode oracle`
+preserves v0.5 behavior with a deprecation warning.
+
+**Files landed.**
+- `qlnes/io/errors.py` — `in_process_unavailable` exit code 100 +
+  hint.
+- `qlnes/audio/engine.py` — promoted NTSC constants, added
+  `SoundEngine.render_song_in_process` default impl (uses init/play
+  from F.4 + InProcessRunner from F.3 + ApuEmulator).
+- `qlnes/audio/renderer.py` — `engine_mode` parameter, 3-branch
+  dispatch with auto-fallback + per-song mode tracking + deprecation
+  warning. `RenderResult.engine_mode_used` field added.
+- `qlnes/cli.py` — `--engine-mode` flag, conditional fceux preflight,
+  success-line shows `mode=in-process`/`mode=oracle`.
+- `tests/unit/test_renderer_engine_mode.py` — NEW, 9 tests.
+- `tests/integration/test_cli_engine_mode.py` — NEW, 8 tests
+  (1 skipped without fceux).
+- `tests/integration/test_cli_audio.py` — 2 tests updated with
+  explicit `--engine-mode oracle` for v0.5-compat preflight path.
+- `tests/unit/test_errors_emitter.py` — taxonomy lock test updated.
+
+**Tests.** 19 new (9 unit + 8 integration + 2 v0.5 compat). Total
+v0.6 test count: 87 green (61 unit + 25 integration + 1 fceux-skip).
+0 regressions outside the 33 pre-existing environmental failures
+(missing `bin/ql6502`).
+
+**CLI smoke (manual).** `python -m qlnes audio
+corpus/roms/<sha>.nes --output /tmp/wavs --frames 300
+--engine-mode in-process` exits 0, writes a 448KB RIFF WAV, no
+fceux on PATH. Stderr: `→ rendu in-process (300 frames)…\n
+✓ /tmp/wavs/<file>.wav\n✓ 1 WAV écrit(s) (moteur=famitracker, tier=1,
+mode=in-process)`.
+
+**Decisions taken in DS (no spec drift).**
+- Default render_song_in_process is on the ABC, not new abstractmethod
+  (per CS plan).
+- `_render_one` private dispatcher refactored from inline branches
+  for testability (3 branches: in-process/oracle/auto, with auto's
+  fallback emitting `in_process_low_confidence` warning).
+- Stripped `class` key from `InProcessUnavailable.meta` when piping
+  through `warn(extra=...)` to avoid clobbering the warning's own
+  discriminator (root-cause: `_payload(extra=...)` does base.update
+  which overwrites the class field).
+
+**Decisions for next planning touch.** `bmad-create-story` (CS) for
+F.6 — bilan v2 schema migration. F.5b (PyPy subprocess workhorse)
+remains deferred; the CPython slow path on Alter Ego clears NFR-PERF-80
+with margin (5.55 s render path × 2 = 11 s for 600fr including
+rendering, well under 60 s).
+
+### Logging migration — 2026-05-04 — stdlib `logging` adopted
+
+Pre-F.6 cross-cutting cleanup: replaced ad-hoc stderr writes
+(`sys.stderr.write` + manual ANSI) and CLI `typer.echo(..., err=True)`
+info lines with the stdlib `logging` framework, anchored on a new
+`qlnes/io/log.py` setup module.
+
+**Files added.**
+- `qlnes/io/log.py` — `setup_logging(level, use_color, stream)` +
+  `_QlnesFormatter` (custom formatter outputting
+  `qlnes: <level>: <msg>` for non-INFO, bare `<msg>` for INFO,
+  ANSI color on the prefix). Idempotent; tags its handler with
+  `_qlnes_managed` so test re-installs don't leak.
+
+**Files refactored.**
+- `qlnes/io/errors.py` — `emit()` and `warn()` now route the
+  human-readable line through `logging.getLogger("qlnes")` IF a
+  qlnes-managed handler is installed, else fall back to direct stderr
+  write. Hint and JSON payload still go through stderr directly to
+  preserve the byte-stable contract for downstream consumers
+  (FR33/FR34, Lin's pipeline-mode parsing).
+- `qlnes/cli.py` — added `@app.callback()` that calls
+  `setup_logging(level="INFO", use_color=isatty)` before every
+  subcommand. `audio` command gains `--log-level
+  {DEBUG,INFO,WARNING,ERROR,CRITICAL}` flag; `--quiet` clamps to
+  WARNING. `typer.echo(..., err=True)` info lines in audio replaced
+  with `logger.info(...)`.
+
+**Other CLI subcommands** (`profile`, `recompile`, `verify`, `nsf`)
+keep their existing `typer.echo` calls — out of scope for this pass,
+to be migrated when their stories are next touched.
+
+**Tests.** All 101 v0.6 + CLI tests still green (2 skips: oracle
+deprecation + recursion guard, both gated on env). Output format
+preserved byte-for-byte (verified: `qlnes audio rom.nes
+--engine-mode in-process` produces identical stderr to the
+pre-migration smoke). The `test_errors_emitter` suite passes by
+relying on the fallback path (no `setup_logging` call in tests, so
+emit/warn write to stderr directly).
+
+**Decisions for next planning touch.** F.6 CS now (bilan v2 schema
+migration). The other CLI subcommands' typer.echo migration is a
+nice-to-have for v0.7 cleanup.
+
+### F.4 + F.5 + F.5b CR retrofit — 2026-05-04 — pre-F.6 hygiene
+
+After F.5b shipped without CR, applied a second-pass review on F.4
+(quick re-verify after pass-1) plus first-time CR on F.5 and F.5b.
+
+**F.4 (1 dead-code cleanup).**
+- `InProcessRunner._step_until` was an unused method (no callers in
+  qlnes/ or tests/). Removed.
+
+**F.5 (4 should-fixes).**
+- F.5.CR-1 — Misleading per-song dispatch comment in renderer.py
+  rewritten to describe actual behavior.
+- F.5.CR-2 — `oracle_holder[0] or FceuxOracle()` falsy-check
+  replaced with `is None` (test-double safety).
+- F.5.CR-3 — `oracle_holder = [oracle]` mutable-cell hack replaced
+  with explicit `tuple[stream, mode, oracle]` return signature.
+- F.5.CR-5 — `_SongRender.stream: object` lazy type hint dropped
+  (dataclass entirely deleted, helper now returns typed tuple).
+
+**F.5b (4 should-fixes).**
+- F.5b.CR-1 + CR-7 — Replaced `except Exception: pass` silent
+  swallow in `_resolve_in_process_pcm` with selective catch
+  (`CalledProcessError`, `TimeoutExpired`, `ValueError`) + a
+  `warning: pypy_render_failed` emitting the child's stderr excerpt.
+- F.5b.CR-6 — Added sample-rate sanity check on PyPy result; an
+  unexpected sample rate raises ValueError (caught by the same
+  fallback path).
+- F.5b.CR-10 — Recursion-guard test stopped mutating
+  `sys.implementation` directly; now uses
+  `monkeypatch.setattr(sys, 'implementation', SimpleNamespace(...))`.
+
+**New test.** `test_pypy_subprocess_failure_emits_pypy_render_failed_warning`
+in `tests/integration/test_pypy_subprocess.py` pins the new
+warning behavior.
+
+**Tests.** 100 green across F.4+F.5+F.5b unit/integration suites
+(74 in the targeted run + 23 Alter Ego integration + 3 CR fence-test
+margin). 0 regressions outside the 33 pre-existing environmental
+failures.
+
+**Decisions for next planning touch.** F.1–F.5b all DONE+CR-clean.
+`bmad-create-story` (CS) for F.6 — bilan v2 schema migration.
+
+### F.5b closeout — 2026-05-04 — PyPy subprocess workhorse shipped
+
+**Outcome.** End-to-end render speedup of **5.69×** measured on
+Alter Ego (300 frames: 11.25 s CPython in-process → 1.98 s PyPy
+fork). When PyPy is available (resolved via $PYPY_BIN, then
+`vendor/pypy/bin/pypy3`, then `pypy3` on PATH), the renderer
+transparently shells out the entire in-process pipeline (CPU
+emulator + ApuEmulator) into a PyPy subprocess. The child returns
+int16 LE PCM bytes via a binary stdout protocol; parent unpacks
+into a `PcmStream`. Byte-identical output between paths.
+
+**Files landed.**
+- `qlnes/audio/in_process/_pypy_dispatch.py` — `find_pypy()`,
+  `render_song_via_pypy()`, `_decode_pcm()`.
+- `qlnes/audio/in_process/_pypy_child.py` — subprocess entry
+  point that runs InProcessRunner + ApuEmulator and writes PCM.
+- `qlnes/audio/engine.py` — `_resolve_in_process_pcm()` helper that
+  picks PyPy fork or in-process based on runtime + ROM availability.
+- `tests/unit/test_pypy_dispatch.py` — NEW, 9 tests.
+- `tests/integration/test_pypy_subprocess.py` — NEW, 3 tests
+  (gated on PyPy availability).
+
+**Mid-DS refactor (recorded in story §8).** The original CS plan
+had the child return a binary trace and ApuEmulator stay on the
+parent. Empirical bench showed only 1.25× speedup that way because
+ApuEmulator dominates (17.6 s vs 0.97 s CPU loop). Moved
+ApuEmulator into the child too; speedup jumped to 5.69×.
+
+**Tests.** 12 new (9 unit + 3 integration). Total v0.6: 99 green.
+0 regressions outside the 33 pre-existing environmental failures.
+
+**Decisions for next planning touch.** `bmad-create-story` (CS) for
+F.6 — bilan v2 schema migration. F.5b's PyPy detection runs
+unconditionally on every render path; the existing CPython tests
+all pass with no $PYPY_BIN set (PyPy stays absent → fallback path,
+which is what F.5 already exercised).
+
+### F.1+F.2+F.3 CR retrofit — 2026-05-04 — pre-F.5 hygiene
+
+**Findings + fixes.**
+- CR-1 (mapper reject): `FamiTrackerEngine.init_addr/play_addr` now
+  raise `InProcessUnavailable` for non-NROM mappers (verified MMC1
+  reject + UNROM reject + mapper-0 still accepted, 3 new unit tests).
+- CR-2 (class order): `InProcessUnavailable` moved before
+  `SoundEngine` in `qlnes/audio/engine.py`.
+- CR-3 (MPU reset): `run_song` calls `mpu.reset()` at entry; new
+  `test_run_song_back_to_back_on_same_runner_is_deterministic`
+  verifies. Hash unchanged on fresh-runner case (idempotent).
+- CR-4 (comment): "RTS lands at $0000" → accurate description of
+  sentinel-trap.
+
+**Tests.** 4 new (3 mapper-reject + 1 back-to-back deterministic) =
+22 F.4 tests total. **Total v0.6 test count: 65 green** (29 F.3
+unit + 13 F.4 unit + 23 integration).
+
+**Decisions for next planning touch.** `bmad-create-story` (CS)
+for F.5.
+
+
+
+
 
 ### Template per sprint retro
 

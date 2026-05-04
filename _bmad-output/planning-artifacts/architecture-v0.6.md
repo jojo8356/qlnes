@@ -236,7 +236,7 @@ mirror in observable memory).
 |---|---|---|
 | NFR-PERF-80 | In-process CPU emulator + observable APU memory | F.2 spike + `tests/integration/test_audio_perf_in_process.py` |
 | NFR-PERF-81 | No subprocess fork | Same test, separate timing assertion |
-| NFR-MEM-80 (≤10 MB) | Pure-Python emu has small footprint | `tests/invariants/test_memory_ceiling.py` |
+| NFR-MEM-80 (≤10 MB **incremental** vs import baseline) | Pure-Python emu has small footprint; measure delta with `tracemalloc` (Python heap) + `resource.ru_maxrss` (full RSS, diagnostic). Amended in F.3 closeout 2026-05-04: absolute-10-MB ceiling was unreachable because of interpreter floor (~30 MB CPython, ~50 MB PyPy). | `tests/integration/test_in_process_alter_ego.py::test_ac5_*` |
 | NFR-PORT-80 | No SDL/X11/PulseAudio dep | CI matrix expansion (Linux + macOS + Windows) |
 | NFR-DEP-80 | py65 + cynes are Python wheels only | `tests/integration/test_no_fceux_environment.py` (PATH stripped) |
 | NFR-REL-80 | Byte-eq vs v0.5 oracle | `tests/invariants/test_in_process_oracle_equivalence.py` |
