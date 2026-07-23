@@ -301,6 +301,14 @@ Terminal=false
                     "start_controls": ["Enter", "Space"],
                     "behavior": "native title-screen state renders the ROM-derived SMB title screen before gameplay",
                 },
+                "audio": {
+                    "backend": "SDL2 callback",
+                    "runtime_assets": [],
+                    "sample_rate": 44100,
+                    "format": "AUDIO_F32SYS stereo",
+                    "modes": ["title", "gameplay", "stage-clear", "death"],
+                    "behavior": "native procedural chiptune-style audio; no NSF, MP3, ROM or emulator is loaded at runtime",
+                },
                 "scoring": {
                     "starting_time": 400,
                     "coin_points": 200,
@@ -805,6 +813,14 @@ def _main_c_source(
 #define SCORE_SHELL_HIT 500
 #define SCORE_TIME_BONUS 50
 #define KOOPA_SHELL_SPEED 150.0f
+#define AUDIO_RATE 44100
+
+enum {{
+    AUDIO_MODE_TITLE = 0,
+    AUDIO_MODE_GAMEPLAY = 1,
+    AUDIO_MODE_STAGE_CLEAR = 2,
+    AUDIO_MODE_DEATH = 3
+}};
 
 typedef struct {{
     float x;
@@ -839,6 +855,14 @@ typedef struct {{
     float target_y;
 }} Powerup;
 
+typedef struct {{
+    int sample_rate;
+    uint64_t sample_clock;
+    double melody_phase;
+    double bass_phase;
+    int mode;
+}} AudioState;
+
 static void draw_sprite(
     uint32_t *frame,
     const uint8_t *sprite,
@@ -868,6 +892,94 @@ static uint8_t *read_asset(const char *path, size_t expected) {{
         return NULL;
     }}
     return data;
+}}
+
+static double square_sample(AudioState *state, double *phase, double hz) {{
+    if (hz <= 0.0) return 0.0;
+    *phase += hz / (double)state->sample_rate;
+    while (*phase >= 1.0) *phase -= 1.0;
+    return *phase < 0.5 ? 1.0 : -1.0;
+}}
+
+static double triangle_sample(AudioState *state, double *phase, double hz) {{
+    if (hz <= 0.0) return 0.0;
+    *phase += hz / (double)state->sample_rate;
+    while (*phase >= 1.0) *phase -= 1.0;
+    double p = *phase;
+    if (p < 0.25) return p * 4.0;
+    if (p < 0.75) return 2.0 - p * 4.0;
+    return p * 4.0 - 4.0;
+}}
+
+static void audio_callback(void *userdata, uint8_t *stream, int len) {{
+    AudioState *state = (AudioState *)userdata;
+    float *out = (float *)stream;
+    int frames = len / ((int)sizeof(float) * 2);
+    static const int title_notes[] = {{659, 784, 988, 784, 659, 0, 523, 659}};
+    static const int gameplay_notes[] = {{659, 659, 0, 659, 0, 523, 659, 0, 784, 0, 392, 0}};
+    static const int clear_notes[] = {{523, 659, 784, 1046, 784, 1046, 1318, 0}};
+    static const int death_notes[] = {{392, 370, 349, 330, 311, 294, 277, 262}};
+
+    for (int i = 0; i < frames; i++) {{
+        int mode = state->mode;
+        uint64_t step = state->sample_clock / (uint64_t)(state->sample_rate / 8);
+        int melody_hz = 0;
+        int bass_hz = 0;
+        double volume = 0.08;
+
+        if (mode == AUDIO_MODE_TITLE) {{
+            melody_hz = title_notes[step % (sizeof(title_notes) / sizeof(title_notes[0]))];
+            bass_hz = (step / 2) % 2 == 0 ? 196 : 247;
+        }} else if (mode == AUDIO_MODE_STAGE_CLEAR) {{
+            melody_hz = clear_notes[step % (sizeof(clear_notes) / sizeof(clear_notes[0]))];
+            bass_hz = 262;
+            volume = 0.10;
+        }} else if (mode == AUDIO_MODE_DEATH) {{
+            melody_hz = death_notes[step % (sizeof(death_notes) / sizeof(death_notes[0]))];
+            bass_hz = 0;
+            volume = 0.09;
+        }} else {{
+            melody_hz = gameplay_notes[step % (sizeof(gameplay_notes) / sizeof(gameplay_notes[0]))];
+            bass_hz = (step / 4) % 2 == 0 ? 130 : 196;
+        }}
+
+        double sample = square_sample(state, &state->melody_phase, (double)melody_hz) * volume;
+        sample += triangle_sample(state, &state->bass_phase, (double)bass_hz) * 0.035;
+        out[i * 2] = (float)sample;
+        out[i * 2 + 1] = (float)sample;
+        state->sample_clock++;
+    }}
+}}
+
+static SDL_AudioDeviceID open_native_audio(AudioState *state) {{
+    SDL_AudioSpec want;
+    SDL_AudioSpec have;
+    SDL_zero(want);
+    want.freq = AUDIO_RATE;
+    want.format = AUDIO_F32SYS;
+    want.channels = 2;
+    want.samples = 1024;
+    want.callback = audio_callback;
+    want.userdata = state;
+    state->sample_rate = AUDIO_RATE;
+    SDL_AudioDeviceID device = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+    if (!device) {{
+        fprintf(stderr, "audio disabled: %s\\n", SDL_GetError());
+        return 0;
+    }}
+    state->sample_rate = have.freq;
+    SDL_PauseAudioDevice(device, 0);
+    return device;
+}}
+
+static void set_audio_mode(SDL_AudioDeviceID device, AudioState *state, int mode) {{
+    if (!device) return;
+    SDL_LockAudioDevice(device);
+    state->mode = mode;
+    state->sample_clock = 0;
+    state->melody_phase = 0.0;
+    state->bass_phase = 0.0;
+    SDL_UnlockAudioDevice(device);
 }}
 
 static void draw_level(uint32_t *frame, const uint8_t *level, int camera_x) {{
@@ -1433,7 +1545,7 @@ int main(int argc, char **argv) {{
         return 0;
     }}
 
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {{
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {{
         fprintf(stderr, "SDL_Init failed: %s\\n", SDL_GetError());
         return 3;
     }}
@@ -1448,6 +1560,8 @@ int main(int argc, char **argv) {{
         fprintf(stderr, "SDL setup failed: %s\\n", SDL_GetError());
         return 4;
     }}
+    AudioState audio_state = {{AUDIO_RATE, 0, 0.0, 0.0, AUDIO_MODE_TITLE}};
+    SDL_AudioDeviceID audio_device = open_native_audio(&audio_state);
 
     float mario_x = MARIO_START_X;
     float mario_y = MARIO_START_Y;
@@ -1485,6 +1599,7 @@ int main(int argc, char **argv) {{
                 title_screen_active = false;
                 timer_started_at = SDL_GetTicks();
                 last = timer_started_at;
+                set_audio_mode(audio_device, &audio_state, AUDIO_MODE_GAMEPLAY);
                 update_window_title(window, score, coins, time_left, lives);
             }}
         }}
@@ -1534,6 +1649,7 @@ int main(int argc, char **argv) {{
                     coins,
                     time_left
                 );
+                set_audio_mode(audio_device, &audio_state, AUDIO_MODE_DEATH);
             }}
         }}
 
@@ -1566,6 +1682,7 @@ int main(int argc, char **argv) {{
                     &time_left,
                     &timer_started_at
                 );
+                set_audio_mode(audio_device, &audio_state, AUDIO_MODE_GAMEPLAY);
                 update_window_title(window, score, coins, time_left, lives);
             }}
         }} else if (stage_clear) {{
@@ -1588,6 +1705,7 @@ int main(int argc, char **argv) {{
                     &time_left,
                     &timer_started_at
                 );
+                set_audio_mode(audio_device, &audio_state, AUDIO_MODE_GAMEPLAY);
                 update_window_title(window, score, coins, time_left, lives);
             }}
         }} else {{
@@ -1653,6 +1771,7 @@ int main(int argc, char **argv) {{
                 coins,
                 time_left
             );
+            set_audio_mode(audio_device, &audio_state, AUDIO_MODE_DEATH);
         }}
         if (mario_x >= STAGE_CLEAR_X) {{
             begin_stage_clear(
@@ -1668,6 +1787,7 @@ int main(int argc, char **argv) {{
                 coins,
                 lives
             );
+            set_audio_mode(audio_device, &audio_state, AUDIO_MODE_STAGE_CLEAR);
         }}
 
         for (int i = 0; i < ENEMY_COUNT; i++) {{
@@ -1740,6 +1860,7 @@ int main(int argc, char **argv) {{
                         coins,
                         time_left
                     );
+                    set_audio_mode(audio_device, &audio_state, AUDIO_MODE_DEATH);
                 }}
             }}
         }}
@@ -1833,6 +1954,7 @@ int main(int argc, char **argv) {{
     free(koopa);
     free(koopa_shell);
     free(enemy_data);
+    if (audio_device) SDL_CloseAudioDevice(audio_device);
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

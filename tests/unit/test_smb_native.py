@@ -46,6 +46,14 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert data["title_screen"]["source_manifest"].endswith("smb-title-assets.json")
     assert data["title_screen"]["start_controls"] == ["Enter", "Space"]
     assert data["title_screen"]["behavior"].startswith("native title-screen")
+    assert data["audio"] == {
+        "backend": "SDL2 callback",
+        "runtime_assets": [],
+        "sample_rate": 44100,
+        "format": "AUDIO_F32SYS stereo",
+        "modes": ["title", "gameplay", "stage-clear", "death"],
+        "behavior": "native procedural chiptune-style audio; no NSF, MP3, ROM or emulator is loaded at runtime",
+    }
     assert data["scoring"] == {
         "starting_time": 400,
         "coin_points": 200,
@@ -145,6 +153,17 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert not list(export.out_dir.rglob("*.nes"))
     source = export.source.read_text(encoding="utf-8")
     assert "SDL_CreateWindow" in source
+    assert "SDL_INIT_AUDIO" in source
+    assert "SDL_OpenAudioDevice" in source
+    assert "SDL_CloseAudioDevice" in source
+    assert "audio_callback" in source
+    assert "open_native_audio" in source
+    assert "set_audio_mode" in source
+    assert "AUDIO_MODE_TITLE" in source
+    assert "AUDIO_MODE_GAMEPLAY" in source
+    assert "AUDIO_MODE_STAGE_CLEAR" in source
+    assert "AUDIO_MODE_DEATH" in source
+    assert "AUDIO_F32SYS" in source
     assert "--self-test" in source
     assert "TITLE_SCREEN_W" in source
     assert "TITLE_SCREEN_H" in source
