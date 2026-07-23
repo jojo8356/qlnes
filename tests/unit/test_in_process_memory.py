@@ -302,6 +302,20 @@ def test_mmc1_serial_write_tracks_8k_chr_bank():
     assert m.ppu_snapshot().chr_bank == 1
 
 
+def test_mmc1_split_4k_chr_banks_are_mapped_into_snapshot_pattern_table():
+    banks = [bytes([bank_id] * 0x4000) for bank_id in range(2)]
+    chr_data = b"".join(bytes([bank_id] * 0x1000) for bank_id in range(4))
+    m = MMC1Memory(b"".join(banks), chr_banks=2, chr_data=chr_data)
+    _mmc1_write_register(m, 0x8000, 0x1C)  # PRG mode 3, CHR split 4 KiB
+    _mmc1_write_register(m, 0xA000, 0x01)
+    _mmc1_write_register(m, 0xC000, 0x03)
+    snap = m.ppu_snapshot()
+    assert snap.pattern_table[0x0000] == 1
+    assert snap.pattern_table[0x0FFF] == 1
+    assert snap.pattern_table[0x1000] == 3
+    assert snap.pattern_table[0x1FFF] == 3
+
+
 def test_mmc1_reset_state_restores_shift_register_prg_and_chr_bank():
     banks = [bytes([bank_id] * 0x4000) for bank_id in range(4)]
     m = MMC1Memory(b"".join(banks), chr_banks=4)

@@ -305,17 +305,19 @@ class MMC1Memory(NROMMemory):
     """Mapper-1 MMC1/SxROM memory for simple runtime sprite capture.
 
     This implements the serial load register, standard PRG banking modes, and
-    8 KiB CHR bank tracking. MMC1 also supports split 4 KiB CHR banks and many
-    board variants; those remain better handled by an explicit PPU snapshot.
+    CHR-ROM mapping in both 8 KiB and split 4 KiB modes. Many MMC1 board
+    variants still remain better handled by an explicit PPU snapshot.
     """
 
-    def __init__(self, prg: bytes, chr_banks: int) -> None:
+    def __init__(self, prg: bytes, chr_banks: int, chr_data: bytes = b"") -> None:
         if len(prg) % 0x4000 != 0 or len(prg) == 0:
             raise ValueError("MMC1 PRG must contain at least one 16 KiB bank")
         initial = prg if len(prg) in (0x4000, 0x8000) else prg[:0x4000] + prg[-0x4000:]
         super().__init__(initial)
         self._banks = [prg[i : i + 0x4000] for i in range(0, len(prg), 0x4000)]
+        self._chr_rom = bytes(chr_data)
         self._chr_bank_count = max(chr_banks, 1)
+        self._chr_4k_count = max(len(self._chr_rom) // 0x1000, 1)
         self._shift = 0x10
         self._control = 0x0C
         self._chr0 = 0
@@ -365,8 +367,35 @@ class MMC1Memory(NROMMemory):
                 self.chr_bank = (data >> 1) % self._chr_bank_count
         elif register == 2:
             self._chr1 = data
+            if self._control & 0x10:
+                self.chr_bank = (self._chr0 // 2) % self._chr_bank_count
         else:
             self._prg_bank = data & 0x0F
+
+    def _mapped_chr_pattern_table(self) -> bytes:
+        if not self._chr_rom:
+            return bytes(self._pattern_table)
+        out = bytearray(0x2000)
+        if self._control & 0x10:
+            bank0 = self._chr0 % self._chr_4k_count
+            bank1 = self._chr1 % self._chr_4k_count
+            out[0x0000:0x1000] = self._chr_rom[bank0 * 0x1000 : (bank0 + 1) * 0x1000]
+            out[0x1000:0x2000] = self._chr_rom[bank1 * 0x1000 : (bank1 + 1) * 0x1000]
+            return bytes(out)
+        bank = ((self._chr0 & 0x1E) * 0x1000) % len(self._chr_rom)
+        out[:] = self._chr_rom[bank : bank + 0x2000]
+        return bytes(out)
+
+    def ppu_snapshot(self) -> PpuSnapshot:
+        snap = super().ppu_snapshot()
+        return PpuSnapshot(
+            ppuctrl=snap.ppuctrl,
+            ppumask=snap.ppumask,
+            palette_ram=snap.palette_ram,
+            oam=snap.oam,
+            pattern_table=self._mapped_chr_pattern_table(),
+            chr_bank=snap.chr_bank,
+        )
 
     def reset_state(self) -> None:
         super().reset_state()

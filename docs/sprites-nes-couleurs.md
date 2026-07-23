@@ -96,7 +96,8 @@ Ce mode boote la ROM en-process avec `py65`, observe :
 - `OAMADDR` + `OAMDATA` ;
 - `OAMDMA` `$4014` pour copier la page CPU vers OAM ;
 - les writes serie mapper 1/MMC1 vers `$8000-$FFFF` pour choisir les PRG banks
-  et le CHR bank 8 KiB actif dans les cas simples ;
+  et composer les fenêtres CHR 8 KiB ou split 4 KiB visibles dans les cas
+  simples ;
 - les writes mapper 2/UxROM vers `$8000-$FFFF` pour choisir la PRG bank basse ;
 - les writes mapper 3/CNROM vers `$8000-$FFFF` pour choisir le CHR bank actif ;
 - les writes mapper 4/MMC3 vers `$8000/$8001` pour choisir les PRG banks et

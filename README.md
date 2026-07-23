@@ -230,9 +230,9 @@ qlnes/
 - **Discovery dynamique** : nécessite `cynes`, supporté seulement pour mapper 0 (limitation runner actuelle)
 - **Capture sprites runtime** : couvre les cas simples NROM, MMC1/SxROM,
   UxROM, CNROM, MMC3 et GxROM/GNROM.
-  Les variantes mapper complexes, les IRQ/raster effects et les changements
-  mid-frame demandent encore un snapshot externe ou un observateur PPU plus
-  complet.
+  MMC1 couvre aussi les fenêtres CHR 4 KiB split simples. Les variantes mapper
+  complexes, les IRQ/raster effects et les changements mid-frame demandent
+  encore un snapshot externe ou un observateur PPU plus complet.
 - **Détection éditeur** : pas de signature pour les moteurs sonores propriétaires sans string identifiable
 - **PPU stub** : pas implémenté nous-mêmes, on délègue à cynes (qui fait le full-NES)
 - **NSF générique** : fiable surtout pour NROM avec adresses INIT/PLAY simples.

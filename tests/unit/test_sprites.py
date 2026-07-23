@@ -279,6 +279,56 @@ def _runtime_mmc1_sprite_test_rom() -> bytes:
     return ines_header(4, 2, 1) + bytes(bank0 + bank1 + bank2 + bank3) + bytes(chr_data)
 
 
+def _runtime_mmc1_split_chr_sprite_test_rom() -> bytes:
+    bank0 = bytearray([0xEA] * PRG_BANK)
+    bank1 = bytearray([0xEA] * PRG_BANK)
+    bank2 = bytearray([0xEA] * PRG_BANK)
+    bank3 = bytearray([0xEA] * PRG_BANK)
+
+    code = [
+        0x78,  # SEI
+        0xD8,  # CLD
+        0xA2, 0x00,
+        0xA9, 0xF8,
+        0x9D, 0x00, 0x02,
+        0xE8,
+        0xD0, 0xFA,
+        0xA9, 0x14, 0x8D, 0x00, 0x02,
+        0xA9, 0x00, 0x8D, 0x01, 0x02,
+        0xA9, 0x00, 0x8D, 0x02, 0x02,
+        0xA9, 0x0C, 0x8D, 0x03, 0x02,
+        0xA9, 0x00, 0x8D, 0x03, 0x20,
+        0xA9, 0x02, 0x8D, 0x14, 0x40,
+        0xAD, 0x02, 0x20,
+        0xA9, 0x3F, 0x8D, 0x06, 0x20,
+        0xA9, 0x10, 0x8D, 0x06, 0x20,
+    ]
+    for value in (0x0F, 0x30, 0x16, 0x27):
+        code.extend([0xA9, value, 0x8D, 0x07, 0x20])
+    code.extend([0xA9, 0x88, 0x8D, 0x00, 0x20])
+    loop_addr = 0x8000 + len(code)
+    code.extend([0x4C, loop_addr & 0xFF, loop_addr >> 8])
+    bank1[: len(code)] = bytes(code)
+
+    reset = [
+        0xA9, 0x80, 0x8D, 0x00, 0x80,  # reset MMC1 shift register
+    ]
+    reset.extend(_mmc1_serial_write(0x8000, 0x1C))  # PRG mode 3, CHR split 4 KiB
+    reset.extend(_mmc1_serial_write(0xC000, 0x03))  # map CHR 4 KiB bank 3 at $1000
+    reset.extend(_mmc1_serial_write(0xE000, 0x01))  # switch PRG bank 1 at $8000
+    reset.extend([0x4C, 0x00, 0x80])
+    bank3[: len(reset)] = bytes(reset)
+    bank3[0x0100] = 0x40
+    bank3[0x3FFA:0x3FFC] = (0xC100).to_bytes(2, "little")
+    bank3[0x3FFC:0x3FFE] = (0xC000).to_bytes(2, "little")
+    bank3[0x3FFE:0x4000] = (0xC100).to_bytes(2, "little")
+
+    chr_data = bytearray(0x4000)
+    rows = [[0, 1, 2, 3, 0, 1, 2, 3] for _ in range(8)]
+    chr_data[3 * 0x1000 : 3 * 0x1000 + 0x10] = _encode_tile(rows)
+    return ines_header(4, 2, 1) + bytes(bank0 + bank1 + bank2 + bank3) + bytes(chr_data)
+
+
 def _runtime_mmc3_sprite_test_rom() -> bytes:
     banks = [bytearray([0xEA] * 0x2000) for _ in range(8)]
 
@@ -557,6 +607,23 @@ class TestSpriteExport(unittest.TestCase):
             data = json.loads((out_dir / "sprites-manifest.json").read_text())
             self.assertEqual(data["chr_bank"], 1)
             self.assertEqual(data["snapshot"], "in-process")
+
+    def test_in_process_runtime_export_runs_mmc1_split_chr_and_uses_snapshot_chr(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "runtime-mmc1-split.nes"
+            rom_path.write_bytes(_runtime_mmc1_split_chr_sprite_test_rom())
+            out_dir = Path(td) / "auto-mmc1-split"
+
+            manifest = export_in_process_runtime_sprites(rom_path, out_dir, frames=1)
+
+            sprite = out_dir / "oam" / "sprite-00-tile-00-pal0.png"
+            img = Image.open(sprite).convert("RGBA")
+            self.assertEqual(img.getpixel((0, 0))[3], 0)
+            self.assertEqual(img.getpixel((1, 0)), (0xFC, 0xFC, 0xFC, 255))
+            data = json.loads((out_dir / "sprites-manifest.json").read_text())
+            self.assertEqual(data["chr_source"], "snapshot")
+            self.assertEqual(data["snapshot"], "in-process")
+            self.assertEqual(manifest.n_tiles, 1)
 
     def test_in_process_runtime_export_runs_mmc3_and_uses_mapped_chr_windows(self):
         with tempfile.TemporaryDirectory() as td:

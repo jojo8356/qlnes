@@ -488,8 +488,8 @@ La premiere implementation qlnes suit cette decision :
   ROMs simples NROM, MMC1/SxROM, UxROM, CNROM, MMC3 et GxROM/GNROM avec
   l'observateur in-process et capture automatiquement PPUCTRL, PPUMASK,
   palette RAM, OAM/OAMDMA, pattern table CHR-RAM simple, CHR bank CNROM actif,
-  CHR bank MMC1 8 KiB actif, fenêtres CHR MMC3 1 KiB/2 KiB et PRG/CHR banks
-  GxROM.
+  fenêtres CHR MMC1 8 KiB/split 4 KiB, fenêtres CHR MMC3 1 KiB/2 KiB et
+  PRG/CHR banks GxROM.
 
 Sorties principales :
 

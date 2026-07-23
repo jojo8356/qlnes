@@ -78,7 +78,7 @@ class InProcessRunner:
             )
         prg = rom.prg if rom.header is not None else rom.raw
         if mapper == 1 and rom.header is not None:
-            return MMC1Memory(prg, rom.header.chr_banks)
+            return MMC1Memory(prg, rom.header.chr_banks, InProcessRunner._chr_rom(rom))
         if mapper == 2:
             return UxROMMemory(prg)
         if mapper == 3 and rom.header is not None:
