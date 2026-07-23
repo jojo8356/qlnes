@@ -15,7 +15,18 @@ from pathlib import Path
 from PIL import Image
 
 from .det import sha256_file
-from .smb_graphics import render_smb_characters, render_smb_level, validate_smb_nrom
+from .smb_graphics import (
+    WORLD_MAP,
+    _SmbLevelRuntime,
+    render_smb_characters,
+    render_smb_level,
+    validate_smb_nrom,
+)
+
+SMB_ENEMY_DATA_LOW = 0x00E9
+SMB_GOOMBA_ID = 0x06
+SMB_GOOMBA_GROUPS = {0x37: 2, 0x38: 3, 0x39: 2, 0x3A: 3}
+SMB_NATIVE_ENEMY_RECORD_BYTES = 5
 
 
 @dataclass(frozen=True)
@@ -77,10 +88,12 @@ def create_smb_native_port(
     collision_raw = assets_dir / "collision_1_1.bin"
     mario_raw = assets_dir / "mario_small_stand.rgba"
     goomba_raw = assets_dir / "goomba.rgba"
+    enemies_raw = assets_dir / "enemies_1_1.bin"
     _write_rgb(level.png, level_raw)
     collision_size = _write_collision_map(level.png, collision_raw)
     mario_size = _write_rgba(mario_png, mario_raw)
     goomba_size = _write_rgba(goomba_png, goomba_raw)
+    enemy_spawns = _write_enemy_spawns(rom_bytes, stage, enemies_raw)
 
     main_c = src_dir / "main.c"
     main_c.write_text(
@@ -94,6 +107,8 @@ def create_smb_native_port(
             mario_height=mario_size[1],
             goomba_width=goomba_size[0],
             goomba_height=goomba_size[1],
+            enemy_count=len(enemy_spawns),
+            enemy_record_bytes=SMB_NATIVE_ENEMY_RECORD_BYTES,
         ),
         encoding="utf-8",
     )
@@ -132,6 +147,7 @@ Terminal=false
         collision_raw,
         mario_raw,
         goomba_raw,
+        enemies_raw,
         manifest,
     ]
     manifest.write_text(
@@ -168,6 +184,9 @@ Terminal=false
                         "asset": str(goomba_raw.relative_to(out)),
                         "width": goomba_size[0],
                         "height": goomba_size[1],
+                        "spawn_asset": str(enemies_raw.relative_to(out)),
+                        "spawn_count": len(enemy_spawns),
+                        "spawns": enemy_spawns,
                     }
                 ],
                 "character_manifest": str(characters.manifest_json),
@@ -180,6 +199,7 @@ Terminal=false
                     "This is a native MVP, not a complete SMB engine yet.",
                     "Controls: arrows or A/D to move, Space/W/Up to jump, Esc to quit.",
                     "Collision is derived from the rendered SMB metatile map at build time.",
+                    "Goomba spawns are decoded from SMB EnemyData for the selected stage.",
                 ],
             },
             indent=2,
@@ -235,6 +255,121 @@ def _write_collision_map(source_png: Path, target: Path) -> tuple[int, int]:
     return cols, rows
 
 
+def _write_enemy_spawns(
+    rom_bytes: bytes,
+    stage: str,
+    target: Path,
+) -> list[dict[str, object]]:
+    if stage not in WORLD_MAP:
+        valid = ", ".join(sorted(WORLD_MAP))
+        raise ValueError(f"unknown SMB stage {stage!r}; valid: {valid}")
+
+    runtime = _SmbLevelRuntime(rom_bytes)
+    runtime.load_stage(WORLD_MAP[stage], max_columns=256)
+    enemy_data = runtime.read(SMB_ENEMY_DATA_LOW) | (runtime.read(SMB_ENEMY_DATA_LOW + 1) << 8)
+
+    page_loc = 0
+    page_selected = False
+    offset = 0
+    spawns: list[dict[str, object]] = []
+    records = bytearray()
+    while offset < 512:
+        first = runtime.read(enemy_data + offset)
+        if first == 0xFF:
+            break
+
+        row = first & 0x0F
+        column = first >> 4
+        if first & 0x80:
+            page_selected = True
+            page_loc += 1
+
+        if row == 0x0F and not page_selected:
+            second = runtime.read(enemy_data + offset + 1)
+            page_loc = second & 0x3F
+            page_selected = True
+            offset += 2
+            continue
+
+        if row == 0x0E:
+            offset += 3
+            page_selected = False
+            continue
+
+        second = runtime.read(enemy_data + offset + 1)
+        enemy_id = second & 0x3F
+        hard_mode_only = bool(second & 0x40)
+        if enemy_id == SMB_GOOMBA_ID and not hard_mode_only:
+            x = page_loc * 256 + (first & 0xF0)
+            y = row * 16 + 8
+            _append_goomba_spawn(
+                records,
+                spawns,
+                x=x,
+                y=y,
+                page=page_loc,
+                column=column,
+                row=row,
+                offset=offset,
+                source=(first, second),
+            )
+        elif enemy_id in SMB_GOOMBA_GROUPS and not hard_mode_only:
+            x = page_loc * 256 + (first & 0xF0)
+            y = row * 16 + 8
+            for group_index in range(SMB_GOOMBA_GROUPS[enemy_id]):
+                _append_goomba_spawn(
+                    records,
+                    spawns,
+                    x=x + group_index * 24,
+                    y=y,
+                    page=page_loc,
+                    column=column,
+                    row=row,
+                    offset=offset,
+                    source=(first, second),
+                    group_id=enemy_id,
+                    group_index=group_index,
+                )
+
+        offset += 2
+        page_selected = False
+
+    target.write_bytes(bytes(records))
+    return spawns
+
+
+def _append_goomba_spawn(
+    records: bytearray,
+    spawns: list[dict[str, object]],
+    *,
+    x: int,
+    y: int,
+    page: int,
+    column: int,
+    row: int,
+    offset: int,
+    source: tuple[int, int],
+    group_id: int | None = None,
+    group_index: int | None = None,
+) -> None:
+    records.extend((x & 0xFF, (x >> 8) & 0xFF, y & 0xFF, SMB_GOOMBA_ID, 0))
+    spawn: dict[str, object] = {
+        "kind": "goomba",
+        "enemy_id": f"0x{SMB_GOOMBA_ID:02X}",
+        "x": x,
+        "y": y,
+        "page": page,
+        "column": column,
+        "row": row,
+        "data_offset": f"0x{offset:02X}",
+        "source_bytes": [f"0x{source[0]:02X}", f"0x{source[1]:02X}"],
+    }
+    if group_id is not None:
+        spawn["group_id"] = f"0x{group_id:02X}"
+        spawn["group_index"] = group_index
+    spawns.append(spawn)
+
+
 def _main_c_source(
     *,
     app_name: str,
@@ -246,6 +381,8 @@ def _main_c_source(
     mario_height: int,
     goomba_width: int,
     goomba_height: int,
+    enemy_count: int,
+    enemy_record_bytes: int,
 ) -> str:
     return f"""#include <SDL2/SDL.h>
 #include <stdbool.h>
@@ -265,7 +402,18 @@ def _main_c_source(
 #define MARIO_H {mario_height}
 #define GOOMBA_W {goomba_width}
 #define GOOMBA_H {goomba_height}
+#define ENEMY_COUNT {enemy_count}
+#define ENEMY_RECORD_BYTES {enemy_record_bytes}
 #define TILE_SIZE 16
+
+typedef struct {{
+    float x;
+    float y;
+    float vx;
+    float vy;
+    uint8_t kind;
+    bool alive;
+}} Enemy;
 
 static uint8_t *read_asset(const char *path, size_t expected) {{
     FILE *f = fopen(path, "rb");
@@ -325,6 +473,22 @@ static bool rects_overlap(float ax, float ay, int aw, int ah, float bx, float by
     return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 }}
 
+static bool load_enemies(const uint8_t *data, Enemy *enemies) {{
+    for (int i = 0; i < ENEMY_COUNT; i++) {{
+        size_t o = (size_t)i * ENEMY_RECORD_BYTES;
+        uint16_t x = (uint16_t)data[o] | ((uint16_t)data[o + 1] << 8);
+        uint8_t y = data[o + 2];
+        uint8_t kind = data[o + 3];
+        enemies[i].x = (float)x;
+        enemies[i].y = (float)y;
+        enemies[i].vx = -36.0f;
+        enemies[i].vy = 0.0f;
+        enemies[i].kind = kind;
+        enemies[i].alive = true;
+    }}
+    return true;
+}}
+
 static void draw_sprite(
     uint32_t *frame,
     const uint8_t *sprite,
@@ -356,22 +520,28 @@ int main(int argc, char **argv) {{
     char collision_path[4096];
     char mario_path[4096];
     char goomba_path[4096];
+    char enemies_path[4096];
     snprintf(level_path, sizeof(level_path), "%sassets/level_1_1.rgb", base ? base : "");
     snprintf(collision_path, sizeof(collision_path), "%sassets/collision_1_1.bin", base ? base : "");
     snprintf(mario_path, sizeof(mario_path), "%sassets/mario_small_stand.rgba", base ? base : "");
     snprintf(goomba_path, sizeof(goomba_path), "%sassets/goomba.rgba", base ? base : "");
+    snprintf(enemies_path, sizeof(enemies_path), "%sassets/enemies_1_1.bin", base ? base : "");
 
     uint8_t *level = read_asset(level_path, (size_t)LEVEL_W * LEVEL_H * 3);
     uint8_t *collision = read_asset(collision_path, (size_t)COLLISION_COLS * COLLISION_ROWS);
     uint8_t *mario = read_asset(mario_path, (size_t)MARIO_W * MARIO_H * 4);
     uint8_t *goomba = read_asset(goomba_path, (size_t)GOOMBA_W * GOOMBA_H * 4);
-    if (!level || !collision || !mario || !goomba) return 2;
+    uint8_t *enemy_data = read_asset(enemies_path, (size_t)ENEMY_COUNT * ENEMY_RECORD_BYTES);
+    if (!level || !collision || !mario || !goomba || !enemy_data) return 2;
+    Enemy enemies[ENEMY_COUNT > 0 ? ENEMY_COUNT : 1];
+    load_enemies(enemy_data, enemies);
 
     if (argc > 1 && SDL_strcmp(argv[1], "--self-test") == 0) {{
         free(level);
         free(collision);
         free(mario);
         free(goomba);
+        free(enemy_data);
         return 0;
     }}
 
@@ -395,14 +565,9 @@ int main(int argc, char **argv) {{
     float mario_y = 176.0f;
     float vx = 0.0f;
     float vy = 0.0f;
-    float goomba_x = 352.0f;
-    float goomba_y = 32.0f;
-    float goomba_vx = -36.0f;
-    float goomba_vy = 0.0f;
     bool running = true;
     bool facing_left = false;
     bool on_ground = false;
-    bool goomba_alive = true;
     uint32_t last = SDL_GetTicks();
 
     while (running) {{
@@ -446,32 +611,34 @@ int main(int argc, char **argv) {{
         if (mario_x < 0.0f) mario_x = 0.0f;
         if (mario_x > LEVEL_W - MARIO_W) mario_x = LEVEL_W - MARIO_W;
 
-        if (goomba_alive) {{
-            goomba_vy += 620.0f * dt;
-            float gx = goomba_x + goomba_vx * dt;
-            if (rect_hits_solid(collision, gx, goomba_y, GOOMBA_W, GOOMBA_H)) {{
-                goomba_vx = -goomba_vx;
+        for (int i = 0; i < ENEMY_COUNT; i++) {{
+            Enemy *enemy = &enemies[i];
+            if (!enemy->alive || enemy->kind != 0x06) continue;
+            enemy->vy += 620.0f * dt;
+            float gx = enemy->x + enemy->vx * dt;
+            if (rect_hits_solid(collision, gx, enemy->y, GOOMBA_W, GOOMBA_H)) {{
+                enemy->vx = -enemy->vx;
             }} else {{
-                goomba_x = gx;
+                enemy->x = gx;
             }}
-            float gy = goomba_y + goomba_vy * dt;
-            if (!rect_hits_solid(collision, goomba_x, gy, GOOMBA_W, GOOMBA_H)) {{
-                goomba_y = gy;
-            }} else if (goomba_vy > 0.0f) {{
-                int tile_y = ((int)(goomba_y + GOOMBA_H + goomba_vy * dt)) / TILE_SIZE;
-                goomba_y = (float)(tile_y * TILE_SIZE - GOOMBA_H);
-                goomba_vy = 0.0f;
+            float gy = enemy->y + enemy->vy * dt;
+            if (!rect_hits_solid(collision, enemy->x, gy, GOOMBA_W, GOOMBA_H)) {{
+                enemy->y = gy;
+            }} else if (enemy->vy > 0.0f) {{
+                int tile_y = ((int)(enemy->y + GOOMBA_H + enemy->vy * dt)) / TILE_SIZE;
+                enemy->y = (float)(tile_y * TILE_SIZE - GOOMBA_H);
+                enemy->vy = 0.0f;
             }} else {{
-                goomba_vy = 0.0f;
+                enemy->vy = 0.0f;
             }}
-            int probe_x = goomba_vx < 0.0f ? (int)goomba_x - 2 : (int)(goomba_x + GOOMBA_W + 2);
-            int foot_y = (int)(goomba_y + GOOMBA_H + 2);
+            int probe_x = enemy->vx < 0.0f ? (int)enemy->x - 2 : (int)(enemy->x + GOOMBA_W + 2);
+            int foot_y = (int)(enemy->y + GOOMBA_H + 2);
             if (!solid_at(collision, probe_x, foot_y)) {{
-                goomba_vx = -goomba_vx;
+                enemy->vx = -enemy->vx;
             }}
-            if (rects_overlap(mario_x, mario_y, MARIO_W, MARIO_H, goomba_x, goomba_y, GOOMBA_W, GOOMBA_H)) {{
-                if (vy > 40.0f && mario_y + MARIO_H - 4.0f < goomba_y + 8.0f) {{
-                    goomba_alive = false;
+            if (rects_overlap(mario_x, mario_y, MARIO_W, MARIO_H, enemy->x, enemy->y, GOOMBA_W, GOOMBA_H)) {{
+                if (vy > 40.0f && mario_y + MARIO_H - 4.0f < enemy->y + 8.0f) {{
+                    enemy->alive = false;
                     vy = -160.0f;
                 }} else {{
                     mario_x = 48.0f;
@@ -486,8 +653,10 @@ int main(int argc, char **argv) {{
         if (camera < 0) camera = 0;
         if (camera > LEVEL_W - SCREEN_W) camera = LEVEL_W - SCREEN_W;
         draw_level(frame, level, camera);
-        if (goomba_alive) {{
-            draw_sprite(frame, goomba, GOOMBA_W, GOOMBA_H, (int)goomba_x - camera, (int)goomba_y, goomba_vx > 0.0f);
+        for (int i = 0; i < ENEMY_COUNT; i++) {{
+            Enemy *enemy = &enemies[i];
+            if (!enemy->alive || enemy->kind != 0x06) continue;
+            draw_sprite(frame, goomba, GOOMBA_W, GOOMBA_H, (int)enemy->x - camera, (int)enemy->y, enemy->vx > 0.0f);
         }}
         draw_sprite(frame, mario, MARIO_W, MARIO_H, (int)mario_x - camera, (int)mario_y, facing_left);
 
@@ -502,6 +671,7 @@ int main(int argc, char **argv) {{
     free(collision);
     free(mario);
     free(goomba);
+    free(enemy_data);
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
