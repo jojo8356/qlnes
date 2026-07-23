@@ -26,6 +26,7 @@ from .smb_graphics import (
 
 SMB_ENEMY_DATA_LOW = 0x00E9
 SMB_GREEN_KOOPA_ID = 0x00
+SMB_NATIVE_KOOPA_SHELL_KIND = 0x80
 SMB_GOOMBA_ID = 0x06
 SMB_GOOMBA_GROUPS = {0x37: 2, 0x38: 3, 0x39: 2, 0x3A: 3}
 SMB_KOOPA_GROUPS = {0x3B: 2, 0x3C: 3}
@@ -118,6 +119,7 @@ def create_smb_native_port(
     dead_mario_png = build_dir / "characters" / "players" / f"{SMB_DEAD_MARIO_SPRITE[0]}.png"
     goomba_png = build_dir / "characters" / "enemies" / "goomba.png"
     koopa_png = build_dir / "characters" / "enemies" / "koopa-troopa-1.png"
+    koopa_shell_png = build_dir / "characters" / "enemies" / "koopa-shell-1.png"
     mushroom_png = build_dir / "blocks" / "sprites" / "mushroom.png"
     for mario_png in mario_pngs.values():
         if not mario_png.exists():
@@ -131,6 +133,8 @@ def create_smb_native_port(
         raise RuntimeError(f"expected SMB enemy sprite missing: {goomba_png}")
     if not koopa_png.exists():
         raise RuntimeError(f"expected SMB enemy sprite missing: {koopa_png}")
+    if not koopa_shell_png.exists():
+        raise RuntimeError(f"expected SMB enemy shell sprite missing: {koopa_shell_png}")
     if not mushroom_png.exists():
         raise RuntimeError(f"expected SMB power-up sprite missing: {mushroom_png}")
 
@@ -144,6 +148,7 @@ def create_smb_native_port(
     mushroom_raw = assets_dir / "mushroom.rgba"
     goomba_raw = assets_dir / "goomba.rgba"
     koopa_raw = assets_dir / "koopa_troopa.rgba"
+    koopa_shell_raw = assets_dir / "koopa_shell.rgba"
     dead_mario_raw = assets_dir / SMB_DEAD_MARIO_SPRITE[1]
     enemies_raw = assets_dir / "enemies_1_1.bin"
     _write_rgb(level.png, level_raw)
@@ -169,6 +174,7 @@ def create_smb_native_port(
     dead_mario_size = _write_rgba(dead_mario_png, dead_mario_raw)
     goomba_size = _write_rgba(goomba_png, goomba_raw)
     koopa_size = _write_rgba(koopa_png, koopa_raw)
+    koopa_shell_size = _write_rgba(koopa_shell_png, koopa_shell_raw)
     enemy_spawns = _write_enemy_spawns(rom_bytes, stage, enemies_raw)
 
     main_c = src_dir / "main.c"
@@ -199,6 +205,8 @@ def create_smb_native_port(
             goomba_height=goomba_size[1],
             koopa_width=koopa_size[0],
             koopa_height=koopa_size[1],
+            koopa_shell_width=koopa_shell_size[0],
+            koopa_shell_height=koopa_shell_size[1],
             enemy_count=len(enemy_spawns),
             enemy_record_bytes=SMB_NATIVE_ENEMY_RECORD_BYTES,
         ),
@@ -246,6 +254,7 @@ Terminal=false
         dead_mario_raw,
         goomba_raw,
         koopa_raw,
+        koopa_shell_raw,
         enemies_raw,
         manifest,
     ]
@@ -344,6 +353,14 @@ Terminal=false
                             1 for spawn in enemy_spawns if spawn["kind"] == "koopa-troopa"
                         ),
                     },
+                    {
+                        "name": "koopa-shell",
+                        "source_png": str(koopa_shell_png),
+                        "asset": str(koopa_shell_raw.relative_to(out)),
+                        "width": koopa_shell_size[0],
+                        "height": koopa_shell_size[1],
+                        "runtime_kind": f"0x{SMB_NATIVE_KOOPA_SHELL_KIND:02X}",
+                    },
                 ],
                 "enemy_spawns": enemy_spawns,
                 "block_manifest": str(block_assets.manifest_json),
@@ -363,6 +380,7 @@ Terminal=false
                     "Stage clear triggers near the end of the generated level and restarts after a short victory pause.",
                     "Score, coins, world, time and lives are rendered by a native framebuffer HUD.",
                     "Question/item blocks are decoded from SMB metatiles and can be hit natively.",
+                    "Koopa stomps switch to a native shell state using the ROM-derived shell sprite.",
                 ],
             },
             indent=2,
@@ -704,6 +722,8 @@ def _main_c_source(
     goomba_height: int,
     koopa_width: int,
     koopa_height: int,
+    koopa_shell_width: int,
+    koopa_shell_height: int,
     enemy_count: int,
     enemy_record_bytes: int,
 ) -> str:
@@ -741,6 +761,9 @@ def _main_c_source(
 #define GOOMBA_H {goomba_height}
 #define KOOPA_W {koopa_width}
 #define KOOPA_H {koopa_height}
+#define KOOPA_SHELL_W {koopa_shell_width}
+#define KOOPA_SHELL_H {koopa_shell_height}
+#define KOOPA_SHELL_KIND {SMB_NATIVE_KOOPA_SHELL_KIND}
 #define ENEMY_COUNT {enemy_count}
 #define ENEMY_RECORD_BYTES {enemy_record_bytes}
 #define TILE_SIZE 16
@@ -1065,14 +1088,22 @@ static void update_powerup(Powerup *powerup, const uint8_t *collision, float dt)
 }}
 
 static int enemy_width(const Enemy *enemy) {{
+    if (enemy->kind == KOOPA_SHELL_KIND) return KOOPA_SHELL_W;
     return enemy->kind == 0x00 ? KOOPA_W : GOOMBA_W;
 }}
 
 static int enemy_height(const Enemy *enemy) {{
+    if (enemy->kind == KOOPA_SHELL_KIND) return KOOPA_SHELL_H;
     return enemy->kind == 0x00 ? KOOPA_H : GOOMBA_H;
 }}
 
-static const uint8_t *enemy_sprite(const Enemy *enemy, const uint8_t *goomba, const uint8_t *koopa) {{
+static const uint8_t *enemy_sprite(
+    const Enemy *enemy,
+    const uint8_t *goomba,
+    const uint8_t *koopa,
+    const uint8_t *koopa_shell
+) {{
+    if (enemy->kind == KOOPA_SHELL_KIND) return koopa_shell;
     return enemy->kind == 0x00 ? koopa : goomba;
 }}
 
@@ -1262,6 +1293,7 @@ int main(int argc, char **argv) {{
     char dead_mario_path[4096];
     char goomba_path[4096];
     char koopa_path[4096];
+    char koopa_shell_path[4096];
     char enemies_path[4096];
     snprintf(level_path, sizeof(level_path), "%sassets/level_1_1.rgb", base ? base : "");
     snprintf(collision_path, sizeof(collision_path), "%sassets/collision_1_1.bin", base ? base : "");
@@ -1285,6 +1317,7 @@ int main(int argc, char **argv) {{
     snprintf(dead_mario_path, sizeof(dead_mario_path), "%sassets/mario_small_killed.rgba", base ? base : "");
     snprintf(goomba_path, sizeof(goomba_path), "%sassets/goomba.rgba", base ? base : "");
     snprintf(koopa_path, sizeof(koopa_path), "%sassets/koopa_troopa.rgba", base ? base : "");
+    snprintf(koopa_shell_path, sizeof(koopa_shell_path), "%sassets/koopa_shell.rgba", base ? base : "");
     snprintf(enemies_path, sizeof(enemies_path), "%sassets/enemies_1_1.bin", base ? base : "");
 
     uint8_t *level = read_asset(level_path, (size_t)LEVEL_W * LEVEL_H * 3);
@@ -1312,6 +1345,7 @@ int main(int argc, char **argv) {{
     uint8_t *dead_mario = read_asset(dead_mario_path, (size_t)DEAD_MARIO_W * DEAD_MARIO_H * 4);
     uint8_t *goomba = read_asset(goomba_path, (size_t)GOOMBA_W * GOOMBA_H * 4);
     uint8_t *koopa = read_asset(koopa_path, (size_t)KOOPA_W * KOOPA_H * 4);
+    uint8_t *koopa_shell = read_asset(koopa_shell_path, (size_t)KOOPA_SHELL_W * KOOPA_SHELL_H * 4);
     uint8_t *enemy_data = read_asset(enemies_path, (size_t)ENEMY_COUNT * ENEMY_RECORD_BYTES);
     bool mario_loaded = true;
     for (int i = 0; i < MARIO_FRAME_COUNT; i++) {{
@@ -1321,7 +1355,7 @@ int main(int argc, char **argv) {{
     for (int i = 0; i < COIN_FRAME_COUNT; i++) {{
         if (!coin_frames[i]) coins_loaded = false;
     }}
-    if (!level || !collision || !block_data || !used_block || !coins_loaded || !mushroom || !mario_loaded || !dead_mario || !goomba || !koopa || !enemy_data) return 2;
+    if (!level || !collision || !block_data || !used_block || !coins_loaded || !mushroom || !mario_loaded || !dead_mario || !goomba || !koopa || !koopa_shell || !enemy_data) return 2;
     Block blocks[BLOCK_COUNT > 0 ? BLOCK_COUNT : 1];
     Enemy enemies[ENEMY_COUNT > 0 ? ENEMY_COUNT : 1];
     load_blocks(block_data, blocks);
@@ -1341,6 +1375,7 @@ int main(int argc, char **argv) {{
         free(dead_mario);
         free(goomba);
         free(koopa);
+        free(koopa_shell);
         free(enemy_data);
         return 0;
     }}
@@ -1590,7 +1625,14 @@ int main(int argc, char **argv) {{
             }}
             if (rects_overlap(mario_x, mario_y, player_w, player_h, enemy->x, enemy->y, ew, eh)) {{
                 if (vy > 40.0f && mario_y + player_h - 4.0f < enemy->y + 8.0f) {{
-                    enemy->alive = false;
+                    if (enemy->kind == 0x00) {{
+                        enemy->kind = KOOPA_SHELL_KIND;
+                        enemy->vx = 0.0f;
+                        enemy->vy = 0.0f;
+                        enemy->y += (float)(KOOPA_H - KOOPA_SHELL_H);
+                    }} else {{
+                        enemy->alive = false;
+                    }}
                     score += SCORE_STOMP;
                     update_window_title(window, score, coins, time_left, lives);
                     vy = -160.0f;
@@ -1632,7 +1674,7 @@ int main(int argc, char **argv) {{
             if (!enemy->alive) continue;
             draw_sprite(
                 frame,
-                enemy_sprite(enemy, goomba, koopa),
+                enemy_sprite(enemy, goomba, koopa, koopa_shell),
                 enemy_width(enemy),
                 enemy_height(enemy),
                 (int)enemy->x - camera,
@@ -1682,6 +1724,7 @@ int main(int argc, char **argv) {{
     free(dead_mario);
     free(goomba);
     free(koopa);
+    free(koopa_shell);
     free(enemy_data);
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
