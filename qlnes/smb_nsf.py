@@ -36,13 +36,17 @@ SMB_MUSIC_LENGTH_LOOKUP_ADDR = 0xFF66
 SMB_NTSC_FPS = 1_000_000 / NTSC_FRAME_US
 
 __all__ = [
-    "SMB_TRACKS",
     "SMB_NTSC_FPS",
+    "SMB_SFX_TRACKS",
+    "SMB_TRACKS",
+    "SmbSfxTrack",
     "SmbTrack",
     "SmbTrackTiming",
     "build_smb_nsf_from_rom",
     "read_smb_track_timings",
     "write_smb_nsf",
+    "write_smb_sfx_mp3s",
+    "write_smb_sfx_split_nsfs",
     "write_smb_split_nsfs",
     "write_smb_trimmed_mp3s",
 ]
@@ -98,6 +102,22 @@ class SmbTrackTiming:
     header_ys: tuple[int, ...]
 
 
+@dataclass(frozen=True)
+class SmbSfxTrack:
+    """One SMB sound-effect queue bit exposed as a single-track NSF."""
+
+    index: int
+    label: str
+    queue_addr: int
+    queue_value: int
+    channel: str
+    frames: int
+
+    @property
+    def seconds(self) -> float:
+        return self.frames / SMB_NTSC_FPS
+
+
 SMB_TRACKS: tuple[SmbTrack, ...] = (
     SmbTrack(0, "ground", 0x00FB, 0x01, "area"),
     SmbTrack(1, "water", 0x00FB, 0x02, "area"),
@@ -115,14 +135,37 @@ SMB_TRACKS: tuple[SmbTrack, ...] = (
     SmbTrack(13, "silence", 0x00FC, 0x80, "event"),
 )
 
+SMB_SFX_TRACKS: tuple[SmbSfxTrack, ...] = (
+    SmbSfxTrack(0, "small-jump", 0x00FF, 0x80, "square1", 0x28),
+    SmbSfxTrack(1, "big-jump", 0x00FF, 0x01, "square1", 0x28),
+    SmbSfxTrack(2, "bump", 0x00FF, 0x02, "square1", 0x0A),
+    SmbSfxTrack(3, "swim-stomp", 0x00FF, 0x04, "square1", 0x0E),
+    SmbSfxTrack(4, "enemy-smack", 0x00FF, 0x08, "square1", 0x0E),
+    SmbSfxTrack(5, "pipe-down-injury", 0x00FF, 0x10, "square1", 0x2F),
+    SmbSfxTrack(6, "fireball", 0x00FF, 0x20, "square1", 0x05),
+    SmbSfxTrack(7, "flagpole", 0x00FF, 0x40, "square1", 0x40),
+    SmbSfxTrack(8, "coin-grab", 0x00FE, 0x01, "square2", 0x35),
+    SmbSfxTrack(9, "grow-power-up", 0x00FE, 0x02, "square2", 0x10),
+    SmbSfxTrack(10, "grow-vine", 0x00FE, 0x04, "square2", 0x20),
+    SmbSfxTrack(11, "blast", 0x00FE, 0x08, "square2", 0x20),
+    SmbSfxTrack(12, "timer-tick", 0x00FE, 0x10, "square2", 0x06),
+    SmbSfxTrack(13, "power-up-grab", 0x00FE, 0x20, "square2", 0x36),
+    SmbSfxTrack(14, "extra-life", 0x00FE, 0x40, "square2", 0x30),
+    SmbSfxTrack(15, "bowser-fall", 0x00FE, 0x80, "square2", 0x38),
+    SmbSfxTrack(16, "brick-shatter", 0x00FD, 0x01, "noise", 0x20),
+    SmbSfxTrack(17, "bowser-flame", 0x00FD, 0x02, "noise", 0x40),
+)
 
-def _build_wrapper_bank(tracks: tuple[SmbTrack, ...] = SMB_TRACKS) -> bytes:
+
+def _build_wrapper_bank(
+    tracks: tuple[SmbTrack, ...] | tuple[SmbSfxTrack, ...] = SMB_TRACKS,
+) -> bytes:
     """Return a 4 KiB wrapper bank mapped at $8000.
 
     6502 layout:
       $8000 INIT(A=song-1): clear RAM, set OperMode, write queue.
       $8050 PLAY(): JSR $F2D0; RTS.
-      $8060 track queue address low/high/value tables.
+      $8060/$8080/$80A0 track queue address low/high/value tables.
     """
     if len(tracks) > 255:
         raise ValueError("SMB NSF wrapper supports at most 255 tracks")
@@ -155,9 +198,9 @@ def _build_wrapper_bank(tracks: tuple[SmbTrack, ...] = SMB_TRACKS) -> bytes:
         0xAA,  # TAX
         0xBD, 0x60, 0x80,  # LDA queue_addr_lo,X
         0x85, 0x00,  # STA $00
-        0xBD, 0x70, 0x80,  # LDA queue_addr_hi,X
+        0xBD, 0x80, 0x80,  # LDA queue_addr_hi,X
         0x85, 0x01,  # STA $01
-        0xBD, 0x80, 0x80,  # LDA queue_value,X
+        0xBD, 0xA0, 0x80,  # LDA queue_value,X
         0xA0, 0x00,  # LDY #$00
         0x91, 0x00,  # STA ($00),Y
         0x60,  # RTS
@@ -173,8 +216,8 @@ def _build_wrapper_bank(tracks: tuple[SmbTrack, ...] = SMB_TRACKS) -> bytes:
     highs = bytes(track.queue_addr >> 8 for track in tracks)
     values = bytes(track.queue_value for track in tracks)
     code[table_offset : table_offset + len(lows)] = lows
-    code[table_offset + 0x10 : table_offset + 0x10 + len(highs)] = highs
-    code[table_offset + 0x20 : table_offset + 0x20 + len(values)] = values
+    code[table_offset + 0x20 : table_offset + 0x20 + len(highs)] = highs
+    code[table_offset + 0x40 : table_offset + 0x40 + len(values)] = values
     return bytes(code)
 
 
@@ -184,7 +227,7 @@ def build_smb_nsf_from_rom(
     title: str = "Super Mario Bros. SMB custom soundtrack",
     artist: str = "Koji Kondo",
     copyright_: str = "Local private rip; do not distribute commercial ROM audio",
-    tracks: tuple[SmbTrack, ...] = SMB_TRACKS,
+    tracks: tuple[SmbTrack, ...] | tuple[SmbSfxTrack, ...] = SMB_TRACKS,
 ) -> NSFBuild:
     """Build a banked NSF image from a Super Mario Bros. iNES ROM.
 
@@ -296,6 +339,34 @@ def write_smb_split_nsfs(
             tracks=(track,),
         )
         path = out_dir / f"{track.index + 1:02d}-{track.label}.nsf"
+        path.write_bytes(build.nsf_bytes)
+        written.append(path)
+    return written
+
+
+def write_smb_sfx_split_nsfs(
+    rom_path: Path,
+    out_dir: Path,
+    *,
+    artist: str = "Koji Kondo",
+    copyright_: str = "Local private rip; do not distribute commercial ROM audio",
+) -> list[Path]:
+    """Write one single-track NSF for every SMB sound effect queue bit."""
+
+    rom_bytes = Path(rom_path).read_bytes()
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    for sfx in SMB_SFX_TRACKS:
+        title = f"Super Mario Bros. SFX - {sfx.index + 1:02d} {sfx.label}"
+        build = build_smb_nsf_from_rom(
+            rom_bytes,
+            title=title,
+            artist=artist,
+            copyright_=copyright_,
+            tracks=(sfx,),
+        )
+        path = out_dir / f"{sfx.index + 1:02d}-{sfx.label}.nsf"
         path.write_bytes(build.nsf_bytes)
         written.append(path)
     return written
@@ -455,6 +526,53 @@ def write_smb_trimmed_mp3s(
             wav = tmp_dir / f"{nsf.stem}.wav"
             mp3 = out_dir / f"{nsf.stem}.mp3"
             duration = max(0.05, timing.seconds)
+            fade = min(max(0.0, fade_s), max(0.0, duration - 0.05))
+            render_nsf(nsf, wav, track=0, duration_s=duration, fade_s=fade)
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    str(wav),
+                    "-codec:a",
+                    "libmp3lame",
+                    "-b:a",
+                    bitrate,
+                    str(mp3),
+                ],
+                check=True,
+            )
+            written.append(mp3)
+    return written
+
+
+def write_smb_sfx_mp3s(
+    rom_path: Path,
+    nsf_dir: Path,
+    out_dir: Path,
+    *,
+    fade_s: float = 0.03,
+    bitrate: str = "192k",
+) -> list[Path]:
+    """Render split SMB SFX NSFs to short MP3 files."""
+
+    # Validate the ROM before rendering so failures match the music exporter.
+    build_smb_nsf_from_rom(Path(rom_path).read_bytes(), tracks=(SMB_SFX_TRACKS[0],))
+    nsf_dir = Path(nsf_dir)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    with tempfile.TemporaryDirectory(prefix="qlnes-smb-sfx-mp3-") as tmp:
+        tmp_dir = Path(tmp)
+        for sfx in SMB_SFX_TRACKS:
+            nsf = nsf_dir / f"{sfx.index + 1:02d}-{sfx.label}.nsf"
+            if not nsf.exists():
+                raise FileNotFoundError(nsf)
+            wav = tmp_dir / f"{nsf.stem}.wav"
+            mp3 = out_dir / f"{nsf.stem}.mp3"
+            duration = max(0.12, sfx.seconds + 0.12)
             fade = min(max(0.0, fade_s), max(0.0, duration - 0.05))
             render_nsf(nsf, wav, track=0, duration_s=duration, fade_s=fade)
             subprocess.run(

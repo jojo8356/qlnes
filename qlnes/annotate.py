@@ -73,6 +73,66 @@ class AnnotationReport:
         }
 
 
+def _symbol_kind(addr: int, report: AnnotationReport) -> str:
+    if addr in report.hardware:
+        if 0x2000 <= addr <= 0x2007:
+            return "hw_ppu_reg"
+        if 0x4000 <= addr <= 0x4017:
+            return "hw_apu_io_reg"
+        if 0xFFFA <= addr <= 0xFFFF:
+            return "vector_const"
+        return "hw_reg"
+    if addr in report.oam:
+        return "ram_oam_sprite"
+    if addr in report.dataflow:
+        if 0x0000 <= addr <= 0x00FF:
+            return "ram_zp_var"
+        if 0x0100 <= addr <= 0x01FF:
+            return "ram_stack"
+        if 0x0200 <= addr <= 0x07FF:
+            return "ram_var"
+        return "dataflow_symbol"
+    if addr in report.subroutines:
+        return "prg_subroutine"
+    if addr in report.fallback:
+        if 0x0000 <= addr <= 0x00FF:
+            return "ram_zp_var"
+        if 0x0100 <= addr <= 0x01FF:
+            return "ram_stack"
+        return "ram_var"
+    if addr in report.code_labels:
+        return "prg_code_label"
+    if 0x0000 <= addr <= 0x00FF:
+        return "ram_zp_var"
+    if 0x0100 <= addr <= 0x01FF:
+        return "ram_stack"
+    if 0x0200 <= addr <= 0x02FF:
+        return "ram_oam_sprite"
+    if 0x0300 <= addr <= 0x07FF:
+        return "ram_var"
+    if 0x8000 <= addr <= 0xFFFF:
+        return "prg_rom_const_or_code"
+    return "unknown_ref"
+
+
+def format_symbol_notation(names: dict[int, str], report: AnnotationReport) -> str:
+    lines = [
+        "; ============================================================",
+        "; Symbol notation",
+        "; @const: immediate value (#$xx) or immutable ROM/table data; not writable RAM.",
+        "; @ram_zp_var: CPU RAM zero-page variable ($0000-$00FF).",
+        "; @ram_var: CPU RAM variable ($0200-$07FF); @ram_oam_sprite is sprite DMA/OAM shadow.",
+        "; @hw_ppu_reg / @hw_apu_io_reg: memory-mapped NES hardware register, not normal RAM.",
+        "; @prg_subroutine / @prg_code_label: executable PRG-ROM target.",
+        "; Format below: ; <name> = $addr ; @kind",
+        "; ============================================================",
+    ]
+    for addr, name in sorted(names.items()):
+        lines.append(f"; {name} = ${addr:04X} ; @{_symbol_kind(addr, report)}")
+    lines.append("")
+    return "\n".join(lines) + "\n"
+
+
 def _pass_hardware(addrs: set[int]) -> dict[int, str]:
     return {a: NES_REGS[a] for a in addrs if a in NES_REGS}
 
@@ -208,4 +268,4 @@ def annotate(
     if extra_names:
         names.update(extra_names)
     rewritten = rewrite_asm(asm_text, names)
-    return rewritten, report
+    return format_symbol_notation(names, report) + rewritten, report

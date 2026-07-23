@@ -626,8 +626,8 @@ def sprites(
     """
     from .io.log import get_logger
     from .sprites import (
-        export_in_process_runtime_sprites,
         export_in_process_runtime_sprite_samples,
+        export_in_process_runtime_sprites,
         export_runtime_oam_sprites,
         export_sprite_pattern_table,
         parse_palette_values,
@@ -873,6 +873,143 @@ def sprites_batch(
         raise typer.Exit(1)
 
 
+@app.command("smb-level")
+def smb_level(
+    rom: Annotated[Path, typer.Argument(help="ROM Super Mario Bros. .nes", exists=True)],
+    output: Annotated[
+        Path,
+        typer.Option("-o", "--output", help="Dossier de sortie PNG/manifest"),
+    ],
+    stage: Annotated[
+        str,
+        typer.Option(
+            "--stage",
+            help=(
+                "Stage SMB a rendre: all, 1-1..8-4, *-intro, "
+                "bonus, cloud1, cloud2, water1, water2, warp"
+            ),
+        ),
+    ] = "1-1",
+    max_columns: Annotated[
+        int,
+        typer.Option("--max-columns", help="Limite de colonnes metatiles a parser"),
+    ] = 1000,
+    quiet: Annotated[bool, typer.Option("-q", "--quiet")] = False,
+) -> None:
+    """Rend un niveau SMB assemble en PNG depuis le parser de niveau original."""
+    from .io.log import get_logger
+    from .smb_graphics import render_smb_level, render_smb_level_batch
+
+    _resolve_log_level(quiet, log_level="INFO", color="auto")
+    logger = get_logger(__name__)
+    if stage == "all":
+        batch = render_smb_level_batch(
+            rom,
+            output,
+            max_columns=max_columns,
+            allow_failures=True,
+        )
+        logger.info(
+            "✓ niveaux SMB assembles ecrits : %s  (ok=%d, erreurs=%d)",
+            output,
+            batch.success_count,
+            batch.failure_count,
+        )
+        logger.info("  manifeste batch : %s", batch.manifest_json)
+        for failed_stage, error in batch.errors.items():
+            logger.warning("stage SMB echoue: %s — %s", failed_stage, error)
+        return
+
+    manifest = render_smb_level(rom, output, stage=stage, max_columns=max_columns)
+    logger.info(
+        "✓ niveau SMB assemble ecrit : %s  (stage=%s, %dx%d, metatiles=%d)",
+        manifest.png,
+        manifest.stage,
+        manifest.width,
+        manifest.height,
+        manifest.unique_metatiles,
+    )
+    logger.info("  manifeste : %s", manifest.manifest_json)
+    for note in manifest.notes:
+        logger.warning("%s", note)
+
+
+@app.command("smb-characters")
+def smb_characters(
+    rom: Annotated[Path, typer.Argument(help="ROM Super Mario Bros. .nes", exists=True)],
+    output: Annotated[
+        Path,
+        typer.Option("-o", "--output", help="Dossier de sortie PNG/manifest"),
+    ],
+    quiet: Annotated[bool, typer.Option("-q", "--quiet")] = False,
+) -> None:
+    """Exporte les personnages SMB assembles depuis les tables graphiques originales."""
+    from .io.log import get_logger
+    from .smb_graphics import render_smb_characters
+
+    _resolve_log_level(quiet, log_level="INFO", color="auto")
+    logger = get_logger(__name__)
+    manifest = render_smb_characters(rom, output)
+    logger.info(
+        "✓ sprites personnages SMB ecrits : %s  (sprites=%d)",
+        manifest.out_dir,
+        len(manifest.sprites),
+    )
+    logger.info("  spritesheet : %s", manifest.spritesheet)
+    logger.info("  manifeste : %s", manifest.manifest_json)
+
+
+@app.command("smb-blocks")
+def smb_blocks(
+    rom: Annotated[Path, typer.Argument(help="ROM Super Mario Bros. .nes", exists=True)],
+    output: Annotated[
+        Path,
+        typer.Option("-o", "--output", help="Dossier de sortie PNG/manifest"),
+    ],
+    quiet: Annotated[bool, typer.Option("-q", "--quiet")] = False,
+) -> None:
+    """Exporte les metatiles/blocs/pieces SMB depuis le moteur original."""
+    from .io.log import get_logger
+    from .smb_graphics import render_smb_blocks
+
+    _resolve_log_level(quiet, log_level="INFO", color="auto")
+    logger = get_logger(__name__)
+    manifest = render_smb_blocks(rom, output)
+    logger.info(
+        "✓ blocs/metatiles SMB ecrits : %s  (fichiers=%d)",
+        manifest.out_dir,
+        len(manifest.files),
+    )
+    logger.info("  metatiles : %d sheet(s)", len(manifest.metatile_sheets))
+    logger.info("  blocs importants : %d sheet(s)", len(manifest.block_sheets))
+    logger.info("  sprites blocs/pieces : %s", manifest.sprite_sheet)
+    logger.info("  manifeste : %s", manifest.manifest_json)
+
+
+@app.command("smb-title-assets")
+def smb_title_assets(
+    rom: Annotated[Path, typer.Argument(help="ROM Super Mario Bros. .nes", exists=True)],
+    output: Annotated[
+        Path,
+        typer.Option("-o", "--output", help="Dossier de sortie PNG/manifest"),
+    ],
+    quiet: Annotated[bool, typer.Option("-q", "--quiet")] = False,
+) -> None:
+    """Exporte le logo title-screen et les polices/tuiles texte SMB."""
+    from .io.log import get_logger
+    from .smb_graphics import render_smb_title_assets
+
+    _resolve_log_level(quiet, log_level="INFO", color="auto")
+    logger = get_logger(__name__)
+    manifest = render_smb_title_assets(rom, output)
+    logger.info("✓ logo/polices SMB ecrits : %s", manifest.out_dir)
+    logger.info("  title screen : %s", manifest.title_screen)
+    logger.info("  logo : %s", manifest.title_logo)
+    logger.info("  font : %s", manifest.font_sheet)
+    logger.info("  glyphes titre : %s", manifest.title_glyph_sheet)
+    logger.info("  manifeste : %s", manifest.manifest_json)
+
+
 @app.command()
 def nsf(
     rom: Annotated[Path, typer.Argument(help="ROM .nes source", exists=True)],
@@ -1016,6 +1153,105 @@ def smb_nsf(
                 timing.frames,
                 timing.reason,
             )
+
+
+@app.command("smb-sfx")
+def smb_sfx(
+    rom: Annotated[Path, typer.Argument(help="ROM Super Mario Bros. .nes source", exists=True)],
+    output: Annotated[
+        Path,
+        typer.Option("-o", "--output", help="Dossier de sortie des effets audio"),
+    ],
+    fade_seconds: Annotated[
+        float,
+        typer.Option("--fade-seconds", help="Fade court applique en fin de MP3"),
+    ] = 0.03,
+    bitrate: Annotated[str, typer.Option("--bitrate", help="Bitrate ffmpeg/libmp3lame")] = "192k",
+    artist: Annotated[str, typer.Option("--artist")] = "Koji Kondo",
+    copyright_: Annotated[
+        str,
+        typer.Option("--copyright"),
+    ] = "Local private rip; do not distribute commercial ROM audio",
+    quiet: Annotated[bool, typer.Option("-q", "--quiet")] = False,
+) -> None:
+    """Exporte tous les bruitages SMB en NSF et MP3 courts."""
+    import json
+
+    from .io.log import get_logger
+    from .smb_nsf import (
+        SMB_SFX_TRACKS,
+        build_smb_nsf_from_rom,
+        write_smb_sfx_mp3s,
+        write_smb_sfx_split_nsfs,
+    )
+
+    _resolve_log_level(quiet, log_level="INFO", color="auto")
+    logger = get_logger(__name__)
+    output.mkdir(parents=True, exist_ok=True)
+    nsf_dir = output / "nsf"
+    mp3_dir = output / "mp3"
+    build = build_smb_nsf_from_rom(
+        rom.read_bytes(),
+        title="Super Mario Bros. SFX",
+        artist=artist,
+        copyright_=copyright_,
+        tracks=SMB_SFX_TRACKS,
+    )
+    multi_nsf = output / "smb-sfx.nsf"
+    multi_nsf.write_bytes(build.nsf_bytes)
+    nsfs = write_smb_sfx_split_nsfs(
+        rom,
+        nsf_dir,
+        artist=artist,
+        copyright_=copyright_,
+    )
+    mp3s = write_smb_sfx_mp3s(
+        rom,
+        nsf_dir,
+        mp3_dir,
+        fade_s=fade_seconds,
+        bitrate=bitrate,
+    )
+    manifest = output / "smb-sfx.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "kind": "smb_sound_effect_export",
+                "rom": str(rom),
+                "multi_nsf": str(multi_nsf),
+                "nsf_dir": str(nsf_dir),
+                "mp3_dir": str(mp3_dir),
+                "count": len(SMB_SFX_TRACKS),
+                "sfx": [
+                    {
+                        "index": sfx.index,
+                        "label": sfx.label,
+                        "channel": sfx.channel,
+                        "queue_addr": f"0x{sfx.queue_addr:04X}",
+                        "queue_value": f"0x{sfx.queue_value:02X}",
+                        "frames": sfx.frames,
+                        "seconds": sfx.seconds,
+                        "nsf": str(nsf_dir / f"{sfx.index + 1:02d}-{sfx.label}.nsf"),
+                        "mp3": str(mp3_dir / f"{sfx.index + 1:02d}-{sfx.label}.mp3"),
+                    }
+                    for sfx in SMB_SFX_TRACKS
+                ],
+                "notes": [
+                    "SMB SFX queues: $FF square1, $FE square2, $FD noise",
+                    "durations come from SFX length counters in the SMB sound engine",
+                ],
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    logger.info("✓ effets audio SMB ecrits : %s", output)
+    logger.info("  multi NSF : %s", multi_nsf)
+    logger.info("  NSF separes : %s  (count=%d)", nsf_dir, len(nsfs))
+    logger.info("  MP3 : %s  (count=%d)", mp3_dir, len(mp3s))
+    logger.info("  manifeste : %s", manifest)
 
 
 def main(argv: list[str] | None = None) -> int:

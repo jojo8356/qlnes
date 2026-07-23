@@ -96,6 +96,9 @@ python -m qlnes smb-nsf "roms/Super Mario Bros. (World).nes" \
   --split-dir out/smb-tracks \
   --mp3-dir out/smb-mp3
 
+# Super Mario Bros. : tous les effets audio en NSF et MP3 courts
+python -m qlnes smb-sfx "roms/Super Mario Bros. (World).nes" -o out/smb-sfx
+
 # Extraire les sprites CHR en PNG RGBA avec index couleur 0 transparent
 python -m qlnes sprites ROM.nes -o out/sprites --palette 0F,30,16,27
 
@@ -104,6 +107,18 @@ python -m qlnes sprites ROM.nes -o out/oam-sprites --snapshot snapshot-ppu-oam.j
 
 # Trouver dans l'ASM les routines qui pilotent images/sprites/palettes/banks
 python -m qlnes graphics-calls ROM.nes -o out/graphics-calls.md --json-out out/graphics-calls.json
+
+# Super Mario Bros. : rendre les niveaux assemblés en PNG depuis le parser original
+python -m qlnes smb-level "roms/Super Mario Bros. (World).nes" -o out/smb-levels --stage all
+
+# Super Mario Bros. : exporter les personnages assembles depuis les tables du moteur
+python -m qlnes smb-characters "roms/Super Mario Bros. (World).nes" -o out/smb-character-metasprites
+
+# Super Mario Bros. : exporter pieces, blocs, et tous les metatiles 16x16
+python -m qlnes smb-blocks "roms/Super Mario Bros. (World).nes" -o out/smb-blocks
+
+# Super Mario Bros. : exporter logo title-screen et polices utilisees
+python -m qlnes smb-title-assets "roms/Super Mario Bros. (World).nes" -o out/smb-title-assets
 
 # Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/MMC5/AxROM/MMC2/MMC4/Color Dreams/CPROM/Bandai FCG/Jaleco SS88006/Namco 163/VRC2-VRC4/VRC6/VRC7/Irem G-101/Taito TC0190/BNROM/Mapper 42/RAMBO-1/GxROM/FME-7/Bandai/Camerica/JF-17/VRC1/Holy Diver/NINA-03-06/J87/JF-10/Namco 108 : capture palette/OAM automatiquement
 # Inclut les ROMs CHR-RAM simples quand les patterns sont écrits en VRAM au boot.
@@ -192,6 +207,7 @@ write_smb_trimmed_mp3s(
 | Audio in-process | init/play 6502, APU software, rendu WAV/MP3 | qlnes/audio/ |
 | Export NSF | header NSF, INIT/PLAY, bankswitch NSF | qlnes/nsf.py |
 | Export SMB custom | wrapper $8000, queues $FB/$FC, timings sans loop | qlnes/smb_nsf.py |
+| Niveaux SMB assemblés | appelle le parser original SMB et rend les metatiles/CHR en PNG | qlnes/smb_graphics.py |
 | Sprites couleur | CHR sprite → PNG RGBA, palette PPU, alpha index 0 | qlnes/sprites.py |
 | Appels graphiques ASM | repère PPU/OAM/mapper writes qui chargent images/palettes/banks | qlnes/graphics_calls.py |
 
@@ -218,6 +234,7 @@ qlnes/
 ├── ql6502.py       wrapper subprocess QL6502
 ├── recompile.py    py65 + RomDiff + sha256
 ├── rom.py          Rom + Bank
+├── smb_graphics.py rendu PNG des niveaux Super Mario Bros. assemblés
 ├── smb_nsf.py      export NSF/MP3 spécifique Super Mario Bros.
 ├── sprites.py      export sprites CHR/OAM en PNG RGBA transparent
 └── emu/

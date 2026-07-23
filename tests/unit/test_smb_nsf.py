@@ -4,6 +4,7 @@ from qlnes.smb_nsf import (
     SMB_MUSIC_HEADER_DATA_ADDR,
     SMB_MUSIC_HEADER_OFFSET_DATA_ADDR,
     SMB_MUSIC_LENGTH_LOOKUP_ADDR,
+    SMB_SFX_TRACKS,
     SMB_SOUND_ENGINE_ADDR,
     SMB_TRACKS,
     SMB_WRAPPER_INIT_ADDR,
@@ -11,6 +12,7 @@ from qlnes.smb_nsf import (
     _square2_duration_for_header_y,
     build_smb_nsf_from_rom,
     read_smb_track_timings,
+    write_smb_sfx_split_nsfs,
     write_smb_split_nsfs,
 )
 
@@ -59,8 +61,8 @@ def test_smb_nsf_track_table_maps_area_and_event_queues():
     wrapper = build.nsf_bytes[0x80 : 0x80 + 0x1000]
 
     lows = wrapper[0x60 : 0x60 + len(SMB_TRACKS)]
-    highs = wrapper[0x70 : 0x70 + len(SMB_TRACKS)]
-    values = wrapper[0x80 : 0x80 + len(SMB_TRACKS)]
+    highs = wrapper[0x80 : 0x80 + len(SMB_TRACKS)]
+    values = wrapper[0xA0 : 0xA0 + len(SMB_TRACKS)]
 
     assert lows[0] == 0xFB
     assert highs[0] == 0x00
@@ -73,6 +75,26 @@ def test_smb_nsf_track_table_maps_area_and_event_queues():
     assert SMB_TRACKS[7].label == "death"
 
 
+def test_smb_sfx_track_table_maps_sound_effect_queues():
+    build = build_smb_nsf_from_rom(_nrom32(), tracks=SMB_SFX_TRACKS)
+    wrapper = build.nsf_bytes[0x80 : 0x80 + 0x1000]
+
+    lows = wrapper[0x60 : 0x60 + len(SMB_SFX_TRACKS)]
+    highs = wrapper[0x80 : 0x80 + len(SMB_SFX_TRACKS)]
+    values = wrapper[0xA0 : 0xA0 + len(SMB_SFX_TRACKS)]
+
+    assert build.nsf_bytes[6] == len(SMB_SFX_TRACKS)
+    assert lows[0] == 0xFF
+    assert highs[0] == 0x00
+    assert values[0] == 0x80
+    assert SMB_SFX_TRACKS[0].label == "small-jump"
+
+    assert lows[-1] == 0xFD
+    assert highs[-1] == 0x00
+    assert values[-1] == 0x02
+    assert SMB_SFX_TRACKS[-1].label == "bowser-flame"
+
+
 def test_smb_split_nsfs_write_one_track_per_file(tmp_path):
     rom = tmp_path / "smb.nes"
     rom.write_bytes(_nrom32())
@@ -82,6 +104,21 @@ def test_smb_split_nsfs_write_one_track_per_file(tmp_path):
     assert len(written) == len(SMB_TRACKS)
     assert written[0].name == "01-ground.nsf"
     assert written[-1].name == "14-silence.nsf"
+    for path in written:
+        data = path.read_bytes()
+        assert data[:5] == b"NESM\x1a"
+        assert data[6] == 1
+
+
+def test_smb_sfx_split_nsfs_write_one_effect_per_file(tmp_path):
+    rom = tmp_path / "smb.nes"
+    rom.write_bytes(_nrom32())
+
+    written = write_smb_sfx_split_nsfs(rom, tmp_path / "sfx")
+
+    assert len(written) == len(SMB_SFX_TRACKS)
+    assert written[0].name == "01-small-jump.nsf"
+    assert written[-1].name == "18-bowser-flame.nsf"
     for path in written:
         data = path.read_bytes()
         assert data[:5] == b"NESM\x1a"

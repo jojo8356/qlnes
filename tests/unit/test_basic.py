@@ -30,6 +30,15 @@ class TestAnnotate(unittest.TestCase):
         self.assertEqual(report.hardware[0x2002], "PPUSTATUS")
         self.assertEqual(report.hardware[0x4016], "JOY1")
 
+    def test_symbol_notation_header_marks_kinds(self):
+        img = simple_image()
+        annotated, _ = annotate(disassemble(img), image=img)
+        self.assertIn("; Symbol notation", annotated)
+        self.assertIn("@const", annotated)
+        self.assertIn("; PPUSTATUS = $2002 ; @hw_ppu_reg", annotated)
+        self.assertIn("@ram_zp_var", annotated)
+        self.assertIn("@ram_var", annotated)
+
 
 class TestNesHardware(unittest.TestCase):
     def test_oam_naming(self):

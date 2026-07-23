@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .annotate import AnnotationReport, annotate, rewrite_asm
+from .annotate import AnnotationReport, annotate, format_symbol_notation, rewrite_asm
 from .asm_text import replace_unknown_opcodes
 from .assets import AssetsManifest, extract_chr, extract_music
 from .cross_ref import RoutineNameProposal, cross_reference, merge_proposals
@@ -284,7 +284,10 @@ class RomProfile:
                 merged = dict(self.static_report.names)
                 merged.update(extra)
                 merged.update(result.names())
-                self.annotated_asm = rewrite_asm(asm, merged)
+                self.annotated_asm = (
+                    format_symbol_notation(merged, self.static_report)
+                    + rewrite_asm(asm, merged)
+                )
                 self.static_report.subroutines = {
                     **self.static_report.subroutines,
                     **extra,
