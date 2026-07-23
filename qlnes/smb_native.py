@@ -55,6 +55,7 @@ SMB_BIG_MARIO_SPRITES = (
     ("big-walk-3", "mario_big_walk_3.rgba"),
     ("big-jump", "mario_big_jump.rgba"),
 )
+SMB_DEAD_MARIO_SPRITE = ("small-killed", "mario_small_killed.rgba")
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,7 @@ def create_smb_native_port(
         sprite_name: build_dir / "characters" / "players" / f"{sprite_name}.png"
         for sprite_name, _ in SMB_BIG_MARIO_SPRITES
     }
+    dead_mario_png = build_dir / "characters" / "players" / f"{SMB_DEAD_MARIO_SPRITE[0]}.png"
     goomba_png = build_dir / "characters" / "enemies" / "goomba.png"
     koopa_png = build_dir / "characters" / "enemies" / "koopa-troopa-1.png"
     mushroom_png = build_dir / "blocks" / "sprites" / "mushroom.png"
@@ -123,6 +125,8 @@ def create_smb_native_port(
     for mario_png in big_mario_pngs.values():
         if not mario_png.exists():
             raise RuntimeError(f"expected SMB big player sprite missing: {mario_png}")
+    if not dead_mario_png.exists():
+        raise RuntimeError(f"expected SMB dead player sprite missing: {dead_mario_png}")
     if not goomba_png.exists():
         raise RuntimeError(f"expected SMB enemy sprite missing: {goomba_png}")
     if not koopa_png.exists():
@@ -140,6 +144,7 @@ def create_smb_native_port(
     mushroom_raw = assets_dir / "mushroom.rgba"
     goomba_raw = assets_dir / "goomba.rgba"
     koopa_raw = assets_dir / "koopa_troopa.rgba"
+    dead_mario_raw = assets_dir / SMB_DEAD_MARIO_SPRITE[1]
     enemies_raw = assets_dir / "enemies_1_1.bin"
     _write_rgb(level.png, level_raw)
     collision_size = _write_collision_map(level.png, collision_raw)
@@ -161,6 +166,7 @@ def create_smb_native_port(
         SMB_BIG_MARIO_SPRITES,
     )
     mushroom_size = _write_rgba(mushroom_png, mushroom_raw)
+    dead_mario_size = _write_rgba(dead_mario_png, dead_mario_raw)
     goomba_size = _write_rgba(goomba_png, goomba_raw)
     koopa_size = _write_rgba(koopa_png, koopa_raw)
     enemy_spawns = _write_enemy_spawns(rom_bytes, stage, enemies_raw)
@@ -186,6 +192,8 @@ def create_smb_native_port(
             small_mario_height=small_mario_size[1],
             big_mario_width=big_mario_size[0],
             big_mario_height=big_mario_size[1],
+            dead_mario_width=dead_mario_size[0],
+            dead_mario_height=dead_mario_size[1],
             mario_frame_count=len(SMB_SMALL_MARIO_SPRITES),
             goomba_width=goomba_size[0],
             goomba_height=goomba_size[1],
@@ -235,6 +243,7 @@ Terminal=false
         mushroom_raw,
         *(assets_dir / asset_name for _, asset_name in SMB_SMALL_MARIO_SPRITES),
         *(assets_dir / asset_name for _, asset_name in SMB_BIG_MARIO_SPRITES),
+        dead_mario_raw,
         goomba_raw,
         koopa_raw,
         enemies_raw,
@@ -285,6 +294,13 @@ Terminal=false
                     "big_height": big_mario_size[1],
                     "small_sprites": small_mario_assets,
                     "big_sprites": big_mario_assets,
+                    "dead_sprite": {
+                        "name": SMB_DEAD_MARIO_SPRITE[0],
+                        "source_png": str(dead_mario_png),
+                        "asset": str(dead_mario_raw.relative_to(out)),
+                        "width": dead_mario_size[0],
+                        "height": dead_mario_size[1],
+                    },
                     "sprites": small_mario_assets,
                 },
                 "enemies": [
@@ -325,6 +341,7 @@ Terminal=false
                     "Collision is derived from the rendered SMB metatile map at build time.",
                     "Supported enemy spawns are decoded from SMB EnemyData for the selected stage.",
                     "Small and big Mario standing, walking, and jumping sprites are normalized from SMB tables.",
+                    "Mario death uses the SMB small-killed metasprite and restarts the native level state.",
                     "Question/item blocks are decoded from SMB metatiles and can be hit natively.",
                 ],
             },
@@ -660,6 +677,8 @@ def _main_c_source(
     small_mario_height: int,
     big_mario_width: int,
     big_mario_height: int,
+    dead_mario_width: int,
+    dead_mario_height: int,
     mario_frame_count: int,
     goomba_width: int,
     goomba_height: int,
@@ -695,6 +714,8 @@ def _main_c_source(
 #define SMALL_MARIO_H {small_mario_height}
 #define BIG_MARIO_W {big_mario_width}
 #define BIG_MARIO_H {big_mario_height}
+#define DEAD_MARIO_W {dead_mario_width}
+#define DEAD_MARIO_H {dead_mario_height}
 #define MARIO_FRAME_COUNT {mario_frame_count}
 #define GOOMBA_W {goomba_width}
 #define GOOMBA_H {goomba_height}
@@ -703,6 +724,10 @@ def _main_c_source(
 #define ENEMY_COUNT {enemy_count}
 #define ENEMY_RECORD_BYTES {enemy_record_bytes}
 #define TILE_SIZE 16
+#define MARIO_START_X 48.0f
+#define MARIO_START_Y 176.0f
+#define STARTING_LIVES 3
+#define DEATH_RESTART_MS 1300
 
 typedef struct {{
     float x;
@@ -969,10 +994,60 @@ static int mario_height(bool mario_big) {{
     return mario_big ? BIG_MARIO_H : SMALL_MARIO_H;
 }}
 
-static void update_window_title(SDL_Window *window, int coins) {{
+static void update_window_title(SDL_Window *window, int coins, int lives) {{
     char title[256];
-    snprintf(title, sizeof(title), "%s  Coins %02d", APP_TITLE, coins);
+    snprintf(title, sizeof(title), "%s  Coins %02d  Lives %d", APP_TITLE, coins, lives);
     SDL_SetWindowTitle(window, title);
+}}
+
+static void reset_level_state(
+    const uint8_t *block_data,
+    Block *blocks,
+    const uint8_t *enemy_data,
+    Enemy *enemies,
+    CoinEffect *coin_effect,
+    Powerup *powerup,
+    float *mario_x,
+    float *mario_y,
+    float *vx,
+    float *vy,
+    bool *mario_big,
+    bool *on_ground,
+    bool *player_dead
+) {{
+    load_blocks(block_data, blocks);
+    load_enemies(enemy_data, enemies);
+    coin_effect->active = false;
+    powerup->active = false;
+    powerup->emerging = false;
+    *mario_x = MARIO_START_X;
+    *mario_y = MARIO_START_Y;
+    *vx = 0.0f;
+    *vy = 0.0f;
+    *mario_big = false;
+    *on_ground = false;
+    *player_dead = false;
+}}
+
+static void begin_death(
+    bool *player_dead,
+    uint32_t *death_started_at,
+    int *lives,
+    float *vx,
+    float *vy,
+    bool *on_ground,
+    uint32_t now,
+    SDL_Window *window,
+    int coins
+) {{
+    if (*player_dead) return;
+    *player_dead = true;
+    *death_started_at = now;
+    *vx = 0.0f;
+    *vy = -210.0f;
+    *on_ground = false;
+    if (*lives > 0) *lives -= 1;
+    update_window_title(window, coins, *lives);
 }}
 
 static void draw_sprite(
@@ -1021,6 +1096,7 @@ int main(int argc, char **argv) {{
     char big_mario_path_2[4096];
     char big_mario_path_3[4096];
     char big_mario_path_4[4096];
+    char dead_mario_path[4096];
     char goomba_path[4096];
     char koopa_path[4096];
     char enemies_path[4096];
@@ -1043,6 +1119,7 @@ int main(int argc, char **argv) {{
     snprintf(big_mario_path_2, sizeof(big_mario_path_2), "%sassets/mario_big_walk_2.rgba", base ? base : "");
     snprintf(big_mario_path_3, sizeof(big_mario_path_3), "%sassets/mario_big_walk_3.rgba", base ? base : "");
     snprintf(big_mario_path_4, sizeof(big_mario_path_4), "%sassets/mario_big_jump.rgba", base ? base : "");
+    snprintf(dead_mario_path, sizeof(dead_mario_path), "%sassets/mario_small_killed.rgba", base ? base : "");
     snprintf(goomba_path, sizeof(goomba_path), "%sassets/goomba.rgba", base ? base : "");
     snprintf(koopa_path, sizeof(koopa_path), "%sassets/koopa_troopa.rgba", base ? base : "");
     snprintf(enemies_path, sizeof(enemies_path), "%sassets/enemies_1_1.bin", base ? base : "");
@@ -1069,6 +1146,7 @@ int main(int argc, char **argv) {{
     big_mario_frames[2] = read_asset(big_mario_path_2, (size_t)BIG_MARIO_W * BIG_MARIO_H * 4);
     big_mario_frames[3] = read_asset(big_mario_path_3, (size_t)BIG_MARIO_W * BIG_MARIO_H * 4);
     big_mario_frames[4] = read_asset(big_mario_path_4, (size_t)BIG_MARIO_W * BIG_MARIO_H * 4);
+    uint8_t *dead_mario = read_asset(dead_mario_path, (size_t)DEAD_MARIO_W * DEAD_MARIO_H * 4);
     uint8_t *goomba = read_asset(goomba_path, (size_t)GOOMBA_W * GOOMBA_H * 4);
     uint8_t *koopa = read_asset(koopa_path, (size_t)KOOPA_W * KOOPA_H * 4);
     uint8_t *enemy_data = read_asset(enemies_path, (size_t)ENEMY_COUNT * ENEMY_RECORD_BYTES);
@@ -1080,7 +1158,7 @@ int main(int argc, char **argv) {{
     for (int i = 0; i < COIN_FRAME_COUNT; i++) {{
         if (!coin_frames[i]) coins_loaded = false;
     }}
-    if (!level || !collision || !block_data || !used_block || !coins_loaded || !mushroom || !mario_loaded || !goomba || !koopa || !enemy_data) return 2;
+    if (!level || !collision || !block_data || !used_block || !coins_loaded || !mushroom || !mario_loaded || !dead_mario || !goomba || !koopa || !enemy_data) return 2;
     Block blocks[BLOCK_COUNT > 0 ? BLOCK_COUNT : 1];
     Enemy enemies[ENEMY_COUNT > 0 ? ENEMY_COUNT : 1];
     load_blocks(block_data, blocks);
@@ -1097,6 +1175,7 @@ int main(int argc, char **argv) {{
             free(small_mario_frames[i]);
             free(big_mario_frames[i]);
         }}
+        free(dead_mario);
         free(goomba);
         free(koopa);
         free(enemy_data);
@@ -1119,19 +1198,22 @@ int main(int argc, char **argv) {{
         return 4;
     }}
 
-    float mario_x = 48.0f;
-    float mario_y = 176.0f;
+    float mario_x = MARIO_START_X;
+    float mario_y = MARIO_START_Y;
     float vx = 0.0f;
     float vy = 0.0f;
     bool running = true;
     bool facing_left = false;
     bool on_ground = false;
     bool mario_big = false;
+    bool player_dead = false;
+    uint32_t death_started_at = 0;
     int coins = 0;
+    int lives = STARTING_LIVES;
     CoinEffect coin_effect = {{false, 0.0f, 0.0f, 0}};
     Powerup powerup = {{false, false, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}};
     uint32_t last = SDL_GetTicks();
-    update_window_title(window, coins);
+    update_window_title(window, coins, lives);
 
     while (running) {{
         SDL_Event e;
@@ -1143,20 +1225,46 @@ int main(int argc, char **argv) {{
         float move = 0.0f;
         if (keys[SDL_SCANCODE_LEFT] || keys[SDL_SCANCODE_A]) move -= 1.0f;
         if (keys[SDL_SCANCODE_RIGHT] || keys[SDL_SCANCODE_D]) move += 1.0f;
-        if (move < 0) facing_left = true;
-        if (move > 0) facing_left = false;
-        vx = move * 100.0f;
+        if (!player_dead && move < 0) facing_left = true;
+        if (!player_dead && move > 0) facing_left = false;
+        vx = player_dead ? 0.0f : move * 100.0f;
         bool jump = keys[SDL_SCANCODE_SPACE] || keys[SDL_SCANCODE_UP] || keys[SDL_SCANCODE_W];
-        if (jump && on_ground) vy = -245.0f;
+        if (!player_dead && jump && on_ground) vy = -245.0f;
 
         uint32_t now = SDL_GetTicks();
         float dt = (float)(now - last) / 1000.0f;
         if (dt > 0.05f) dt = 0.05f;
         last = now;
 
-        vy += 620.0f * dt;
         int player_w = mario_width(mario_big);
         int player_h = mario_height(mario_big);
+        if (player_dead) {{
+            vy += 620.0f * dt;
+            mario_y += vy * dt;
+            if (now - death_started_at >= DEATH_RESTART_MS) {{
+                if (lives <= 0) {{
+                    lives = STARTING_LIVES;
+                    coins = 0;
+                }}
+                reset_level_state(
+                    block_data,
+                    blocks,
+                    enemy_data,
+                    enemies,
+                    &coin_effect,
+                    &powerup,
+                    &mario_x,
+                    &mario_y,
+                    &vx,
+                    &vy,
+                    &mario_big,
+                    &on_ground,
+                    &player_dead
+                );
+                update_window_title(window, coins, lives);
+            }}
+        }} else {{
+        vy += 620.0f * dt;
         float next_x = mario_x + vx * dt;
         if (!rect_hits_solid(collision, next_x, mario_y, player_w, player_h)) {{
             mario_x = next_x;
@@ -1182,7 +1290,7 @@ int main(int argc, char **argv) {{
                     coin_effect.x = (float)hit->x + 4.0f;
                     coin_effect.y = (float)hit->y - 8.0f;
                     coin_effect.started_at = now;
-                    update_window_title(window, coins);
+                    update_window_title(window, coins, lives);
                 }}
             }}
             vy = 0.0f;
@@ -1197,10 +1305,14 @@ int main(int argc, char **argv) {{
                 mario_big = true;
             }}
             coins += 10;
-            update_window_title(window, coins);
+            update_window_title(window, coins, lives);
         }}
         player_w = mario_width(mario_big);
         player_h = mario_height(mario_big);
+
+        if (mario_y > LEVEL_H + 32.0f) {{
+            begin_death(&player_dead, &death_started_at, &lives, &vx, &vy, &on_ground, now, window, coins);
+        }}
 
         for (int i = 0; i < ENEMY_COUNT; i++) {{
             Enemy *enemy = &enemies[i];
@@ -1237,12 +1349,10 @@ int main(int argc, char **argv) {{
                     mario_big = false;
                     mario_y += (float)(BIG_MARIO_H - SMALL_MARIO_H);
                 }} else {{
-                    mario_x = 48.0f;
-                    mario_y = 176.0f;
-                    vx = 0.0f;
-                    vy = 0.0f;
+                    begin_death(&player_dead, &death_started_at, &lives, &vx, &vy, &on_ground, now, window, coins);
                 }}
             }}
+        }}
         }}
 
         int camera = (int)mario_x - 96;
@@ -1268,15 +1378,27 @@ int main(int argc, char **argv) {{
                 enemy->vx > 0.0f
             );
         }}
-        draw_sprite(
-            frame,
-            mario_sprite(small_mario_frames, big_mario_frames, mario_big, on_ground, vx, now),
-            mario_width(mario_big),
-            mario_height(mario_big),
-            (int)mario_x - camera,
-            (int)mario_y,
-            facing_left
-        );
+        if (player_dead) {{
+            draw_sprite(
+                frame,
+                dead_mario,
+                DEAD_MARIO_W,
+                DEAD_MARIO_H,
+                (int)mario_x - camera,
+                (int)mario_y,
+                facing_left
+            );
+        }} else {{
+            draw_sprite(
+                frame,
+                mario_sprite(small_mario_frames, big_mario_frames, mario_big, on_ground, vx, now),
+                mario_width(mario_big),
+                mario_height(mario_big),
+                (int)mario_x - camera,
+                (int)mario_y,
+                facing_left
+            );
+        }}
 
         SDL_UpdateTexture(texture, NULL, frame, SCREEN_W * (int)sizeof(uint32_t));
         SDL_RenderClear(renderer);
@@ -1295,6 +1417,7 @@ int main(int argc, char **argv) {{
         free(small_mario_frames[i]);
         free(big_mario_frames[i]);
     }}
+    free(dead_mario);
     free(goomba);
     free(koopa);
     free(enemy_data);

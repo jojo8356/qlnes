@@ -69,6 +69,10 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
         "big-walk-3",
         "big-jump",
     ]
+    assert data["player"]["dead_sprite"]["name"] == "small-killed"
+    assert data["player"]["dead_sprite"]["asset"] == "assets/mario_small_killed.rgba"
+    assert data["player"]["dead_sprite"]["width"] > 0
+    assert data["player"]["dead_sprite"]["height"] > 0
     assert data["player"]["sprites"] == data["player"]["small_sprites"]
     assert data["enemies"][0]["name"] == "goomba"
     assert data["enemies"][0]["spawn_count"] >= 8
@@ -100,6 +104,7 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert (export.out_dir / "assets" / "mario_big_walk_2.rgba").exists()
     assert (export.out_dir / "assets" / "mario_big_walk_3.rgba").exists()
     assert (export.out_dir / "assets" / "mario_big_jump.rgba").exists()
+    assert (export.out_dir / "assets" / "mario_small_killed.rgba").exists()
     assert (export.out_dir / "assets" / "goomba.rgba").exists()
     assert (export.out_dir / "assets" / "koopa_troopa.rgba").exists()
     assert (export.out_dir / "assets" / "enemies_1_1.bin").exists()
@@ -118,6 +123,12 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "BIG_MARIO_H" in source
     assert "bool mario_big" in source
     assert "mario_width(mario_big)" in source
+    assert "DEAD_MARIO_H" in source
+    assert "STARTING_LIVES" in source
+    assert "bool player_dead" in source
+    assert "reset_level_state" in source
+    assert "begin_death" in source
+    assert "Lives %d" in source
     assert "BLOCK_COUNT" in source
     assert "draw_used_blocks" in source
     assert "update_window_title" in source
@@ -166,6 +177,7 @@ def test_cli_smb_native_generates_project(tmp_path: Path) -> None:
     assert (out / "assets" / "mario_small_jump.rgba").exists()
     assert (out / "assets" / "mario_big_walk_1.rgba").exists()
     assert (out / "assets" / "mario_big_jump.rgba").exists()
+    assert (out / "assets" / "mario_small_killed.rgba").exists()
     assert (out / "assets" / "koopa_troopa.rgba").exists()
     assert (out / "assets" / "enemies_1_1.bin").exists()
     assert not list(out.rglob("*.nes"))
