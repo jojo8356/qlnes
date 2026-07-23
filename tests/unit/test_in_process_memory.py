@@ -12,6 +12,7 @@ from qlnes.audio.in_process.memory import (
     CPROMMemory,
     FME7Memory,
     GxROMMemory,
+    HolyDiverMemory,
     JF10Memory,
     MMC1Memory,
     MMC3Memory,
@@ -551,6 +552,21 @@ def test_jf10_mapper101_selects_chr_bank_with_normal_bit_order():
     assert m.ppu_snapshot().chr_bank == 1
     m[0x7FFF] = 0x02
     assert m.ppu_snapshot().chr_bank == 2
+
+
+def test_mapper78_switches_low_prg_bank_and_chr_bank():
+    banks = [bytes([bank_id] * 0x4000) for bank_id in range(8)]
+    m = HolyDiverMemory(b"".join(banks), chr_banks=8)
+    assert m[0x8000] == 0
+    assert m[0xC000] == 7
+    assert m.ppu_snapshot().chr_bank == 0
+    m[0x8000] = 0x52
+    assert m[0x8000] == 2
+    assert m[0xC000] == 7
+    assert m.ppu_snapshot().chr_bank == 5
+    m.reset_state()
+    assert m[0x8000] == 0
+    assert m.ppu_snapshot().chr_bank == 0
 
 
 def test_len_is_64k():

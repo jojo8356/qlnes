@@ -79,14 +79,14 @@ sprite-only avec fond transparent.
 Les sprites masques hors ecran (`Y >= 0xEF`) sont ignores par defaut. Ajouter
 `--include-hidden` pour les exporter aussi.
 
-## Mode runtime automatique NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/CPROM/BNROM/GxROM/FME-7/Camerica/J87/JF-10
+## Mode runtime automatique NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/CPROM/BNROM/GxROM/FME-7/Camerica/Holy Diver/J87/JF-10
 
 Pour les ROMs mapper 0/NROM, mapper 1/MMC1 simple, mapper 2/UxROM, mapper
 3/CNROM, mapper 4/MMC3 simple, mapper 7/AxROM, mapper 11/Color Dreams, mapper
 13/CPROM, mapper 34/BNROM-NINA, mapper 66/GxROM, mapper 69/Sunsoft FME-7/5B,
-mapper 71/Camerica, mapper 87/J87 et mapper 101/JF-10 qui initialisent les
-palettes et OAM par les writes PPU classiques, qlnes peut faire le snapshot
-automatiquement :
+mapper 71/Camerica, mapper 78/Holy Diver, mapper 87/J87 et mapper 101/JF-10
+qui initialisent les palettes et OAM par les writes PPU classiques, qlnes peut
+faire le snapshot automatiquement :
 
 ```bash
 python -m qlnes sprites ROM.nes \
@@ -125,6 +125,8 @@ Ce mode boote la ROM en-process avec `py65`, observe :
   dans le snapshot ;
 - les writes mapper 71/Camerica vers `$C000-$FFFF` pour choisir la PRG bank 16
   KiB basse, avec la dernière bank fixe en haut.
+- les writes mapper 78/Holy Diver vers `$8000-$FFFF` pour choisir la PRG bank
+  16 KiB basse via bits `0-2` et la CHR-ROM 8 KiB active via bits `4-7` ;
 - les writes mapper 87/J87 vers `$6000-$7FFF` pour choisir la CHR-ROM 8 KiB
   active avec le bit-order `LH` documenté par NESdev.
 - les writes mapper 101/JF-10 vers `$6000-$7FFF` pour choisir la CHR-ROM 8 KiB
@@ -257,7 +259,7 @@ python -m qlnes sprites ROM.nes \
 ## Limite actuelle
 
 La commande sait capturer automatiquement les cas
-NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/CPROM/BNROM/GxROM/FME-7/Camerica/J87/JF-10
+NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/CPROM/BNROM/GxROM/FME-7/Camerica/Holy Diver/J87/JF-10
 simples, y compris une partie des ROMs CHR-RAM si les tiles sont ecrites via
 `PPUDATA` pendant la fenetre capturee.
 Elle ne couvre pas encore tous les jeux NES :

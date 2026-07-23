@@ -714,6 +714,11 @@ La premiere implementation qlnes suit cette decision :
   une page CHR-RAM 4 KiB sélectionnée par `$8000-$FFFF`. qlnes capture donc les
   writes CHR-RAM runtime par page et compose la pattern table visible dans le
   snapshot. Source : https://www.nesdev.org/wiki/CPROM
+- Pour mapper 78/Holy Diver, NESdev documente une PRG bank 16 KiB switchable à
+  `$8000-$BFFF`, la dernière PRG bank fixe à `$C000-$FFFF`, et une CHR-ROM 8 KiB
+  switchable via le même registre `CCCC MPPP` à `$8000-$FFFF`. qlnes utilise
+  bits `0-2` pour PRG et bits `4-7` pour la CHR bank runtime. Source :
+  https://www.nesdev.org/wiki/INES_Mapper_078
 - Pour mapper 11/Color Dreams, NESdev documente une fenêtre CPU 32 KiB
   switchable à `$8000-$FFFF`, une fenêtre PPU CHR 8 KiB à `$0000-$1FFF`, et
   un registre `CCCC LLPP` : bits `0-1` pour le PRG bank 32 KiB, bits `4-7`

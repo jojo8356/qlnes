@@ -13,6 +13,7 @@ CPROMMemory (mapper 13) supports fixed PRG and switchable 4 KiB CHR-RAM.
 CamericaMemory (mapper 71) supports the Codemasters/Camerica UNROM variant.
 J87Memory (mapper 87) and JF10Memory (mapper 101) support fixed PRG with
 switchable 8 KiB CHR-ROM.
+HolyDiverMemory (mapper 78) supports switchable 16 KiB PRG and 8 KiB CHR-ROM.
 
 The APU observer lives inside __setitem__: when py65 writes to
 $4000-$4017, we record an ApuWriteEvent. PPU reads/writes go through
@@ -566,6 +567,32 @@ class CamericaMemory(UxROMMemory):
         if addr >= 0x8000:
             return
         super().__setitem__(addr, value)
+
+
+class HolyDiverMemory(UxROMMemory):
+    """Mapper-78 Holy Diver / Cosmo Carrier memory.
+
+    $8000-$BFFF is a switchable 16 KiB PRG bank and $C000-$FFFF is fixed to the
+    last bank. Writes to $8000-$FFFF use bits 0-2 for PRG and bits 4-7 for the
+    8 KiB CHR-ROM bank. Mirroring bit 3 is not relevant to sprite extraction.
+    """
+
+    def __init__(self, prg: bytes, chr_banks: int) -> None:
+        super().__init__(prg)
+        if chr_banks <= 0:
+            raise ValueError("Mapper 78 requires at least one CHR bank")
+        self._chr_bank_count = chr_banks
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if addr >= 0x8000:
+            self._switch_bank = (value & 0x07) % len(self._banks)
+            self.chr_bank = ((value >> 4) & 0x0F) % self._chr_bank_count
+            return
+        super().__setitem__(addr, value)
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        self.chr_bank = 0
 
 
 class J87Memory(NROMMemory):
