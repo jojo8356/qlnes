@@ -579,7 +579,7 @@ def sprites(
     Par defaut, cette commande applique une palette fournie ou une palette de
     preview. Pour des couleurs originales, utiliser `--runtime-frames` sur les
     ROMs NROM/MMC1/UxROM/CNROM/MMC3/AxROM/MMC2/MMC4/Color Dreams/Bandai FCG/
-    Jaleco SS88006/BNROM/Mapper 42/GxROM/FME-7/Bandai/Camerica/JF-17/NINA-03-06 simples ou fournir un dump PPU/OAM
+    Jaleco SS88006/Irem G-101/BNROM/Mapper 42/GxROM/FME-7/Bandai/Camerica/JF-17/NINA-03-06 simples ou fournir un dump PPU/OAM
     externe via `--snapshot`.
     """
     from .io.log import get_logger

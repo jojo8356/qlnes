@@ -59,6 +59,7 @@ Sources principales :
 - NESdev, List of mappers : https://www.nesdev.org/wiki/List_of_mappers
 - NESdev, INES Mapper 016 : https://www.nesdev.org/wiki/INES_Mapper_016
 - NESdev, INES Mapper 018 : https://www.nesdev.org/wiki/INES_Mapper_018
+- NESdev, INES Mapper 032 : https://www.nesdev.org/wiki/INES_Mapper_032
 - NESdev, INES Mapper 042 : https://www.nesdev.org/wiki/INES_Mapper_042
 - NESdev, MMC4 / mapper 010 : https://www.nesdev.org/wiki/MMC4
 - NESdev, INES Mapper 070 : https://www.nesdev.org/wiki/INES_Mapper_070
@@ -712,14 +713,14 @@ La premiere implementation qlnes suit cette decision :
   canvas `oam-screen.png`.
 - `python -m qlnes sprites ROM.nes -o out/oam --runtime-frames 120` boote les
   ROMs simples NROM, MMC1/SxROM, UxROM, CNROM, MMC3, AxROM, MMC2/PxROM,
-  MMC4/FxROM, Color Dreams, Bandai FCG, Jaleco SS88006,
+  MMC4/FxROM, Color Dreams, Bandai FCG, Jaleco SS88006, Irem G-101,
   BNROM/NINA, Mapper 42, GxROM/GNROM, Sunsoft FME-7/5B, Bandai, Camerica,
   JF-17 et NINA-03/06 avec l'observateur in-process et capture automatiquement
   PPUCTRL, PPUMASK, palette RAM, OAM/OAMDMA, pattern table CHR-RAM simple,
   CHR bank CNROM actif, fenêtres CHR MMC1 8 KiB/split 4 KiB, fenêtres CHR MMC3
   1 KiB/2 KiB, fenêtres CHR MMC2/MMC4 4 KiB latchées, fenêtres CHR NINA 4 KiB, PRG banks AxROM, PRG-CHR banks Color
   Dreams et PRG-CHR banks GxROM, ainsi que les fenêtres PRG 8 KiB et CHR 1 KiB
-  FME-7, les fenêtres CHR 1 KiB Bandai FCG/Jaleco SS88006, le registre `PPPP CCCC` Bandai, les bits de commande PRG/CHR JF-17 et
+  FME-7, les fenêtres CHR 1 KiB Bandai FCG/Jaleco SS88006/Irem G-101, le registre `PPPP CCCC` Bandai, les bits de commande PRG/CHR JF-17 et
   le registre expansion NINA-03/06.
 - `--runtime-input start@1:30,a+right@120:240` pilote la manette 1 pendant la
   capture runtime. Cela permet d'atteindre plus d'etats de jeu que le boot
@@ -759,6 +760,11 @@ La premiere implementation qlnes suit cette decision :
   paires pour composer la pattern table visible dans le snapshot runtime.
   IRQ, mirroring et ADPCM sont hors du chemin export sprites. Source :
   https://www.nesdev.org/wiki/INES_Mapper_018
+- Pour mapper 32/Irem G-101, NESdev documente deux fenêtres PRG-ROM 8 KiB
+  switchables, deux fenêtres PRG fixes avec mode d'échange `$8000/$C000`, et
+  huit fenêtres CHR-ROM 1 KiB. qlnes observe les registres PRG/CHR nécessaires
+  et compose la pattern table CHR 1 KiB visible dans le snapshot runtime.
+  Source : https://www.nesdev.org/wiki/INES_Mapper_032
 - Pour mapper 101/JF-10, NESdev documente la même famille de board mais avec le
   bit-order CHR normal `HL` à `$6000-$7FFF`, plus une extension oversize mieux
   définie. qlnes sélectionne donc directement la valeur écrite comme CHR bank
