@@ -29,6 +29,7 @@ from qlnes.audio.in_process.memory import (
     Namco163Memory,
     NINA0306Memory,
     NROMMemory,
+    RAMBO1Memory,
     Taito33Memory,
     UxROMMemory,
     VRC24Memory,
@@ -646,6 +647,36 @@ def test_mapper85_vrc7_switches_prg_and_1k_chr_windows():
     snap = m.ppu_snapshot()
     assert snap.pattern_table[0x1400] == 27
     assert snap.pattern_table[0x17FF] == 27
+
+
+def test_mapper64_rambo1_switches_prg_and_1k_chr_windows():
+    banks = [bytes([bank_id] * 0x2000) for bank_id in range(8)]
+    chr_data = b"".join(bytes([bank_id] * 0x0400) for bank_id in range(32))
+    m = RAMBO1Memory(b"".join(banks), chr_data=chr_data)
+    assert m[0x8000] == 0
+    assert m[0xA000] == 1
+    assert m[0xC000] == 6
+    assert m[0xE000] == 7
+
+    m[0x8000] = 0x06
+    m[0x8001] = 0x04
+    m[0x8000] = 0x07
+    m[0x8001] = 0x05
+    m[0x8000] = 0x0F
+    m[0x8001] = 0x06
+    assert m[0x8000] == 4
+    assert m[0xA000] == 5
+    assert m[0xC000] == 6
+
+    m[0x8000] = 0x46
+    assert m[0x8000] == 6
+    assert m[0xC000] == 4
+
+    m[0x8000] = 0x22
+    m[0x8001] = 0x1B
+    snap = m.ppu_snapshot()
+    assert snap.pattern_table[0x1000] == 27
+    assert snap.pattern_table[0x13FF] == 27
 
 
 def test_mapper32_irem_g101_switches_prg_mode_and_1k_chr_windows():

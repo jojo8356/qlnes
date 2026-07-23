@@ -29,6 +29,7 @@ J87Memory (mapper 87) and JF10Memory (mapper 101) support fixed PRG with
 switchable 8 KiB CHR-ROM.
 HolyDiverMemory (mapper 78) supports switchable 16 KiB PRG and 8 KiB CHR-ROM.
 Namco108Memory (mapper 206) supports MMC3-like PRG/CHR banking without mode bits.
+RAMBO1Memory (mapper 64) supports Tengen RAMBO-1 PRG and CHR banking.
 Mapper42Memory supports fixed high PRG with switchable 8 KiB PRG/CHR-ROM.
 
 The APU observer lives inside __setitem__: when py65 writes to
@@ -2099,6 +2100,109 @@ class Namco108Memory(MMC3Memory):
                 self.chr_bank = self._dominant_chr_8k_bank()
             else:
                 self._bank_select = value & 0x07
+
+
+class RAMBO1Memory(NROMMemory):
+    """Mapper-64 Tengen RAMBO-1 memory for runtime sprite capture.
+
+    RAMBO-1 is MMC3-like but adds a third switchable PRG register, optional
+    full 1 KiB CHR banking for the paired 2 KiB windows, and CHR A12 inversion.
+    IRQ and mirroring are outside this sprite snapshot path.
+    """
+
+    def __init__(self, prg: bytes, chr_data: bytes) -> None:
+        if len(prg) % 0x2000 != 0 or len(prg) < 0x8000:
+            raise ValueError("RAMBO-1 PRG must contain at least four 8 KiB banks")
+        initial = prg[:0x6000] + prg[-0x2000:]
+        super().__init__(initial)
+        self._prg_banks = [prg[i : i + 0x2000] for i in range(0, len(prg), 0x2000)]
+        self._chr_rom = bytes(chr_data)
+        self._chr_1k_count = max(len(self._chr_rom) // 0x0400, 1)
+        self._bank_select = 0
+        second_last = max(len(self._prg_banks) - 2, 0)
+        self._regs = [0, 2, 4, 5, 6, 7, 0, 1, 1, 3, 0, 0, 0, 0, 0, second_last]
+
+    def _read_prg(self, addr: int) -> int:
+        prg_mode = bool(self._bank_select & 0x40)
+        r6 = self._regs[6] % len(self._prg_banks)
+        r7 = self._regs[7] % len(self._prg_banks)
+        rf = self._regs[0x0F] % len(self._prg_banks)
+        if addr < 0xA000:
+            bank = rf if prg_mode else r6
+            return self._prg_banks[bank][addr - 0x8000]
+        if addr < 0xC000:
+            return self._prg_banks[r7][addr - 0xA000]
+        if addr < 0xE000:
+            bank = r6 if prg_mode else rf
+            return self._prg_banks[bank][addr - 0xC000]
+        return self._prg_banks[-1][addr - 0xE000]
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if 0x8000 <= addr <= 0xFFFF:
+            self._write_mapper_register(addr, value & 0xFF)
+            return
+        super().__setitem__(addr, value)
+
+    def _write_mapper_register(self, addr: int, value: int) -> None:
+        if 0x8000 <= addr <= 0x9FFF:
+            if addr & 1:
+                reg = self._bank_select & 0x0F
+                self._regs[reg] = value
+                self.chr_bank = self._dominant_chr_8k_bank()
+            else:
+                self._bank_select = value
+                self.chr_bank = self._dominant_chr_8k_bank()
+            return
+        # $A000/$C000/$E000 pairs control mirroring and IRQs. They are not
+        # needed to snapshot sprite palette/OAM/CHR state.
+
+    def _chr_reg_for_slot(self, slot: int) -> int:
+        chr_inversion = bool(self._bank_select & 0x80)
+        full_1k = bool(self._bank_select & 0x20)
+        if chr_inversion:
+            register_by_slot = [2, 3, 4, 5, 0, 8 if full_1k else 0, 1, 9 if full_1k else 1]
+        else:
+            register_by_slot = [0, 8 if full_1k else 0, 1, 9 if full_1k else 1, 2, 3, 4, 5]
+        return register_by_slot[slot]
+
+    def _chr_bank_1k_for_slot(self, slot: int) -> int:
+        reg = self._chr_reg_for_slot(slot)
+        bank = self._regs[reg]
+        if reg in (0, 1) and not (self._bank_select & 0x20):
+            bank = (bank & 0xFE) + (slot & 1)
+        return bank % self._chr_1k_count
+
+    def _mapped_chr_pattern_table(self) -> bytes:
+        if not self._chr_rom:
+            return bytes(self._pattern_table)
+        out = bytearray(0x2000)
+        for slot in range(8):
+            bank = self._chr_bank_1k_for_slot(slot)
+            start = bank * 0x0400
+            out[slot * 0x0400 : (slot + 1) * 0x0400] = self._chr_rom[start : start + 0x0400]
+        return bytes(out)
+
+    def _dominant_chr_8k_bank(self) -> int:
+        if self._chr_1k_count < 8:
+            return 0
+        return self._chr_bank_1k_for_slot(0) // 8
+
+    def ppu_snapshot(self) -> PpuSnapshot:
+        snap = super().ppu_snapshot()
+        return PpuSnapshot(
+            ppuctrl=snap.ppuctrl,
+            ppumask=snap.ppumask,
+            palette_ram=snap.palette_ram,
+            oam=snap.oam,
+            pattern_table=self._mapped_chr_pattern_table(),
+            chr_bank=self._dominant_chr_8k_bank(),
+        )
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        second_last = max(len(self._prg_banks) - 2, 0)
+        self._bank_select = 0
+        self._regs = [0, 2, 4, 5, 6, 7, 0, 1, 1, 3, 0, 0, 0, 0, 0, second_last]
 
 
 class FME7Memory(NROMMemory):

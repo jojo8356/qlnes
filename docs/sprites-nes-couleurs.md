@@ -79,7 +79,7 @@ sprite-only avec fond transparent.
 Les sprites masques hors ecran (`Y >= 0xEF`) sont ignores par defaut. Ajouter
 `--include-hidden` pour les exporter aussi.
 
-## Mode runtime automatique NROM/MMC1/UxROM/CNROM/MMC3/MMC5/AxROM/MMC2/MMC4/Color Dreams/CPROM/Bandai FCG/Jaleco SS88006/Namco 163/VRC2-VRC4/VRC6/VRC7/Irem G-101/Taito TC0190/BNROM/Mapper 42/GxROM/FME-7/Bandai/Camerica/JF-17/Holy Diver/NINA-03-06/J87/JF-10/Namco 108
+## Mode runtime automatique NROM/MMC1/UxROM/CNROM/MMC3/MMC5/AxROM/MMC2/MMC4/Color Dreams/CPROM/Bandai FCG/Jaleco SS88006/Namco 163/VRC2-VRC4/VRC6/VRC7/Irem G-101/Taito TC0190/BNROM/Mapper 42/RAMBO-1/GxROM/FME-7/Bandai/Camerica/JF-17/Holy Diver/NINA-03-06/J87/JF-10/Namco 108
 
 Pour les ROMs mapper 0/NROM, mapper 1/MMC1 simple, mapper 2/UxROM, mapper
 3/CNROM, mapper 4/MMC3 simple, mapper 5/MMC5 simple, mapper 7/AxROM, mapper 9/MMC2, mapper
@@ -88,7 +88,7 @@ mapper 18/Jaleco SS88006, mapper 19/Namco 129-163, mapper 21/22/23/25/VRC2-VRC4,
 mapper 32/Irem G-101, mapper 33/Taito TC0190,
 mapper 34/BNROM-NINA,
 mapper 42/FDS conversions, mapper 66/GxROM,
-mapper 69/Sunsoft FME-7/5B, mapper 70/Bandai, mapper 71/Camerica, mapper
+mapper 64/RAMBO-1, mapper 69/Sunsoft FME-7/5B, mapper 70/Bandai, mapper 71/Camerica, mapper
 72/JF-17, mapper 78/Holy Diver, mapper 79/NINA-03-06, mapper 85/VRC7, mapper 87/J87, mapper
 101/JF-10 et mapper 206/Namco 108 qui initialisent les palettes et OAM par les
 writes PPU classiques, qlnes peut faire le snapshot automatiquement :
@@ -150,6 +150,8 @@ Ce mode boote la ROM en-process avec `py65`, observe :
   fenêtres CHR 4 KiB ;
 - les writes mapper 42 vers `$8000` pour choisir la CHR-ROM 8 KiB active, et
   vers `$E000` pour choisir la PRG-ROM 8 KiB visible en CPU `$6000-$7FFF` ;
+- les writes mapper 64/RAMBO-1 vers `$8000/$8001` pour choisir les PRG banks
+  8 KiB et composer les fenêtres CHR 1 KiB/2 KiB visibles dans le snapshot ;
 - les writes mapper 66/GxROM vers `$8000-$FFFF` pour choisir la PRG bank 32 KiB
   et le CHR bank actif ;
 - les writes mapper 69/FME-7 vers `$8000-$9FFF` puis `$A000-$BFFF` pour choisir
@@ -300,7 +302,7 @@ python -m qlnes sprites ROM.nes \
 ## Limite actuelle
 
 La commande sait capturer automatiquement les cas
-NROM/MMC1/UxROM/CNROM/MMC3/MMC5/AxROM/MMC2/MMC4/Color Dreams/CPROM/Bandai FCG/Jaleco SS88006/Namco 163/VRC2-VRC4/VRC6/VRC7/Irem G-101/Taito TC0190/BNROM/Mapper 42/GxROM/FME-7/Bandai/Camerica/JF-17/Holy Diver/NINA-03-06/J87/JF-10/Namco 108
+NROM/MMC1/UxROM/CNROM/MMC3/MMC5/AxROM/MMC2/MMC4/Color Dreams/CPROM/Bandai FCG/Jaleco SS88006/Namco 163/VRC2-VRC4/VRC6/VRC7/Irem G-101/Taito TC0190/BNROM/Mapper 42/RAMBO-1/GxROM/FME-7/Bandai/Camerica/JF-17/Holy Diver/NINA-03-06/J87/JF-10/Namco 108
 simples, y compris une partie des ROMs CHR-RAM si les tiles sont ecrites via
 `PPUDATA` pendant la fenetre capturee.
 Elle ne couvre pas encore tous les jeux NES :

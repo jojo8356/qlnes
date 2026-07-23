@@ -56,11 +56,15 @@ Sources principales :
 - NESdev, PPU pattern tables : https://www.nesdev.org/wiki/PPU_pattern_tables
 - NESdev, PPU palettes : https://www.nesdev.org/wiki/PPU_palettes
 - NESdev, PPU OAM : https://www.nesdev.org/wiki/PPU_OAM
+- NESdev, PPU registers : https://www.nesdev.org/wiki/PPU_registers
+- NESdev, PPU rendering : https://www.nesdev.org/wiki/PPU_rendering
+- NESdev, `.pal` palette files : https://www.nesdev.org/wiki/.pal
 - NESdev, List of mappers : https://www.nesdev.org/wiki/List_of_mappers
 - NESdev, MMC5 : https://www.nesdev.org/wiki/MMC5
 - NESdev, VRC2 and VRC4 : https://www.nesdev.org/wiki/VRC2_and_VRC4
 - NESdev, VRC6 : https://www.nesdev.org/wiki/VRC6
 - NESdev, VRC7 / INES Mapper 085 : https://www.nesdev.org/wiki/INES_Mapper_085
+- NESdev, RAMBO-1 / INES Mapper 064 : https://www.nesdev.org/wiki/RAMBO-1
 - NESdev, INES Mapper 016 : https://www.nesdev.org/wiki/INES_Mapper_016
 - NESdev, INES Mapper 018 : https://www.nesdev.org/wiki/INES_Mapper_018
 - NESdev, INES Mapper 019 : https://www.nesdev.org/wiki/INES_Mapper_019
@@ -721,13 +725,13 @@ La premiere implementation qlnes suit cette decision :
   ROMs simples NROM, MMC1/SxROM, UxROM, CNROM, MMC3, MMC5, AxROM, MMC2/PxROM,
   MMC4/FxROM, Color Dreams, Bandai FCG, Jaleco SS88006, Namco 129/163,
   VRC2/VRC4, VRC6, VRC7, Irem G-101, Taito TC0190,
-  BNROM/NINA, Mapper 42, GxROM/GNROM, Sunsoft FME-7/5B, Bandai, Camerica,
+  BNROM/NINA, Mapper 42, RAMBO-1, GxROM/GNROM, Sunsoft FME-7/5B, Bandai, Camerica,
   JF-17 et NINA-03/06 avec l'observateur in-process et capture automatiquement
   PPUCTRL, PPUMASK, palette RAM, OAM/OAMDMA, pattern table CHR-RAM simple,
   CHR bank CNROM actif, fenêtres CHR MMC1 8 KiB/split 4 KiB, fenêtres CHR MMC3
   1 KiB/2 KiB, fenêtres CHR MMC5 sprite, fenêtres CHR MMC2/MMC4 4 KiB latchées, fenêtres CHR NINA 4 KiB, PRG banks AxROM, PRG-CHR banks Color
   Dreams et PRG-CHR banks GxROM, ainsi que les fenêtres PRG 8 KiB et CHR 1 KiB
-  FME-7, les fenêtres CHR 1 KiB Bandai FCG/Jaleco SS88006/Namco 129-163/VRC2-VRC4/VRC6/VRC7/Irem G-101 et 2 KiB/1 KiB Taito TC0190, le registre `PPPP CCCC` Bandai, les bits de commande PRG/CHR JF-17 et
+  FME-7, les fenêtres CHR 1 KiB Bandai FCG/Jaleco SS88006/Namco 129-163/VRC2-VRC4/VRC6/VRC7/RAMBO-1/Irem G-101 et 2 KiB/1 KiB Taito TC0190, le registre `PPPP CCCC` Bandai, les bits de commande PRG/CHR JF-17 et
   le registre expansion NINA-03/06.
 - `--runtime-input start@1:30,a+right@120:240` pilote la manette 1 pendant la
   capture runtime. Cela permet d'atteindre plus d'etats de jeu que le boot
@@ -797,6 +801,13 @@ La premiere implementation qlnes suit cette decision :
   composer la pattern table visible dans le snapshot runtime ; IRQ, mirroring,
   protection WRAM et audio FM VRC7 restent hors du chemin export sprites.
   Source : https://www.nesdev.org/wiki/INES_Mapper_085
+- Pour mapper 64/RAMBO-1, NESdev documente le mapper Tengen 800032 comme une
+  variante MMC3 avec trois fenêtres PRG-ROM 8 KiB switchables plus une dernière
+  fenêtre fixe, et trois configurations CHR : huit fenêtres 1 KiB, deux
+  fenêtres 2 KiB plus quatre fenêtres 1 KiB, ou l'inversion CHR A12 de cette
+  même structure. qlnes observe `$8000/$8001`, applique les bits `C/P/K`,
+  compose la pattern table visible en 1 KiB/2 KiB, et ignore IRQ/mirroring pour
+  le chemin export sprites. Source : https://www.nesdev.org/wiki/RAMBO-1
 - Pour mapper 32/Irem G-101, NESdev documente deux fenêtres PRG-ROM 8 KiB
   switchables, deux fenêtres PRG fixes avec mode d'échange `$8000/$C000`, et
   huit fenêtres CHR-ROM 1 KiB. qlnes observe les registres PRG/CHR nécessaires
