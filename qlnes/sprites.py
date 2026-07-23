@@ -106,6 +106,27 @@ class BatchSpriteExportManifest:
         return sum(1 for entry in self.entries if not entry.ok)
 
 
+@dataclass(frozen=True)
+class RuntimeSpriteSample:
+    frame: int
+    out_dir: Path
+    n_tiles: int
+    spritesheet: Path | None = None
+    screen_png: Path | None = None
+    manifest_json: Path | None = None
+
+
+@dataclass
+class RuntimeSpriteSamplesManifest:
+    out_dir: Path
+    samples: list[RuntimeSpriteSample] = field(default_factory=list)
+    manifest_json: Path | None = None
+
+    @property
+    def n_tiles(self) -> int:
+        return sum(sample.n_tiles for sample in self.samples)
+
+
 def parse_palette_values(text: str) -> tuple[int, ...]:
     """Parse comma/space-separated NES PPU palette values.
 
@@ -754,6 +775,91 @@ def export_in_process_runtime_sprites(
     return manifest
 
 
+def normalize_sample_frames(frames: Sequence[int]) -> tuple[int, ...]:
+    """Return positive, sorted unique frame numbers for runtime sampling."""
+
+    normalized = sorted({int(frame) for frame in frames})
+    if not normalized:
+        raise ValueError("runtime sample frames must contain at least one frame")
+    if normalized[0] <= 0:
+        raise ValueError("runtime sample frames must be positive")
+    return tuple(normalized)
+
+
+def export_in_process_runtime_sprite_samples(
+    rom_path: Path,
+    out_dir: Path,
+    *,
+    sample_frames: Sequence[int],
+    include_hidden: bool = False,
+) -> RuntimeSpriteSamplesManifest:
+    """Export original-palette OAM sprites at several runtime frame checkpoints.
+
+    Each checkpoint reboots the ROM and captures the PPU/OAM state after that
+    many frames. This intentionally favors deterministic, isolated samples over
+    emulator speed. The result helps collect sprites that only appear during
+    early boot, title, blink, or animation frames.
+    """
+
+    rom_path = Path(rom_path)
+    out_dir = Path(out_dir)
+    frames = normalize_sample_frames(sample_frames)
+    samples = RuntimeSpriteSamplesManifest(out_dir=out_dir)
+    for frame in frames:
+        frame_out = out_dir / f"frame-{frame:06d}"
+        manifest = export_in_process_runtime_sprites(
+            rom_path,
+            frame_out,
+            frames=frame,
+            include_hidden=include_hidden,
+        )
+        samples.samples.append(
+            RuntimeSpriteSample(
+                frame=frame,
+                out_dir=frame_out,
+                n_tiles=manifest.n_tiles,
+                spritesheet=manifest.spritesheet,
+                screen_png=manifest.screen_png,
+                manifest_json=manifest.manifest_json,
+            )
+        )
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    manifest_json = out_dir / "runtime-sprite-samples-manifest.json"
+    manifest_json.write_text(
+        json.dumps(
+            {
+                "kind": "runtime_sprite_samples_export",
+                "rom": str(rom_path),
+                "sample_frames": list(frames),
+                "sample_count": len(samples.samples),
+                "total_exported_sprites": samples.n_tiles,
+                "transparent_index": 0,
+                "samples": [
+                    {
+                        "frame": sample.frame,
+                        "out_dir": str(sample.out_dir),
+                        "n_tiles": sample.n_tiles,
+                        "spritesheet": (
+                            str(sample.spritesheet) if sample.spritesheet else None
+                        ),
+                        "screen_png": str(sample.screen_png) if sample.screen_png else None,
+                        "manifest_json": (
+                            str(sample.manifest_json) if sample.manifest_json else None
+                        ),
+                    }
+                    for sample in samples.samples
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    samples.manifest_json = manifest_json
+    return samples
+
+
 def discover_nes_roms(path: Path, *, recursive: bool = False) -> list[Path]:
     """Return `.nes` ROM paths from one file or directory."""
 
@@ -791,6 +897,7 @@ def export_sprite_batch(
     *,
     recursive: bool = False,
     runtime_frames: int | None = None,
+    runtime_sample_frames: Sequence[int] | None = None,
     include_hidden: bool = False,
     chr_bank: int = 0,
     pattern_table: int = 1,
@@ -803,10 +910,11 @@ def export_sprite_batch(
     """Export transparent sprite PNGs for every `.nes` ROM under `input_path`.
 
     Static mode writes CHR preview sprites for every discovered ROM. Runtime
-    mode (`runtime_frames` set) boots each ROM with the in-process observer and
-    writes original-palette OAM sprites when the mapper/init path is supported.
-    Failures are captured per ROM in the batch manifest so a collection run can
-    continue and expose unsupported cases clearly.
+    mode (`runtime_frames` or `runtime_sample_frames` set) boots each ROM with
+    the in-process observer and writes original-palette OAM sprites when the
+    mapper/init path is supported. Failures are captured per ROM in the batch
+    manifest so a collection run can continue and expose unsupported cases
+    clearly.
     """
 
     input_path = Path(input_path)
@@ -818,6 +926,23 @@ def export_sprite_batch(
     for rom in roms:
         rom_out = _batch_out_dir(input_path, rom, out_dir, used)
         try:
+            if runtime_sample_frames is not None:
+                sampled = export_in_process_runtime_sprite_samples(
+                    rom,
+                    rom_out,
+                    sample_frames=runtime_sample_frames,
+                    include_hidden=include_hidden,
+                )
+                batch.entries.append(
+                    BatchSpriteExportEntry(
+                        rom=rom,
+                        out_dir=rom_out,
+                        ok=True,
+                        n_tiles=sampled.n_tiles,
+                        manifest_json=sampled.manifest_json,
+                    )
+                )
+                continue
             if runtime_frames is not None:
                 manifest = export_in_process_runtime_sprites(
                     rom,
@@ -866,8 +991,19 @@ def export_sprite_batch(
                 "kind": "sprite_batch_export",
                 "input": str(input_path),
                 "recursive": recursive,
-                "mode": "runtime" if runtime_frames is not None else "static",
+                "mode": (
+                    "runtime-samples"
+                    if runtime_sample_frames is not None
+                    else "runtime"
+                    if runtime_frames is not None
+                    else "static"
+                ),
                 "runtime_frames": runtime_frames,
+                "runtime_sample_frames": (
+                    list(normalize_sample_frames(runtime_sample_frames))
+                    if runtime_sample_frames is not None
+                    else None
+                ),
                 "rom_count": len(batch.entries),
                 "success_count": batch.success_count,
                 "failure_count": batch.failure_count,

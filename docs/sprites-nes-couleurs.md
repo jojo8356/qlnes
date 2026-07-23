@@ -111,6 +111,21 @@ Ce mode boote la ROM en-process avec `py65`, observe :
 Ensuite il exporte les sprites OAM comme le mode `--snapshot`, avec
 `palette_source: runtime-snapshot` et `snapshot: in-process` dans le manifeste.
 
+Pour capturer plusieurs moments runtime, utiliser `--runtime-sample-frames`.
+qlnes reboote la ROM pour chaque checkpoint et écrit un sous-dossier par frame :
+
+```bash
+python -m qlnes sprites ROM.nes \
+  -o out/oam-samples \
+  --runtime-sample-frames 1,30,60,120
+```
+
+Chaque sous-dossier `frame-000120/` contient les mêmes PNG OAM transparents que
+`--runtime-frames`. Le manifeste `runtime-sprite-samples-manifest.json` liste
+toutes les frames capturées et leurs manifestes locaux. Ce mode ne garantit pas
+tous les sprites d'un jeu complet, mais il couvre mieux les animations et états
+de boot/titre qu'une seule capture finale.
+
 ## Mode batch multi-ROM
 
 Pour traiter une collection locale, `sprites-batch` cherche les fichiers `.nes`
@@ -121,7 +136,7 @@ global `sprites-batch-manifest.json` :
 python -m qlnes sprites-batch roms/ \
   -o out/sprites-batch \
   --recursive \
-  --runtime-frames 120
+  --runtime-sample-frames 1,30,60,120
 ```
 
 Le batch continue quand une ROM échoue, enregistre l'erreur dans le manifeste

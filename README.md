@@ -105,8 +105,11 @@ python -m qlnes sprites ROM.nes -o out/oam-sprites --snapshot snapshot-ppu-oam.j
 # Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/GxROM : capture palette/OAM automatiquement
 python -m qlnes sprites ROM.nes -o out/oam-sprites --runtime-frames 120
 
+# Capturer plusieurs frames runtime pour récupérer plus d'états OAM/palettes
+python -m qlnes sprites ROM.nes -o out/oam-samples --runtime-sample-frames 1,30,60,120
+
 # Traiter tout un dossier de ROMs .nes, avec un sous-dossier de sortie par ROM
-python -m qlnes sprites-batch roms/ -o out/sprites-batch --recursive --runtime-frames 120
+python -m qlnes sprites-batch roms/ -o out/sprites-batch --recursive --runtime-sample-frames 1,30,60,120
 ```
 
 ## Documentation

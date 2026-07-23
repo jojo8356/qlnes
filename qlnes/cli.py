@@ -68,6 +68,15 @@ def _resolve_assets_dir(rom: Path, value: str | None) -> Path | None:
     return Path(value)
 
 
+def _parse_frame_list(text: str | None) -> tuple[int, ...] | None:
+    if text is None:
+        return None
+    frames = []
+    for part in text.replace(",", " ").split():
+        frames.append(int(part, 0))
+    return tuple(frames)
+
+
 @app.command()
 def analyze(
     rom: Annotated[
@@ -507,6 +516,13 @@ def sprites(
             help="Boot in-process NROM pendant N frames puis capture palette/OAM automatiquement",
         ),
     ] = None,
+    runtime_sample_frames: Annotated[
+        str | None,
+        typer.Option(
+            "--runtime-sample-frames",
+            help="Liste de frames a capturer separees par virgules/espaces, ex: 1,30,60",
+        ),
+    ] = None,
     no_tiles: Annotated[
         bool,
         typer.Option("--no-tiles", help="Ne pas ecrire un PNG par tile, seulement la spritesheet"),
@@ -524,6 +540,7 @@ def sprites(
     from .io.log import get_logger
     from .sprites import (
         export_in_process_runtime_sprites,
+        export_in_process_runtime_sprite_samples,
         export_runtime_oam_sprites,
         export_sprite_pattern_table,
         parse_palette_values,
@@ -531,6 +548,9 @@ def sprites(
 
     _resolve_log_level(quiet, log_level="INFO", color="auto")
     logger = get_logger(__name__)
+    sample_frames = _parse_frame_list(runtime_sample_frames)
+    if runtime_frames is not None and sample_frames is not None:
+        raise typer.BadParameter("--runtime-frames et --runtime-sample-frames sont exclusifs")
 
     if snapshot is not None:
         manifest = export_runtime_oam_sprites(
@@ -549,6 +569,23 @@ def sprites(
             logger.info("  spritesheet : %s", manifest.spritesheet)
         if manifest.manifest_json:
             logger.info("  manifeste : %s", manifest.manifest_json)
+        return
+
+    if sample_frames is not None:
+        manifest = export_in_process_runtime_sprite_samples(
+            rom,
+            output,
+            sample_frames=sample_frames,
+            include_hidden=include_hidden,
+        )
+        logger.info(
+            "✓ sprites runtime echantillonnes ecrits : %s  (samples=%d, sprites=%d, alpha=index0)",
+            output,
+            len(manifest.samples),
+            manifest.n_tiles,
+        )
+        if manifest.manifest_json:
+            logger.info("  manifeste samples : %s", manifest.manifest_json)
         return
 
     if runtime_frames is not None:
@@ -648,6 +685,13 @@ def sprites_batch(
             help="Boot in-process chaque ROM pendant N frames puis capture palette/OAM",
         ),
     ] = None,
+    runtime_sample_frames: Annotated[
+        str | None,
+        typer.Option(
+            "--runtime-sample-frames",
+            help="Liste de frames a capturer pour chaque ROM, ex: 1,30,60",
+        ),
+    ] = None,
     include_hidden: Annotated[
         bool,
         typer.Option("--include-hidden", help="Inclure les sprites OAM masques hors ecran"),
@@ -671,11 +715,15 @@ def sprites_batch(
 
     palette_values = parse_palette_values(palette) if palette else None
     palette_source = "user" if palette_values is not None else "preview"
+    sample_frames = _parse_frame_list(runtime_sample_frames)
+    if runtime_frames is not None and sample_frames is not None:
+        raise typer.BadParameter("--runtime-frames et --runtime-sample-frames sont exclusifs")
     manifest = export_sprite_batch(
         input_path,
         output,
         recursive=recursive,
         runtime_frames=runtime_frames,
+        runtime_sample_frames=sample_frames,
         include_hidden=include_hidden,
         chr_bank=chr_bank,
         pattern_table=pattern_table,

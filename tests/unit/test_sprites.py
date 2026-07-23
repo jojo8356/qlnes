@@ -11,6 +11,7 @@ from qlnes.sprites import (
     decode_sprite_pattern,
     export_sprite_batch,
     export_in_process_runtime_sprites,
+    export_in_process_runtime_sprite_samples,
     export_runtime_oam_sprites,
     export_sprite_pattern_table,
     load_runtime_sprite_snapshot,
@@ -649,6 +650,50 @@ class TestSpriteExport(unittest.TestCase):
             self.assertTrue((out_dir / "oam-spritesheet.png").exists())
             self.assertTrue((out_dir / "sprites-manifest.json").exists())
 
+    def test_in_process_runtime_sample_export_writes_one_directory_per_frame(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "runtime.nes"
+            rom_path.write_bytes(_runtime_sprite_test_rom())
+            out_dir = Path(td) / "samples"
+
+            manifest = export_in_process_runtime_sprite_samples(
+                rom_path,
+                out_dir,
+                sample_frames=(1, 2),
+            )
+
+            self.assertEqual([sample.frame for sample in manifest.samples], [1, 2])
+            self.assertTrue((out_dir / "frame-000001" / "oam-spritesheet.png").exists())
+            self.assertTrue((out_dir / "frame-000002" / "oam-spritesheet.png").exists())
+            data = json.loads((out_dir / "runtime-sprite-samples-manifest.json").read_text())
+            self.assertEqual(data["kind"], "runtime_sprite_samples_export")
+            self.assertEqual(data["sample_frames"], [1, 2])
+            self.assertEqual(data["transparent_index"], 0)
+
+    def test_cli_sprites_runtime_sample_frames_command(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "runtime.nes"
+            rom_path.write_bytes(_runtime_sprite_test_rom())
+            out_dir = Path(td) / "samples"
+
+            from qlnes.cli import main
+
+            rc = main(
+                [
+                    "sprites",
+                    str(rom_path),
+                    "-o",
+                    str(out_dir),
+                    "--runtime-sample-frames",
+                    "1,2",
+                    "--quiet",
+                ]
+            )
+
+            self.assertEqual(rc, 0)
+            self.assertTrue((out_dir / "frame-000001" / "oam-screen.png").exists())
+            self.assertTrue((out_dir / "runtime-sprite-samples-manifest.json").exists())
+
     def test_export_sprite_batch_writes_one_manifest_per_rom_and_summary(self):
         with tempfile.TemporaryDirectory() as td:
             rom_dir = Path(td) / "roms"
@@ -705,6 +750,36 @@ class TestSpriteExport(unittest.TestCase):
             self.assertEqual(data["failure_count"], 1)
             errors = [entry["error"] for entry in data["entries"] if not entry["ok"]]
             self.assertTrue(errors)
+
+    def test_cli_sprites_batch_runtime_sample_frames(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_dir = Path(td) / "roms"
+            rom_dir.mkdir()
+            (rom_dir / "ok.nes").write_bytes(_runtime_sprite_test_rom())
+            out_dir = Path(td) / "batch-samples"
+
+            from qlnes.cli import main
+
+            rc = main(
+                [
+                    "sprites-batch",
+                    str(rom_dir),
+                    "-o",
+                    str(out_dir),
+                    "--runtime-sample-frames",
+                    "1,2",
+                    "--quiet",
+                ]
+            )
+
+            self.assertEqual(rc, 0)
+            self.assertTrue(
+                (out_dir / "ok" / "frame-000001" / "oam-spritesheet.png").exists()
+            )
+            data = json.loads((out_dir / "sprites-batch-manifest.json").read_text())
+            self.assertEqual(data["mode"], "runtime-samples")
+            self.assertEqual(data["runtime_sample_frames"], [1, 2])
+            self.assertEqual(data["success_count"], 1)
 
     def test_in_process_runtime_export_uses_cnrom_selected_chr_bank(self):
         with tempfile.TemporaryDirectory() as td:
