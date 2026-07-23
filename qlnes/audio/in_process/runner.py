@@ -54,6 +54,7 @@ from .memory import (
     Namco108Memory,
     NINA0306Memory,
     NROMMemory,
+    Taito33Memory,
     UxROMMemory,
 )
 from .nmi import NTSC_CYCLES_PER_FRAME, trigger_nmi, trigger_nmi_to
@@ -90,9 +91,9 @@ class InProcessRunner:
     @staticmethod
     def _build_memory(rom: Rom) -> Memory:
         mapper = rom.mapper
-        if mapper not in (0, 1, 2, 3, 4, 7, 9, 10, 11, 13, 16, 18, 32, 34, 42, 66, 69, 70, 71, 72, 78, 79, 87, 101, 206, None):
+        if mapper not in (0, 1, 2, 3, 4, 7, 9, 10, 11, 13, 16, 18, 32, 33, 34, 42, 66, 69, 70, 71, 72, 78, 79, 87, 101, 206, None):
             raise ValueError(
-                f"InProcessRunner currently supports mapper 0, 1, 2, 3, 4, 7, 9, 10, 11, 13, 16, 18, 32, 34, 42, 66, 69, 70, 71, 72, 78, 79, 87, 101 and 206 only; "
+                f"InProcessRunner currently supports mapper 0, 1, 2, 3, 4, 7, 9, 10, 11, 13, 16, 18, 32, 33, 34, 42, 66, 69, 70, 71, 72, 78, 79, 87, 101 and 206 only; "
                 f"got mapper {mapper}."
             )
         prg = rom.prg if rom.header is not None else rom.raw
@@ -120,6 +121,8 @@ class InProcessRunner:
             return Jaleco18Memory(prg, InProcessRunner._chr_rom(rom))
         if mapper == 32 and rom.header is not None:
             return IremG101Memory(prg, InProcessRunner._chr_rom(rom))
+        if mapper == 33 and rom.header is not None:
+            return Taito33Memory(prg, InProcessRunner._chr_rom(rom))
         if mapper == 34 and rom.header is not None:
             return BNROMNINAMemory(prg, InProcessRunner._chr_rom(rom))
         if mapper == 42 and rom.header is not None:

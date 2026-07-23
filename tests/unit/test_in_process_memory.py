@@ -27,6 +27,7 @@ from qlnes.audio.in_process.memory import (
     Namco108Memory,
     NINA0306Memory,
     NROMMemory,
+    Taito33Memory,
     UxROMMemory,
 )
 
@@ -521,6 +522,29 @@ def test_mapper32_irem_g101_switches_prg_mode_and_1k_chr_windows():
 
     m[0xB004] = 0x1B
     snap = m.ppu_snapshot()
+    assert snap.pattern_table[0x1000] == 27
+    assert snap.pattern_table[0x13FF] == 27
+
+
+def test_mapper33_taito_switches_prg_and_mixed_chr_windows():
+    banks = [bytes([bank_id] * 0x2000) for bank_id in range(8)]
+    chr_data = b"".join(bytes([bank_id] * 0x0400) for bank_id in range(32))
+    m = Taito33Memory(b"".join(banks), chr_data=chr_data)
+    assert m[0x8000] == 0
+    assert m[0xA000] == 1
+    assert m[0xC000] == 6
+    assert m[0xE000] == 7
+
+    m[0x8000] = 0x04
+    m[0x8001] = 0x05
+    assert m[0x8000] == 4
+    assert m[0xA000] == 5
+
+    m[0x8002] = 0x06
+    m[0xA000] = 0x1B
+    snap = m.ppu_snapshot()
+    assert snap.pattern_table[0x0000] == 12
+    assert snap.pattern_table[0x07FF] == 13
     assert snap.pattern_table[0x1000] == 27
     assert snap.pattern_table[0x13FF] == 27
 
