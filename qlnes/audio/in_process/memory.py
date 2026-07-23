@@ -2,8 +2,8 @@
 
 The Memory ABC is what py65's MPU calls into. Concrete subclasses
 implement mapper-specific PRG/CHR layouts. The in-process runner currently
-ships NROMMemory (mapper 0), UxROMMemory (mapper 2), and CNROMMemory
-(mapper 3).
+ships NROMMemory (mapper 0), UxROMMemory (mapper 2), CNROMMemory
+(mapper 3), and GxROMMemory (mapper 66).
 
 The APU observer lives inside __setitem__: when py65 writes to
 $4000-$4017, we record an ApuWriteEvent. PPU reads/writes go through
@@ -261,3 +261,39 @@ class UxROMMemory(NROMMemory):
             self._switch_bank = (value & 0x0F) % len(self._banks)
             return
         super().__setitem__(addr, value)
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        self._switch_bank = 0
+
+
+class GxROMMemory(NROMMemory):
+    """Mapper-66 GxROM/GNROM memory.
+
+    $8000-$FFFF is a switchable 32 KiB PRG bank. The mapper register usually
+    uses bits 5-4 for PRG and bits 1-0 for an 8 KiB CHR-ROM bank. Tracking both
+    lets simple games reach their init code and lets sprite export select the
+    active CHR bank from the captured mapper state.
+    """
+
+    def __init__(self, prg: bytes, chr_banks: int) -> None:
+        if len(prg) % 0x8000 != 0 or len(prg) == 0:
+            raise ValueError("GxROM PRG must contain at least one 32 KiB bank")
+        super().__init__(prg[:0x8000])
+        self._banks = [prg[i : i + 0x8000] for i in range(0, len(prg), 0x8000)]
+        self._prg_bank = 0
+        self._chr_bank_count = max(chr_banks, 1)
+
+    def _read_prg(self, addr: int) -> int:
+        return self._banks[self._prg_bank][addr - 0x8000]
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if addr >= 0x8000:
+            self._prg_bank = ((value >> 4) & 0x03) % len(self._banks)
+            self.chr_bank = (value & 0x03) % self._chr_bank_count
+            return
+        super().__setitem__(addr, value)
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        self._prg_bank = 0

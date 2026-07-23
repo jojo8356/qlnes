@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import pytest
 
-from qlnes.audio.in_process.memory import CNROMMemory, NROMMemory, UxROMMemory
+from qlnes.audio.in_process.memory import (
+    CNROMMemory,
+    GxROMMemory,
+    NROMMemory,
+    UxROMMemory,
+)
 
 
 def _prg32() -> bytes:
@@ -237,6 +242,38 @@ def test_uxrom_mapper_write_switches_low_prg_bank_and_keeps_fixed_high_bank():
     assert m[0x8000] == 2
     assert m[0xBFFF] == 2
     assert m[0xC000] == 3
+
+
+def test_uxrom_reset_state_restores_initial_switch_bank():
+    banks = [bytes([bank_id] * 0x4000) for bank_id in range(4)]
+    m = UxROMMemory(b"".join(banks))
+    m[0x8000] = 0x02
+    assert m[0x8000] == 2
+    m.reset_state()
+    assert m[0x8000] == 0
+
+
+def test_gxrom_mapper_write_switches_prg_and_chr_bank():
+    banks = [bytes([bank_id] * 0x8000) for bank_id in range(4)]
+    m = GxROMMemory(b"".join(banks), chr_banks=4)
+    assert m[0x8000] == 0
+    assert m[0xFFFF] == 0
+    assert m.ppu_snapshot().chr_bank == 0
+    m[0x8000] = 0x21
+    assert m[0x8000] == 2
+    assert m[0xFFFF] == 2
+    assert m.ppu_snapshot().chr_bank == 1
+
+
+def test_gxrom_reset_state_restores_prg_and_chr_bank():
+    banks = [bytes([bank_id] * 0x8000) for bank_id in range(4)]
+    m = GxROMMemory(b"".join(banks), chr_banks=4)
+    m[0x8000] = 0x32
+    assert m[0x8000] == 3
+    assert m.ppu_snapshot().chr_bank == 2
+    m.reset_state()
+    assert m[0x8000] == 0
+    assert m.ppu_snapshot().chr_bank == 0
 
 
 def test_len_is_64k():

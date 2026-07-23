@@ -48,7 +48,7 @@ def test_constructor_rejects_non_nrom_mapper():
     raw += b"\x00" * 8
     raw += b"\x00" * 0x8000
     rom = Rom(bytes(raw), name="mmc1_synth")
-    with pytest.raises(ValueError, match="mapper 0 only"):
+    with pytest.raises(ValueError, match="supports mapper 0, 2, 3 and 66 only"):
         InProcessRunner(rom)
 
 

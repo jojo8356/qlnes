@@ -485,9 +485,9 @@ La premiere implementation qlnes suit cette decision :
   exporte les sprites OAM avec palette RAM runtime, flips, taille 8x8/8x16 et
   canvas `oam-screen.png`.
 - `python -m qlnes sprites ROM.nes -o out/oam --runtime-frames 120` boote les
-  ROMs simples NROM, UxROM et CNROM avec l'observateur in-process et capture
-  automatiquement PPUCTRL, PPUMASK, palette RAM, OAM/OAMDMA, pattern table
-  CHR-RAM simple et CHR bank CNROM actif.
+  ROMs simples NROM, UxROM, CNROM et GxROM/GNROM avec l'observateur in-process
+  et capture automatiquement PPUCTRL, PPUMASK, palette RAM, OAM/OAMDMA,
+  pattern table CHR-RAM simple, CHR bank CNROM actif et PRG/CHR banks GxROM.
 
 Sorties principales :
 
