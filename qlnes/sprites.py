@@ -123,6 +123,7 @@ class RuntimeSpriteSamplesManifest:
     samples: list[RuntimeSpriteSample] = field(default_factory=list)
     unique_sprites: list[Path] = field(default_factory=list)
     unique_spritesheet: Path | None = None
+    unique_trimmed_spritesheet: Path | None = None
     manifest_json: Path | None = None
 
     @property
@@ -473,6 +474,28 @@ def write_png_spritesheet(
     for image in images:
         image.close()
     return out_path
+
+
+def trim_transparent_png(
+    src_path: Path,
+    out_path: Path,
+) -> tuple[Path, tuple[int, int, int, int] | None]:
+    """Crop transparent borders from one RGBA PNG and return its alpha bbox."""
+
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise RuntimeError("Pillow is required for transparent sprite PNG export") from exc
+
+    image = Image.open(src_path).convert("RGBA")
+    alpha = image.getchannel("A")
+    bbox = alpha.getbbox()
+    cropped = image.crop(bbox) if bbox is not None else image.copy()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    cropped.save(out_path)
+    image.close()
+    cropped.close()
+    return out_path, bbox
 
 
 def write_oam_screen_png(
@@ -862,6 +885,7 @@ def export_in_process_runtime_sprite_samples(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     unique_dir = out_dir / "unique"
+    trimmed_dir = out_dir / "unique-trimmed"
     unique_entries: list[dict[str, object]] = []
     seen: dict[str, Path] = {}
     for sample in samples.samples:
@@ -884,11 +908,15 @@ def export_in_process_runtime_sprite_samples(
             unique_dir.mkdir(parents=True, exist_ok=True)
             dst = unique_dir / f"sprite-{len(unique_entries):04d}.png"
             dst.write_bytes(png_data)
+            trimmed_path = trimmed_dir / dst.name
+            _, bbox = trim_transparent_png(dst, trimmed_path)
             seen[digest] = dst
             samples.unique_sprites.append(dst)
             unique_entries.append(
                 {
                     "path": str(dst),
+                    "trimmed_path": str(trimmed_path),
+                    "transparent_bbox": list(bbox) if bbox is not None else None,
                     "source_path": str(src),
                     "sha256": digest,
                     "first_seen_frame": sample.frame,
@@ -905,6 +933,11 @@ def export_in_process_runtime_sprite_samples(
             samples.unique_sprites,
             out_dir / "unique-spritesheet.png",
         )
+        trimmed_paths = [Path(str(entry["trimmed_path"])) for entry in unique_entries]
+        samples.unique_trimmed_spritesheet = write_png_spritesheet(
+            trimmed_paths,
+            out_dir / "unique-trimmed-spritesheet.png",
+        )
 
     manifest_json = out_dir / "runtime-sprite-samples-manifest.json"
     manifest_json.write_text(
@@ -918,8 +951,14 @@ def export_in_process_runtime_sprite_samples(
                 "unique_sprite_count": samples.unique_count,
                 "transparent_index": 0,
                 "unique_sprites_dir": str(unique_dir) if unique_entries else None,
+                "unique_trimmed_dir": str(trimmed_dir) if unique_entries else None,
                 "unique_spritesheet": (
                     str(samples.unique_spritesheet) if samples.unique_spritesheet else None
+                ),
+                "unique_trimmed_spritesheet": (
+                    str(samples.unique_trimmed_spritesheet)
+                    if samples.unique_trimmed_spritesheet
+                    else None
                 ),
                 "unique_sprites": unique_entries,
                 "samples": [
