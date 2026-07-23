@@ -30,6 +30,7 @@ SMB_ENEMY_DATA_LOW = 0x00E9
 SMB_GREEN_KOOPA_ID = 0x00
 SMB_NATIVE_KOOPA_SHELL_KIND = 0x80
 SMB_GOOMBA_ID = 0x06
+SMB_BLOOPER_ID = 0x07
 SMB_GOOMBA_GROUPS = {0x37: 2, 0x38: 3, 0x39: 2, 0x3A: 3}
 SMB_KOOPA_GROUPS = {0x3B: 2, 0x3C: 3}
 SMB_NATIVE_ENEMY_RECORD_BYTES = 5
@@ -107,6 +108,10 @@ SMB_BIG_MARIO_SWIM_SPRITES = (
     ("big-swim-3", "mario_big_swim_3.rgba"),
 )
 SMB_DEAD_MARIO_SPRITE = ("small-killed", "mario_small_killed.rgba")
+SMB_BLOOPER_SPRITES = (
+    ("blooper-1", "blooper_1.rgba"),
+    ("blooper-2", "blooper_2.rgba"),
+)
 
 
 @dataclass(frozen=True)
@@ -213,6 +218,10 @@ def create_smb_native_port(
     goomba_png = build_dir / "characters" / "enemies" / "goomba.png"
     koopa_png = build_dir / "characters" / "enemies" / "koopa-troopa-1.png"
     koopa_shell_png = build_dir / "characters" / "enemies" / "koopa-shell-1.png"
+    blooper_pngs = {
+        sprite_name: build_dir / "characters" / "enemies" / f"{sprite_name}.png"
+        for sprite_name, _ in SMB_BLOOPER_SPRITES
+    }
     mushroom_png = build_dir / "blocks" / "sprites" / "mushroom.png"
     brick_chunk_png = build_dir / "blocks" / "sprites" / "brick-chunk.png"
     for mario_png in mario_pngs.values():
@@ -235,6 +244,9 @@ def create_smb_native_port(
         raise RuntimeError(f"expected SMB enemy sprite missing: {koopa_png}")
     if not koopa_shell_png.exists():
         raise RuntimeError(f"expected SMB enemy shell sprite missing: {koopa_shell_png}")
+    for blooper_png in blooper_pngs.values():
+        if not blooper_png.exists():
+            raise RuntimeError(f"expected SMB blooper sprite missing: {blooper_png}")
     if not mushroom_png.exists():
         raise RuntimeError(f"expected SMB power-up sprite missing: {mushroom_png}")
     if not brick_chunk_png.exists():
@@ -250,6 +262,7 @@ def create_smb_native_port(
     goomba_raw = assets_dir / "goomba.rgba"
     koopa_raw = assets_dir / "koopa_troopa.rgba"
     koopa_shell_raw = assets_dir / "koopa_shell.rgba"
+    blooper_raws = [assets_dir / asset_name for _, asset_name in SMB_BLOOPER_SPRITES]
     dead_mario_raw = assets_dir / SMB_DEAD_MARIO_SPRITE[1]
     stage_assets: list[_SmbNativeStageAsset] = []
     for level in rendered_levels:
@@ -335,6 +348,11 @@ def create_smb_native_port(
     goomba_size = _write_rgba(goomba_png, goomba_raw)
     koopa_size = _write_rgba(koopa_png, koopa_raw)
     koopa_shell_size = _write_rgba(koopa_shell_png, koopa_shell_raw)
+    blooper_size, blooper_assets = _write_mario_frame_assets(
+        blooper_pngs,
+        assets_dir,
+        SMB_BLOOPER_SPRITES,
+    )
 
     main_c = src_dir / "main.c"
     main_c.write_text(
@@ -390,6 +408,9 @@ def create_smb_native_port(
             koopa_height=koopa_size[1],
             koopa_shell_width=koopa_shell_size[0],
             koopa_shell_height=koopa_shell_size[1],
+            blooper_width=blooper_size[0],
+            blooper_height=blooper_size[1],
+            blooper_frame_count=len(SMB_BLOOPER_SPRITES),
             enemy_count=max_enemy_count,
             enemy_record_bytes=SMB_NATIVE_ENEMY_RECORD_BYTES,
         ),
@@ -442,6 +463,7 @@ Terminal=false
         goomba_raw,
         koopa_raw,
         koopa_shell_raw,
+        *blooper_raws,
         *(stage_asset.enemies_raw for stage_asset in stage_assets),
         manifest,
     ]
@@ -616,6 +638,18 @@ Terminal=false
                         "width": koopa_shell_size[0],
                         "height": koopa_shell_size[1],
                         "runtime_kind": f"0x{SMB_NATIVE_KOOPA_SHELL_KIND:02X}",
+                    },
+                    {
+                        "name": "blooper",
+                        "sprites": blooper_assets,
+                        "runtime_kind": f"0x{SMB_BLOOPER_ID:02X}",
+                        "spawn_count_total": sum(
+                            1
+                            for stage_asset in stage_assets
+                            for spawn in stage_asset.enemy_spawns
+                            if spawn["kind"] == "blooper"
+                        ),
+                        "behavior": "native water enemy: slow horizontal swim with vertical bobbing, damages Mario on contact",
                     },
                 ],
                 "enemy_spawns": first_stage.enemy_spawns,
@@ -952,6 +986,22 @@ def _write_enemy_spawns(
                 offset=offset,
                 source=(first, second),
             )
+        elif enemy_id == SMB_BLOOPER_ID and not hard_mode_only:
+            x = page_loc * 256 + (first & 0xF0)
+            y = row * 16
+            _append_enemy_spawn(
+                records,
+                spawns,
+                kind="blooper",
+                enemy_id=SMB_BLOOPER_ID,
+                x=x,
+                y=y,
+                page=page_loc,
+                column=column,
+                row=row,
+                offset=offset,
+                source=(first, second),
+            )
         elif enemy_id in SMB_KOOPA_GROUPS and not hard_mode_only:
             x = page_loc * 256 + (first & 0xF0)
             y = row * 16
@@ -1058,6 +1108,9 @@ def _main_c_source(
     koopa_height: int,
     koopa_shell_width: int,
     koopa_shell_height: int,
+    blooper_width: int,
+    blooper_height: int,
+    blooper_frame_count: int,
     enemy_count: int,
     enemy_record_bytes: int,
 ) -> str:
@@ -1115,6 +1168,10 @@ def _main_c_source(
 #define KOOPA_SHELL_W {koopa_shell_width}
 #define KOOPA_SHELL_H {koopa_shell_height}
 #define KOOPA_SHELL_KIND {SMB_NATIVE_KOOPA_SHELL_KIND}
+#define BLOOPER_W {blooper_width}
+#define BLOOPER_H {blooper_height}
+#define BLOOPER_KIND {SMB_BLOOPER_ID}
+#define BLOOPER_FRAME_COUNT {blooper_frame_count}
 #define ENEMY_COUNT {enemy_count}
 #define ENEMY_RECORD_BYTES {enemy_record_bytes}
 #define TILE_SIZE 16
@@ -1600,7 +1657,7 @@ static bool load_enemies(const uint8_t *data, Enemy *enemies) {{
         uint8_t kind = data[o + 3];
         enemies[i].x = (float)x;
         enemies[i].y = (float)y;
-        enemies[i].vx = -36.0f;
+        enemies[i].vx = kind == BLOOPER_KIND ? -24.0f : -36.0f;
         enemies[i].vy = 0.0f;
         enemies[i].kind = kind;
         enemies[i].alive = data[o + 4] == 0;
@@ -1740,11 +1797,13 @@ static void update_powerup(
 
 static int enemy_width(const Enemy *enemy) {{
     if (enemy->kind == KOOPA_SHELL_KIND) return KOOPA_SHELL_W;
+    if (enemy->kind == BLOOPER_KIND) return BLOOPER_W;
     return enemy->kind == 0x00 ? KOOPA_W : GOOMBA_W;
 }}
 
 static int enemy_height(const Enemy *enemy) {{
     if (enemy->kind == KOOPA_SHELL_KIND) return KOOPA_SHELL_H;
+    if (enemy->kind == BLOOPER_KIND) return BLOOPER_H;
     return enemy->kind == 0x00 ? KOOPA_H : GOOMBA_H;
 }}
 
@@ -1752,9 +1811,12 @@ static const uint8_t *enemy_sprite(
     const Enemy *enemy,
     const uint8_t *goomba,
     const uint8_t *koopa,
-    const uint8_t *koopa_shell
+    const uint8_t *koopa_shell,
+    uint8_t **blooper_frames,
+    uint32_t ticks
 ) {{
     if (enemy->kind == KOOPA_SHELL_KIND) return koopa_shell;
+    if (enemy->kind == BLOOPER_KIND) return blooper_frames[(ticks / 180) % BLOOPER_FRAME_COUNT];
     return enemy->kind == 0x00 ? koopa : goomba;
 }}
 
@@ -1996,6 +2058,8 @@ int main(int argc, char **argv) {{
     char goomba_path[4096];
     char koopa_path[4096];
     char koopa_shell_path[4096];
+    char blooper_path_0[4096];
+    char blooper_path_1[4096];
     snprintf(title_screen_path, sizeof(title_screen_path), "%sassets/title_screen.rgb", base ? base : "");
     snprintf(used_block_path, sizeof(used_block_path), "%sassets/used_empty_block.rgb", base ? base : "");
     snprintf(coin_path_0, sizeof(coin_path_0), "%sassets/jumping_coin_frame_0.rgba", base ? base : "");
@@ -2024,6 +2088,8 @@ int main(int argc, char **argv) {{
     snprintf(goomba_path, sizeof(goomba_path), "%sassets/goomba.rgba", base ? base : "");
     snprintf(koopa_path, sizeof(koopa_path), "%sassets/koopa_troopa.rgba", base ? base : "");
     snprintf(koopa_shell_path, sizeof(koopa_shell_path), "%sassets/koopa_shell.rgba", base ? base : "");
+    snprintf(blooper_path_0, sizeof(blooper_path_0), "%sassets/blooper_1.rgba", base ? base : "");
+    snprintf(blooper_path_1, sizeof(blooper_path_1), "%sassets/blooper_2.rgba", base ? base : "");
 
     uint8_t *levels[STAGE_COUNT];
     uint8_t *collisions[STAGE_COUNT];
@@ -2071,6 +2137,9 @@ int main(int argc, char **argv) {{
     uint8_t *goomba = read_asset(goomba_path, (size_t)GOOMBA_W * GOOMBA_H * 4);
     uint8_t *koopa = read_asset(koopa_path, (size_t)KOOPA_W * KOOPA_H * 4);
     uint8_t *koopa_shell = read_asset(koopa_shell_path, (size_t)KOOPA_SHELL_W * KOOPA_SHELL_H * 4);
+    uint8_t *blooper_frames[BLOOPER_FRAME_COUNT];
+    blooper_frames[0] = read_asset(blooper_path_0, (size_t)BLOOPER_W * BLOOPER_H * 4);
+    blooper_frames[1] = read_asset(blooper_path_1, (size_t)BLOOPER_W * BLOOPER_H * 4);
     bool mario_loaded = true;
     for (int i = 0; i < MARIO_FRAME_COUNT; i++) {{
         if (!small_mario_frames[i] || !big_mario_frames[i]) mario_loaded = false;
@@ -2083,7 +2152,11 @@ int main(int argc, char **argv) {{
     for (int i = 0; i < COIN_FRAME_COUNT; i++) {{
         if (!coin_frames[i]) coins_loaded = false;
     }}
-    if (!stages_loaded || !title_screen || !used_block || !coins_loaded || !mushroom || !brick_chunk || !mario_loaded || !swim_loaded || !dead_mario || !goomba || !koopa || !koopa_shell) return 2;
+    bool bloopers_loaded = true;
+    for (int i = 0; i < BLOOPER_FRAME_COUNT; i++) {{
+        if (!blooper_frames[i]) bloopers_loaded = false;
+    }}
+    if (!stages_loaded || !title_screen || !used_block || !coins_loaded || !mushroom || !brick_chunk || !mario_loaded || !swim_loaded || !bloopers_loaded || !dead_mario || !goomba || !koopa || !koopa_shell) return 2;
     int current_stage = 0;
     const char *stage_label = STAGE_LABELS[current_stage];
     int current_level_w = STAGE_LEVEL_WIDTHS[current_stage];
@@ -2121,6 +2194,7 @@ int main(int argc, char **argv) {{
         free(goomba);
         free(koopa);
         free(koopa_shell);
+        for (int i = 0; i < BLOOPER_FRAME_COUNT; i++) free(blooper_frames[i]);
         return 0;
     }}
 
@@ -2414,27 +2488,40 @@ int main(int argc, char **argv) {{
             if (!enemy->alive) continue;
             int ew = enemy_width(enemy);
             int eh = enemy_height(enemy);
-            enemy->vy += GROUND_GRAVITY * dt;
-            float gx = enemy->x + enemy->vx * dt;
-            if (rect_hits_solid(collision, blocks, current_level_w, gx, enemy->y, ew, eh)) {{
-                enemy->vx = -enemy->vx;
+            if (enemy->kind == BLOOPER_KIND) {{
+                float gx = enemy->x + enemy->vx * dt;
+                if (gx < 0.0f || gx > current_level_w - ew || rect_hits_solid(collision, blocks, current_level_w, gx, enemy->y, ew, eh)) {{
+                    enemy->vx = -enemy->vx;
+                }} else {{
+                    enemy->x = gx;
+                }}
+                float bob = ((now / 700 + (uint32_t)i) % 2) == 0 ? -18.0f : 18.0f;
+                enemy->y += bob * dt;
+                if (enemy->y < 32.0f) enemy->y = 32.0f;
+                if (enemy->y > LEVEL_H - eh - 24.0f) enemy->y = LEVEL_H - eh - 24.0f;
             }} else {{
-                enemy->x = gx;
-            }}
-            float gy = enemy->y + enemy->vy * dt;
-            if (!rect_hits_solid(collision, blocks, current_level_w, enemy->x, gy, ew, eh)) {{
-                enemy->y = gy;
-            }} else if (enemy->vy > 0.0f) {{
-                int tile_y = ((int)(enemy->y + eh + enemy->vy * dt)) / TILE_SIZE;
-                enemy->y = (float)(tile_y * TILE_SIZE - eh);
-                enemy->vy = 0.0f;
-            }} else {{
-                enemy->vy = 0.0f;
-            }}
-            int probe_x = enemy->vx < 0.0f ? (int)enemy->x - 2 : (int)(enemy->x + ew + 2);
-            int foot_y = (int)(enemy->y + eh + 2);
-            if (!solid_at(collision, blocks, current_level_w, probe_x, foot_y)) {{
-                enemy->vx = -enemy->vx;
+                enemy->vy += GROUND_GRAVITY * dt;
+                float gx = enemy->x + enemy->vx * dt;
+                if (rect_hits_solid(collision, blocks, current_level_w, gx, enemy->y, ew, eh)) {{
+                    enemy->vx = -enemy->vx;
+                }} else {{
+                    enemy->x = gx;
+                }}
+                float gy = enemy->y + enemy->vy * dt;
+                if (!rect_hits_solid(collision, blocks, current_level_w, enemy->x, gy, ew, eh)) {{
+                    enemy->y = gy;
+                }} else if (enemy->vy > 0.0f) {{
+                    int tile_y = ((int)(enemy->y + eh + enemy->vy * dt)) / TILE_SIZE;
+                    enemy->y = (float)(tile_y * TILE_SIZE - eh);
+                    enemy->vy = 0.0f;
+                }} else {{
+                    enemy->vy = 0.0f;
+                }}
+                int probe_x = enemy->vx < 0.0f ? (int)enemy->x - 2 : (int)(enemy->x + ew + 2);
+                int foot_y = (int)(enemy->y + eh + 2);
+                if (!solid_at(collision, blocks, current_level_w, probe_x, foot_y)) {{
+                    enemy->vx = -enemy->vx;
+                }}
             }}
             if (rects_overlap(mario_x, mario_y, player_w, player_h, enemy->x, enemy->y, ew, eh)) {{
                 bool shell_stationary = enemy->kind == KOOPA_SHELL_KIND && !shell_is_moving(enemy);
@@ -2531,7 +2618,7 @@ int main(int argc, char **argv) {{
             if (!enemy->alive) continue;
             draw_sprite(
                 frame,
-                enemy_sprite(enemy, goomba, koopa, koopa_shell),
+                enemy_sprite(enemy, goomba, koopa, koopa_shell, blooper_frames, now),
                 enemy_width(enemy),
                 enemy_height(enemy),
                 (int)enemy->x - camera,
@@ -2594,6 +2681,7 @@ int main(int argc, char **argv) {{
     free(goomba);
     free(koopa);
     free(koopa_shell);
+    for (int i = 0; i < BLOOPER_FRAME_COUNT; i++) free(blooper_frames[i]);
     if (audio_device) SDL_CloseAudioDevice(audio_device);
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
