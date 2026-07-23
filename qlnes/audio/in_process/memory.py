@@ -10,6 +10,7 @@ MMC2Memory (mapper 9) and MMC4Memory (mapper 10) support latch-selected
 4 KiB CHR windows for original-color sprite snapshots.
 Bandai16Memory (mapper 16) supports Bandai FCG PRG and 1 KiB CHR windows.
 Jaleco18Memory (mapper 18) supports SS88006 PRG and 1 KiB CHR windows.
+Namco163Memory (mapper 19) supports Namco 129/163 PRG and 1 KiB CHR windows.
 IremG101Memory (mapper 32) supports G-101 PRG and 1 KiB CHR windows.
 Taito33Memory (mapper 33) supports TC0190 PRG and mixed 2/1 KiB CHR windows.
 NINA0306Memory (mapper 79) supports AVE NINA-03/NINA-06 PRG/CHR banking.
@@ -825,6 +826,107 @@ class Jaleco18Memory(NROMMemory):
         super().reset_state()
         self._prg_regs = [0, 1, 2]
         self._chr_regs = list(range(8))
+
+
+class Namco163Memory(NROMMemory):
+    """Mapper-19 Namco 129/163 memory.
+
+    CPU $8000/$A000/$C000 are switchable 8 KiB PRG banks and $E000-$FFFF is
+    fixed to the last PRG bank. PPU pattern tables use eight 1 KiB CHR windows
+    selected through `$8000-$BFFF` in 0x800-byte register ranges. IRQ,
+    expansion audio and nametable-source banking are outside this sprite path.
+    """
+
+    def __init__(self, prg: bytes, chr_data: bytes) -> None:
+        if len(prg) % 0x2000 != 0 or len(prg) < 0x8000:
+            raise ValueError("Namco 163 PRG must contain at least four 8 KiB banks")
+        initial = prg[:0x6000] + prg[-0x2000:]
+        super().__init__(initial)
+        if not chr_data:
+            raise ValueError("Namco 163 requires CHR-ROM data")
+        self._prg_banks = [prg[i : i + 0x2000] for i in range(0, len(prg), 0x2000)]
+        self._chr_rom = bytes(chr_data)
+        self._chr_1k_count = max(len(self._chr_rom) // 0x0400, 1)
+        self._prg_regs = [0, 1, 2]
+        self._chr_regs = list(range(8))
+        self._chip_ram = bytearray(0x80)
+        self._chip_ram_addr = 0
+
+    def _read_prg(self, addr: int) -> int:
+        if addr < 0xA000:
+            return self._prg_banks[self._prg_regs[0] % len(self._prg_banks)][addr - 0x8000]
+        if addr < 0xC000:
+            return self._prg_banks[self._prg_regs[1] % len(self._prg_banks)][addr - 0xA000]
+        if addr < 0xE000:
+            return self._prg_banks[self._prg_regs[2] % len(self._prg_banks)][addr - 0xC000]
+        return self._prg_banks[-1][addr - 0xE000]
+
+    def __getitem__(self, addr: int) -> int:
+        if 0x4800 <= addr <= 0x4FFF:
+            return self._chip_ram[self._chip_ram_addr & 0x7F]
+        return super().__getitem__(addr)
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        v = value & 0xFF
+        if 0x4800 <= addr <= 0x4FFF:
+            self._chip_ram[self._chip_ram_addr & 0x7F] = v
+            return
+        if 0xF800 <= addr <= 0xFFFF:
+            self._chip_ram_addr = v & 0x7F
+            return
+        if 0x8000 <= addr <= 0xFFFF:
+            self._write_mapper_register(addr, v)
+            return
+        super().__setitem__(addr, v)
+
+    def _write_mapper_register(self, addr: int, value: int) -> None:
+        if 0x8000 <= addr <= 0xBFFF:
+            slot = (addr - 0x8000) // 0x0800
+            self._chr_regs[slot] = value
+            self.chr_bank = self._dominant_chr_8k_bank()
+            return
+        if 0xE000 <= addr <= 0xE7FF:
+            self._prg_regs[0] = value & 0x3F
+        elif 0xE800 <= addr <= 0xEFFF:
+            self._prg_regs[1] = value & 0x3F
+        elif 0xF000 <= addr <= 0xF7FF:
+            self._prg_regs[2] = value & 0x3F
+
+    def _mapped_chr_pattern_table(self) -> bytes:
+        out = bytearray(0x2000)
+        for slot, reg in enumerate(self._chr_regs):
+            if reg >= 0xE0:
+                continue
+            bank = reg % self._chr_1k_count
+            start = bank * 0x0400
+            out[slot * 0x0400 : (slot + 1) * 0x0400] = self._chr_rom[start : start + 0x0400]
+        return bytes(out)
+
+    def _dominant_chr_8k_bank(self) -> int:
+        if self._chr_1k_count < 8:
+            return 0
+        first = self._chr_regs[0]
+        if first >= 0xE0:
+            return 0
+        return (first % self._chr_1k_count) // 8
+
+    def ppu_snapshot(self) -> PpuSnapshot:
+        snap = super().ppu_snapshot()
+        return PpuSnapshot(
+            ppuctrl=snap.ppuctrl,
+            ppumask=snap.ppumask,
+            palette_ram=snap.palette_ram,
+            oam=snap.oam,
+            pattern_table=self._mapped_chr_pattern_table(),
+            chr_bank=self._dominant_chr_8k_bank(),
+        )
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        self._prg_regs = [0, 1, 2]
+        self._chr_regs = list(range(8))
+        self._chip_ram[:] = b"\x00" * 0x80
+        self._chip_ram_addr = 0
 
 
 class IremG101Memory(NROMMemory):
