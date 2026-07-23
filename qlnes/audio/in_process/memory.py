@@ -9,6 +9,7 @@ enough PRG/CHR banking for runtime sprite capture on simple boot snapshots.
 AxROMMemory (mapper 7) supports 32 KiB PRG switching with CHR-RAM captures.
 BNROMNINAMemory (mapper 34) supports BNROM PRG switching and NINA split CHR.
 FME7Memory (mapper 69) supports Sunsoft FME-7/5B PRG and 1 KiB CHR windows.
+CPROMMemory (mapper 13) supports fixed PRG and switchable 4 KiB CHR-RAM.
 CamericaMemory (mapper 71) supports the Codemasters/Camerica UNROM variant.
 J87Memory (mapper 87) and JF10Memory (mapper 101) support fixed PRG with
 switchable 8 KiB CHR-ROM.
@@ -414,6 +415,57 @@ class AxROMMemory(NROMMemory):
     def reset_state(self) -> None:
         super().reset_state()
         self._prg_bank = 0
+
+
+class CPROMMemory(NROMMemory):
+    """Mapper-13 CPROM memory.
+
+    PRG is fixed like NROM. PPU $0000-$0FFF maps fixed CHR-RAM page 0 and
+    PPU $1000-$1FFF maps one of four 4 KiB CHR-RAM pages selected by writes to
+    $8000-$FFFF.
+    """
+
+    def __init__(self, prg: bytes) -> None:
+        super().__init__(prg)
+        self._chr_ram_4k = [bytearray(0x1000) for _ in range(4)]
+        self._chr_ram_bank = 0
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if addr >= 0x8000:
+            self._chr_ram_bank = value & 0x03
+            self.chr_bank = self._chr_ram_bank
+            return
+        super().__setitem__(addr, value)
+
+    def _write_ppu_data(self, value: int) -> None:
+        addr = self._ppu_addr & 0x3FFF
+        if 0x0000 <= addr <= 0x0FFF:
+            self._chr_ram_4k[0][addr] = value & 0xFF
+        elif 0x1000 <= addr <= 0x1FFF:
+            self._chr_ram_4k[self._chr_ram_bank][addr - 0x1000] = value & 0xFF
+        else:
+            super()._write_ppu_data(value)
+            return
+        increment = 32 if (self.ppuctrl & 0x04) else 1
+        self._ppu_addr = (self._ppu_addr + increment) & 0x7FFF
+
+    def ppu_snapshot(self) -> PpuSnapshot:
+        snap = super().ppu_snapshot()
+        pattern_table = bytes(self._chr_ram_4k[0] + self._chr_ram_4k[self._chr_ram_bank])
+        return PpuSnapshot(
+            ppuctrl=snap.ppuctrl,
+            ppumask=snap.ppumask,
+            palette_ram=snap.palette_ram,
+            oam=snap.oam,
+            pattern_table=pattern_table,
+            chr_bank=self._chr_ram_bank,
+        )
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        for bank in self._chr_ram_4k:
+            bank[:] = b"\x00" * 0x1000
+        self._chr_ram_bank = 0
 
 
 class BNROMNINAMemory(NROMMemory):

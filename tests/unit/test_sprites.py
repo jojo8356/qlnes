@@ -180,6 +180,51 @@ def _runtime_prg_ram_oamdma_sprite_test_rom() -> bytes:
     return ines_header(1, 1, 0) + bytes(prg) + bytes(chr_data)
 
 
+def _runtime_cprom_chr_ram_sprite_test_rom() -> bytes:
+    rows = [[0, 1, 2, 3, 0, 1, 2, 3] for _ in range(8)]
+    tile = _encode_tile(rows)
+    code = [
+        0x78,  # SEI
+        0xD8,  # CLD
+        0xA9, 0x02, 0x8D, 0x00, 0x80,  # CPROM CHR-RAM bank 2 at $1000-$1FFF
+        0xA2, 0x00,
+        0xA9, 0xF8,
+        0x9D, 0x00, 0x02,
+        0xE8,
+        0xD0, 0xFA,
+        0xA9, 0x14, 0x8D, 0x00, 0x02,
+        0xA9, 0x00, 0x8D, 0x01, 0x02,
+        0xA9, 0x00, 0x8D, 0x02, 0x02,
+        0xA9, 0x0C, 0x8D, 0x03, 0x02,
+        0xA9, 0x00, 0x8D, 0x03, 0x20,
+        0xA9, 0x02, 0x8D, 0x14, 0x40,
+        0xAD, 0x02, 0x20,
+        0xA9, 0x10, 0x8D, 0x06, 0x20,
+        0xA9, 0x00, 0x8D, 0x06, 0x20,
+    ]
+    for value in tile:
+        code.extend([0xA9, value, 0x8D, 0x07, 0x20])
+    code.extend(
+        [
+            0xAD, 0x02, 0x20,
+            0xA9, 0x3F, 0x8D, 0x06, 0x20,
+            0xA9, 0x10, 0x8D, 0x06, 0x20,
+        ]
+    )
+    for value in (0x0F, 0x30, 0x16, 0x27):
+        code.extend([0xA9, value, 0x8D, 0x07, 0x20])
+    code.extend([0xA9, 0x88, 0x8D, 0x00, 0x20, 0xA9, 0x1E, 0x8D, 0x01, 0x20])
+    loop_addr = 0x8000 + len(code)
+    code.extend([0x4C, loop_addr & 0xFF, loop_addr >> 8])
+    prg = bytearray([0xEA] * 0x8000)
+    prg[: len(code)] = bytes(code)
+    prg[0x0100] = 0x40
+    prg[0x7FFA:0x7FFC] = (0x8100).to_bytes(2, "little")
+    prg[0x7FFC:0x7FFE] = (0x8000).to_bytes(2, "little")
+    prg[0x7FFE:0x8000] = (0x8100).to_bytes(2, "little")
+    return ines_header(2, 0, 13) + bytes(prg)
+
+
 def _runtime_start_gated_sprite_test_rom() -> bytes:
     reset = [
         0x78,  # SEI
@@ -1032,6 +1077,25 @@ class TestSpriteExport(unittest.TestCase):
             self.assertEqual(data["sprites"][0]["x"], 12)
             self.assertEqual(data["sprites"][0]["y"], 21)
             self.assertEqual(data["chr_source"], "rom")
+
+    def test_in_process_runtime_export_runs_cprom_chr_ram_bank(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "runtime-cprom.nes"
+            rom_path.write_bytes(_runtime_cprom_chr_ram_sprite_test_rom())
+            out_dir = Path(td) / "auto-cprom"
+
+            manifest = export_in_process_runtime_sprites(rom_path, out_dir, frames=1)
+
+            self.assertEqual(manifest.chr_bank, 2)
+            self.assertEqual(manifest.n_tiles, 1)
+            sprite = out_dir / "oam" / "sprite-00-tile-00-pal0.png"
+            img = Image.open(sprite).convert("RGBA")
+            self.assertEqual(img.getpixel((0, 0))[3], 0)
+            self.assertEqual(img.getpixel((1, 0)), (0xFC, 0xFC, 0xFC, 255))
+            data = json.loads((out_dir / "sprites-manifest.json").read_text())
+            self.assertTrue(data["chr_ram"])
+            self.assertEqual(data["chr_bank"], 2)
+            self.assertEqual(data["chr_source"], "snapshot")
 
     def test_in_process_runtime_export_accepts_controller_input_script(self):
         with tempfile.TemporaryDirectory() as td:

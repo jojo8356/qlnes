@@ -9,6 +9,7 @@ from qlnes.audio.in_process.memory import (
     CamericaMemory,
     CNROMMemory,
     ColorDreamsMemory,
+    CPROMMemory,
     FME7Memory,
     GxROMMemory,
     JF10Memory,
@@ -315,6 +316,19 @@ def test_gxrom_reset_state_restores_prg_and_chr_bank():
     m.reset_state()
     assert m[0x8000] == 0
     assert m.ppu_snapshot().chr_bank == 0
+
+
+def test_cprom_mapper13_switches_visible_chr_ram_4k_bank():
+    m = CPROMMemory(_prg32())
+    m[0x8000] = 0x02
+    m[0x2006] = 0x10
+    m[0x2006] = 0x00
+    m[0x2007] = 0xAA
+    snap = m.ppu_snapshot()
+    assert snap.chr_bank == 2
+    assert snap.pattern_table[0x1000] == 0xAA
+    m[0x8000] = 0x01
+    assert m.ppu_snapshot().pattern_table[0x1000] == 0x00
 
 
 def test_colordreams_mapper_write_switches_prg_and_chr_bank():
