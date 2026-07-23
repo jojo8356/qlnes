@@ -620,6 +620,9 @@ class TestSpriteExport(unittest.TestCase):
             data = json.loads((out_dir / "sprites-manifest.json").read_text())
             self.assertEqual(data["snapshot"], "in-process")
             self.assertEqual(data["runtime_frames"], 1)
+            self.assertEqual(data["sprites"][0]["palette_ppu"], ["0x0F", "0x30", "0x16", "0x27"])
+            self.assertEqual(data["sprites"][0]["palette_rgba"][0], [0, 0, 0, 0])
+            self.assertEqual(data["sprites"][0]["palette_rgba"][1], [0xFC, 0xFC, 0xFC, 255])
             self.assertTrue((out_dir / "oam-screen.png").exists())
             screen = Image.open(out_dir / "oam-screen.png").convert("RGBA")
             self.assertEqual(screen.size, (256, 240))
@@ -689,6 +692,8 @@ class TestSpriteExport(unittest.TestCase):
                 str(out_dir / "unique-trimmed-spritesheet.png"),
             )
             self.assertEqual(data["unique_sprites"][0]["transparent_bbox"], [1, 0, 8, 8])
+            self.assertEqual(data["unique_sprites"][0]["palette_ppu"], ["0x0F", "0x30", "0x16", "0x27"])
+            self.assertEqual(data["unique_sprites"][0]["palette_rgba"][1], [0xFC, 0xFC, 0xFC, 255])
             self.assertRegex(data["unique_sprites"][0]["trimmed_sha256"], r"^[0-9a-f]{64}$")
             self.assertEqual(
                 data["unique_sprites"][0]["sheet"],
@@ -813,6 +818,7 @@ class TestSpriteExport(unittest.TestCase):
             atlas = json.loads((out_dir / "all-unique-trimmed-atlas.json").read_text())
             self.assertEqual(atlas["sprite_count"], 1)
             self.assertEqual(atlas["sprites"][0]["first_seen_frame"], 1)
+            self.assertEqual(atlas["sprites"][0]["palette_ppu"], ["0x0F", "0x30", "0x16", "0x27"])
             errors = [entry["error"] for entry in data["entries"] if not entry["ok"]]
             self.assertTrue(errors)
 

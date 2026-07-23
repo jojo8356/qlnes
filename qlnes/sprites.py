@@ -280,6 +280,31 @@ def rgba_for_sprite_pixel(
     return (*NES_RGB_PALETTE[ppu_value], 255)
 
 
+def sprite_palette_metadata(
+    palette_id: int,
+    palette_ram: Sequence[int],
+) -> dict[str, object]:
+    """Return PPU and RGBA values for one sprite sub-palette."""
+
+    ppu_values = [
+        palette_ram[0x10 + palette_id * 4 + color_index] & 0x3F
+        for color_index in range(4)
+    ]
+    return {
+        "palette_ppu": [f"0x{value:02X}" for value in ppu_values],
+        "palette_rgba": [
+            list(
+                rgba_for_sprite_pixel(
+                    color_index,
+                    palette_id=palette_id,
+                    palette_ram=palette_ram,
+                )
+            )
+            for color_index in range(4)
+        ],
+    }
+
+
 def chr_from_ines(rom_bytes: bytes, *, chr_bank: int = 0) -> bytes:
     """Extract one 8 KiB CHR bank from an iNES ROM."""
 
@@ -776,6 +801,24 @@ def export_runtime_oam_sprites(
             palette_ram=snapshot.palette_ram,
         )
     manifest_json = out_dir / "sprites-manifest.json"
+    sprite_entries: list[dict[str, object]] = []
+    for sprite in exports:
+        entry = {
+            "oam_index": sprite.oam_index,
+            "tile_index": f"0x{sprite.tile_index:02X}",
+            "palette_id": sprite.palette_id,
+            "attr": f"0x{sprite.attr:02X}" if sprite.attr is not None else None,
+            "priority_behind_background": sprite.priority_behind_background,
+            "flip_h": sprite.flip_h,
+            "flip_v": sprite.flip_v,
+            "x": sprite.x,
+            "y": sprite.y,
+            "path": str(sprite.path),
+            "width": sprite.width,
+            "height": sprite.height,
+        }
+        entry.update(sprite_palette_metadata(sprite.palette_id, snapshot.palette_ram))
+        sprite_entries.append(entry)
     manifest_json.write_text(
         json.dumps(
             {
@@ -795,23 +838,7 @@ def export_runtime_oam_sprites(
                 "transparent_index": 0,
                 "spritesheet": str(manifest.spritesheet) if manifest.spritesheet else None,
                 "screen_png": str(manifest.screen_png) if manifest.screen_png else None,
-                "sprites": [
-                    {
-                        "oam_index": sprite.oam_index,
-                        "tile_index": f"0x{sprite.tile_index:02X}",
-                        "palette_id": sprite.palette_id,
-                        "attr": f"0x{sprite.attr:02X}" if sprite.attr is not None else None,
-                        "priority_behind_background": sprite.priority_behind_background,
-                        "flip_h": sprite.flip_h,
-                        "flip_v": sprite.flip_v,
-                        "x": sprite.x,
-                        "y": sprite.y,
-                        "path": str(sprite.path),
-                        "width": sprite.width,
-                        "height": sprite.height,
-                    }
-                    for sprite in exports
-                ],
+                "sprites": sprite_entries,
                 "notes": manifest.notes,
             },
             indent=2,
@@ -966,6 +993,8 @@ def export_in_process_runtime_sprite_samples(
                     "oam_index": sprite.get("oam_index"),
                     "tile_index": sprite.get("tile_index"),
                     "palette_id": sprite.get("palette_id"),
+                    "palette_ppu": sprite.get("palette_ppu"),
+                    "palette_rgba": sprite.get("palette_rgba"),
                     "width": sprite.get("width"),
                     "height": sprite.get("height"),
                 }
@@ -1102,6 +1131,8 @@ def _collect_runtime_manifest_sprites(
                 "oam_index": sprite.get("oam_index"),
                 "tile_index": sprite.get("tile_index"),
                 "palette_id": sprite.get("palette_id"),
+                "palette_ppu": sprite.get("palette_ppu"),
+                "palette_rgba": sprite.get("palette_rgba"),
             }
         )
     return collected
@@ -1253,6 +1284,8 @@ def export_sprite_batch(
                     "oam_index": entry.get("oam_index"),
                     "tile_index": entry.get("tile_index"),
                     "palette_id": entry.get("palette_id"),
+                    "palette_ppu": entry.get("palette_ppu"),
+                    "palette_rgba": entry.get("palette_rgba"),
                     "transparent_bbox": entry.get("transparent_bbox"),
                 }
             )

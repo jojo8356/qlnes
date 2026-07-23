@@ -110,6 +110,8 @@ Ce mode boote la ROM en-process avec `py65`, observe :
 
 Ensuite il exporte les sprites OAM comme le mode `--snapshot`, avec
 `palette_source: runtime-snapshot` et `snapshot: in-process` dans le manifeste.
+Chaque entrée `sprites[]` contient aussi `palette_ppu` et `palette_rgba`, pour
+retracer les quatre couleurs NES utilisées par le PNG exporté.
 
 Pour capturer plusieurs moments runtime, utiliser `--runtime-sample-frames`.
 qlnes reboote la ROM pour chaque checkpoint et écrit un sous-dossier par frame :
