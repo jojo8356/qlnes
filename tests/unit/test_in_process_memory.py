@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from qlnes.audio.in_process.memory import NROMMemory
+from qlnes.audio.in_process.memory import CNROMMemory, NROMMemory, UxROMMemory
 
 
 def _prg32() -> bytes:
@@ -44,6 +44,45 @@ def test_ppustatus_read_returns_vblank_and_clears():
 def test_ppuctrl_write_toggles_nmi_enable():
     m = NROMMemory(_prg32())
     assert m.nmi_enabled is False
+
+
+def test_ppu_palette_writes_are_captured_through_ppuaddr_ppudata():
+    m = NROMMemory(_prg32())
+    m[0x2006] = 0x3F
+    m[0x2006] = 0x10
+    m[0x2007] = 0x0F
+    m[0x2007] = 0x30
+    m[0x2007] = 0x16
+    m[0x2007] = 0x27
+    snap = m.ppu_snapshot()
+    assert snap.palette_ram[0x00] == 0x0F
+    assert snap.palette_ram[0x10] == 0x0F
+    assert snap.palette_ram[0x11:0x14] == bytes([0x30, 0x16, 0x27])
+
+
+def test_ppu_pattern_table_writes_are_captured_for_chr_ram():
+    m = NROMMemory(_prg32())
+    m[0x2006] = 0x10
+    m[0x2006] = 0x00
+    m[0x2007] = 0xAA
+    m[0x2007] = 0x55
+    snap = m.ppu_snapshot()
+    assert snap.pattern_table[0x1000:0x1002] == bytes([0xAA, 0x55])
+
+
+def test_oamdata_and_oamdma_are_captured():
+    m = NROMMemory(_prg32())
+    m[0x0200] = 0x14
+    m[0x0201] = 0x24
+    m[0x0202] = 0x02
+    m[0x0203] = 0x40
+    m[0x2003] = 0x00
+    m[0x4014] = 0x02
+    snap = m.ppu_snapshot()
+    assert snap.oam[:4] == bytes([0x14, 0x24, 0x02, 0x40])
+    # Keep legacy audio-observer behavior: $4014 is still in the captured
+    # $4000-$4017 write range.
+    assert len(m.apu_writes) == 1
     m[0x2000] = 0x80
     assert m.nmi_enabled is True
     m[0x2000] = 0x00
@@ -174,6 +213,30 @@ def test_reset_state_does_not_touch_rom():
     rom_byte = m[0x8123]
     m.reset_state()
     assert m[0x8123] == rom_byte
+
+
+def test_cnrom_mapper_write_selects_chr_bank():
+    m = CNROMMemory(_prg32(), chr_banks=4)
+    assert m.ppu_snapshot().chr_bank == 0
+    m[0x8000] = 0x02
+    assert m.ppu_snapshot().chr_bank == 2
+    m[0xFFFF] = 0x07
+    assert m.ppu_snapshot().chr_bank == 3
+
+
+def test_uxrom_mapper_write_switches_low_prg_bank_and_keeps_fixed_high_bank():
+    banks = []
+    for bank_id in range(4):
+        banks.append(bytes([bank_id] * 0x4000))
+    m = UxROMMemory(b"".join(banks))
+    assert m[0x8000] == 0
+    assert m[0xBFFF] == 0
+    assert m[0xC000] == 3
+    assert m[0xFFFF] == 3
+    m[0x8000] = 0x02
+    assert m[0x8000] == 2
+    assert m[0xBFFF] == 2
+    assert m[0xC000] == 3
 
 
 def test_len_is_64k():

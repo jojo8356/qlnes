@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Python: module qlnes.sprites</title>
+</head><body>
+
+<table class="heading">
+<tr class="heading-text decor">
+<td class="title">&nbsp;<br><strong class="title"><a href="qlnes.html" class="white">qlnes</a>.sprites</strong></td>
+<td class="extra"><a href=".">index</a><br><a href="file:/home/jojokes/Documents/programmation/projets/autres/qlnes/qlnes/sprites.py">/home/jojokes/Documents/programmation/projets/autres/qlnes/qlnes/sprites.py</a></td></tr></table>
+    <p><span class="code">Colored&nbsp;NES&nbsp;sprite/tile&nbsp;PNG&nbsp;export.<br>
+&nbsp;<br>
+CHR&nbsp;data&nbsp;stores&nbsp;2bpp&nbsp;pixel&nbsp;indexes,&nbsp;not&nbsp;final&nbsp;RGB&nbsp;colors.&nbsp;This&nbsp;module&nbsp;turns<br>
+CHR&nbsp;sprite&nbsp;pattern&nbsp;tiles&nbsp;into&nbsp;RGBA&nbsp;PNGs&nbsp;by&nbsp;applying&nbsp;a&nbsp;PPU&nbsp;sprite&nbsp;palette.&nbsp;Pixel<br>
+index&nbsp;0&nbsp;is&nbsp;exported&nbsp;as&nbsp;transparent&nbsp;alpha,&nbsp;matching&nbsp;NES&nbsp;sprite&nbsp;rendering.<br>
+&nbsp;<br>
+The&nbsp;output&nbsp;is&nbsp;"original&nbsp;color"&nbsp;only&nbsp;when&nbsp;the&nbsp;caller&nbsp;provides&nbsp;palette&nbsp;RAM&nbsp;from<br>
+the&nbsp;same&nbsp;runtime&nbsp;moment&nbsp;as&nbsp;the&nbsp;sprites.&nbsp;Without&nbsp;a&nbsp;runtime&nbsp;PPU&nbsp;snapshot,&nbsp;qlnes<br>
+uses&nbsp;an&nbsp;explicit&nbsp;preview&nbsp;palette&nbsp;and&nbsp;records&nbsp;that&nbsp;fact&nbsp;in&nbsp;the&nbsp;manifest.</span></p>
+<p>
+<table class="section">
+<tr class="decor pkg-content-decor heading-text">
+<td class="section-title" colspan=3>&nbsp;<br><strong class="bigsection">Modules</strong></td></tr>
+    
+<tr><td class="decor pkg-content-decor"><span class="code">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></td><td>&nbsp;</td>
+<td class="singlecolumn"><table><tr><td class="multicolumn"><a href="json.html">json</a><br>
+</td><td class="multicolumn"><a href="tempfile.html">tempfile</a><br>
+</td><td class="multicolumn"></td><td class="multicolumn"></td></tr></table></td></tr></table><p>
+<table class="section">
+<tr class="decor index-decor heading-text">
+<td class="section-title" colspan=3>&nbsp;<br><strong class="bigsection">Classes</strong></td></tr>
+    
+<tr><td class="decor index-decor"><span class="code">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></td><td>&nbsp;</td>
+<td class="singlecolumn"><dl>
+<dt class="heading-text"><a href="builtins.html#object">builtins.object</a>
+</dt><dd>
+<dl>
+<dt class="heading-text"><a href="qlnes.sprites.html#RuntimeSpriteSnapshot">RuntimeSpriteSnapshot</a>
+</dt><dt class="heading-text"><a href="qlnes.sprites.html#SpriteExport">SpriteExport</a>
+</dt><dt class="heading-text"><a href="qlnes.sprites.html#SpriteExportManifest">SpriteExportManifest</a>
+</dt></dl>
+</dd>
+</dl>
+ <p>
+<table class="section">
+<tr class="decor title-decor heading-text">
+<td class="section-title" colspan=3>&nbsp;<br><a name="RuntimeSpriteSnapshot">class <strong>RuntimeSpriteSnapshot</strong></a>(<a href="builtins.html#object">builtins.object</a>)</td></tr>
+    
+<tr><td class="decor title-decor" rowspan=2><span class="code">&nbsp;&nbsp;&nbsp;</span></td>
+<td class="decor title-decor" colspan=2><span class="code"><a href="#RuntimeSpriteSnapshot">RuntimeSpriteSnapshot</a>(oam:&nbsp;'tuple[int,&nbsp;...]',&nbsp;palette_ram:&nbsp;'tuple[int,&nbsp;...]',&nbsp;ppuctrl:&nbsp;'int',&nbsp;ppumask:&nbsp;'int'&nbsp;=&nbsp;0,&nbsp;frame:&nbsp;'int&nbsp;|&nbsp;None'&nbsp;=&nbsp;None,&nbsp;chr_bank:&nbsp;'int'&nbsp;=&nbsp;0,&nbsp;chr_data:&nbsp;'bytes&nbsp;|&nbsp;None'&nbsp;=&nbsp;None)&nbsp;-&amp;gt;&nbsp;None<br>
+&nbsp;<br>
+Runtime&nbsp;PPU/OAM&nbsp;state&nbsp;needed&nbsp;to&nbsp;color&nbsp;actual&nbsp;NES&nbsp;sprites.<br>&nbsp;</span></td></tr>
+<tr><td>&nbsp;</td>
+<td class="singlecolumn">Methods defined here:<br>
+<dl><dt><a name="RuntimeSpriteSnapshot-__delattr__"><strong>__delattr__</strong></a>(self, name)</dt><dd><span class="code">Implement&nbsp;delattr(self,&nbsp;name).</span></dd></dl>
+
+<dl><dt><a name="RuntimeSpriteSnapshot-__eq__"><strong>__eq__</strong></a>(self, other)</dt><dd><span class="code">Return&nbsp;self==value.</span></dd></dl>
+
+<dl><dt><a name="RuntimeSpriteSnapshot-__hash__"><strong>__hash__</strong></a>(self)</dt><dd><span class="code">Return&nbsp;hash(self).</span></dd></dl>
+
+<dl><dt><a name="RuntimeSpriteSnapshot-__init__"><strong>__init__</strong></a>(self, oam: 'tuple[int, ...]', palette_ram: 'tuple[int, ...]', ppuctrl: 'int', ppumask: 'int' = 0, frame: 'int | None' = None, chr_bank: 'int' = 0, chr_data: 'bytes | None' = None) -&gt; None</dt><dd><span class="code">Initialize&nbsp;self.&nbsp;&nbsp;See&nbsp;help(type(self))&nbsp;for&nbsp;accurate&nbsp;signature.</span></dd></dl>
+
+<dl><dt><a name="RuntimeSpriteSnapshot-__repr__"><strong>__repr__</strong></a>(self)</dt><dd><span class="code">Return&nbsp;repr(self).</span></dd></dl>
+
+<dl><dt><a name="RuntimeSpriteSnapshot-__setattr__"><strong>__setattr__</strong></a>(self, name, value)</dt><dd><span class="code">Implement&nbsp;setattr(self,&nbsp;name,&nbsp;value).</span></dd></dl>
+
+<hr>
+Readonly properties defined here:<br>
+<dl><dt><strong>sprite_height</strong></dt>
+</dl>
+<dl><dt><strong>sprite_pattern_table</strong></dt>
+</dl>
+<hr>
+Data descriptors defined here:<br>
+<dl><dt><strong>__dict__</strong></dt>
+<dd><span class="code">dictionary&nbsp;for&nbsp;instance&nbsp;variables</span></dd>
+</dl>
+<dl><dt><strong>__weakref__</strong></dt>
+<dd><span class="code">list&nbsp;of&nbsp;weak&nbsp;references&nbsp;to&nbsp;the&nbsp;object</span></dd>
+</dl>
+<hr>
+Data and other attributes defined here:<br>
+<dl><dt><strong>__annotations__</strong> = {'chr_bank': 'int', 'chr_data': 'bytes | None', 'frame': 'int | None', 'oam': 'tuple[int, ...]', 'palette_ram': 'tuple[int, ...]', 'ppuctrl': 'int', 'ppumask': 'int'}</dl>
+
+<dl><dt><strong>__dataclass_fields__</strong> = {'chr_bank': Field(name='chr_bank',type='int',default=0,defau...appingproxy({}),kw_only=False,_field_type=_FIELD), 'chr_data': Field(name='chr_data',type='bytes | None',defaul...appingproxy({}),kw_only=False,_field_type=_FIELD), 'frame': Field(name='frame',type='int | None',default=Non...appingproxy({}),kw_only=False,_field_type=_FIELD), 'oam': Field(name='oam',type='tuple[int, ...]',default=...appingproxy({}),kw_only=False,_field_type=_FIELD), 'palette_ram': Field(name='palette_ram',type='tuple[int, ...]',...appingproxy({}),kw_only=False,_field_type=_FIELD), 'ppuctrl': Field(name='ppuctrl',type='int',default=&lt;datacla...appingproxy({}),kw_only=False,_field_type=_FIELD), 'ppumask': Field(name='ppumask',type='int',default=0,defaul...appingproxy({}),kw_only=False,_field_type=_FIELD)}</dl>
+
+<dl><dt><strong>__dataclass_params__</strong> = _DataclassParams(init=True,repr=True,eq=True,ord...rue,kw_only=False,slots=False,weakref_slot=False)</dl>
+
+<dl><dt><strong>__match_args__</strong> = ('oam', 'palette_ram', 'ppuctrl', 'ppumask', 'frame', 'chr_bank', 'chr_data')</dl>
+
+<dl><dt><strong>chr_bank</strong> = 0</dl>
+
+<dl><dt><strong>chr_data</strong> = None</dl>
+
+<dl><dt><strong>frame</strong> = None</dl>
+
+<dl><dt><strong>ppumask</strong> = 0</dl>
+
+</td></tr></table> <p>
+<table class="section">
+<tr class="decor title-decor heading-text">
+<td class="section-title" colspan=3>&nbsp;<br><a name="SpriteExport">class <strong>SpriteExport</strong></a>(<a href="builtins.html#object">builtins.object</a>)</td></tr>
+    
+<tr><td class="decor title-decor" rowspan=2><span class="code">&nbsp;&nbsp;&nbsp;</span></td>
+<td class="decor title-decor" colspan=2><span class="code"><a href="#SpriteExport">SpriteExport</a>(tile_index:&nbsp;'int',&nbsp;palette_id:&nbsp;'int',&nbsp;path:&nbsp;'Path',&nbsp;width:&nbsp;'int',&nbsp;height:&nbsp;'int',&nbsp;oam_index:&nbsp;'int&nbsp;|&nbsp;None'&nbsp;=&nbsp;None,&nbsp;x:&nbsp;'int&nbsp;|&nbsp;None'&nbsp;=&nbsp;None,&nbsp;y:&nbsp;'int&nbsp;|&nbsp;None'&nbsp;=&nbsp;None,&nbsp;attr:&nbsp;'int&nbsp;|&nbsp;None'&nbsp;=&nbsp;None,&nbsp;priority_behind_background:&nbsp;'bool'&nbsp;=&nbsp;False,&nbsp;flip_h:&nbsp;'bool'&nbsp;=&nbsp;False,&nbsp;flip_v:&nbsp;'bool'&nbsp;=&nbsp;False)&nbsp;-&amp;gt;&nbsp;None<br>
+&nbsp;<br>
+<a href="#SpriteExport">SpriteExport</a>(tile_index:&nbsp;'int',&nbsp;palette_id:&nbsp;'int',&nbsp;path:&nbsp;'Path',&nbsp;width:&nbsp;'int',&nbsp;height:&nbsp;'int',&nbsp;oam_index:&nbsp;'int&nbsp;|&nbsp;None'&nbsp;=&nbsp;None,&nbsp;x:&nbsp;'int&nbsp;|&nbsp;None'&nbsp;=&nbsp;None,&nbsp;y:&nbsp;'int&nbsp;|&nbsp;None'&nbsp;=&nbsp;None,&nbsp;attr:&nbsp;'int&nbsp;|&nbsp;None'&nbsp;=&nbsp;None,&nbsp;priority_behind_background:&nbsp;'bool'&nbsp;=&nbsp;False,&nbsp;flip_h:&nbsp;'bool'&nbsp;=&nbsp;False,&nbsp;flip_v:&nbsp;'bool'&nbsp;=&nbsp;False)<br>&nbsp;</span></td></tr>
+<tr><td>&nbsp;</td>
+<td class="singlecolumn">Methods defined here:<br>
+<dl><dt><a name="SpriteExport-__delattr__"><strong>__delattr__</strong></a>(self, name)</dt><dd><span class="code">Implement&nbsp;delattr(self,&nbsp;name).</span></dd></dl>
+
+<dl><dt><a name="SpriteExport-__eq__"><strong>__eq__</strong></a>(self, other)</dt><dd><span class="code">Return&nbsp;self==value.</span></dd></dl>
+
+<dl><dt><a name="SpriteExport-__hash__"><strong>__hash__</strong></a>(self)</dt><dd><span class="code">Return&nbsp;hash(self).</span></dd></dl>
+
+<dl><dt><a name="SpriteExport-__init__"><strong>__init__</strong></a>(self, tile_index: 'int', palette_id: 'int', path: 'Path', width: 'int', height: 'int', oam_index: 'int | None' = None, x: 'int | None' = None, y: 'int | None' = None, attr: 'int | None' = None, priority_behind_background: 'bool' = False, flip_h: 'bool' = False, flip_v: 'bool' = False) -&gt; None</dt><dd><span class="code">Initialize&nbsp;self.&nbsp;&nbsp;See&nbsp;help(type(self))&nbsp;for&nbsp;accurate&nbsp;signature.</span></dd></dl>
+
+<dl><dt><a name="SpriteExport-__repr__"><strong>__repr__</strong></a>(self)</dt><dd><span class="code">Return&nbsp;repr(self).</span></dd></dl>
+
+<dl><dt><a name="SpriteExport-__setattr__"><strong>__setattr__</strong></a>(self, name, value)</dt><dd><span class="code">Implement&nbsp;setattr(self,&nbsp;name,&nbsp;value).</span></dd></dl>
+
+<hr>
+Data descriptors defined here:<br>
+<dl><dt><strong>__dict__</strong></dt>
+<dd><span class="code">dictionary&nbsp;for&nbsp;instance&nbsp;variables</span></dd>
+</dl>
+<dl><dt><strong>__weakref__</strong></dt>
+<dd><span class="code">list&nbsp;of&nbsp;weak&nbsp;references&nbsp;to&nbsp;the&nbsp;object</span></dd>
+</dl>
+<hr>
+Data and other attributes defined here:<br>
+<dl><dt><strong>__annotations__</strong> = {'attr': 'int | None', 'flip_h': 'bool', 'flip_v': 'bool', 'height': 'int', 'oam_index': 'int | None', 'palette_id': 'int', 'path': 'Path', 'priority_behind_background': 'bool', 'tile_index': 'int', 'width': 'int', ...}</dl>
+
+<dl><dt><strong>__dataclass_fields__</strong> = {'attr': Field(name='attr',type='int | None',default=None...appingproxy({}),kw_only=False,_field_type=_FIELD), 'flip_h': Field(name='flip_h',type='bool',default=False,de...appingproxy({}),kw_only=False,_field_type=_FIELD), 'flip_v': Field(name='flip_v',type='bool',default=False,de...appingproxy({}),kw_only=False,_field_type=_FIELD), 'height': Field(name='height',type='int',default=&lt;dataclas...appingproxy({}),kw_only=False,_field_type=_FIELD), 'oam_index': Field(name='oam_index',type='int | None',default...appingproxy({}),kw_only=False,_field_type=_FIELD), 'palette_id': Field(name='palette_id',type='int',default=&lt;data...appingproxy({}),kw_only=False,_field_type=_FIELD), 'path': Field(name='path',type='Path',default=&lt;dataclass...appingproxy({}),kw_only=False,_field_type=_FIELD), 'priority_behind_background': Field(name='priority_behind_background',type='bo...appingproxy({}),kw_only=False,_field_type=_FIELD), 'tile_index': Field(name='tile_index',type='int',default=&lt;data...appingproxy({}),kw_only=False,_field_type=_FIELD), 'width': Field(name='width',type='int',default=&lt;dataclass...appingproxy({}),kw_only=False,_field_type=_FIELD), ...}</dl>
+
+<dl><dt><strong>__dataclass_params__</strong> = _DataclassParams(init=True,repr=True,eq=True,ord...rue,kw_only=False,slots=False,weakref_slot=False)</dl>
+
+<dl><dt><strong>__match_args__</strong> = ('tile_index', 'palette_id', 'path', 'width', 'height', 'oam_index', 'x', 'y', 'attr', 'priority_behind_background', 'flip_h', 'flip_v')</dl>
+
+<dl><dt><strong>attr</strong> = None</dl>
+
+<dl><dt><strong>flip_h</strong> = False</dl>
+
+<dl><dt><strong>flip_v</strong> = False</dl>
+
+<dl><dt><strong>oam_index</strong> = None</dl>
+
+<dl><dt><strong>priority_behind_background</strong> = False</dl>
+
+<dl><dt><strong>x</strong> = None</dl>
+
+<dl><dt><strong>y</strong> = None</dl>
+
+</td></tr></table> <p>
+<table class="section">
+<tr class="decor title-decor heading-text">
+<td class="section-title" colspan=3>&nbsp;<br><a name="SpriteExportManifest">class <strong>SpriteExportManifest</strong></a>(<a href="builtins.html#object">builtins.object</a>)</td></tr>
+    
+<tr><td class="decor title-decor" rowspan=2><span class="code">&nbsp;&nbsp;&nbsp;</span></td>
+<td class="decor title-decor" colspan=2><span class="code"><a href="#SpriteExportManifest">SpriteExportManifest</a>(out_dir:&nbsp;'Path',&nbsp;spritesheet:&nbsp;'Path&nbsp;|&nbsp;None'&nbsp;=&nbsp;None,&nbsp;screen_png:&nbsp;'Path&nbsp;|&nbsp;None'&nbsp;=&nbsp;None,&nbsp;sprite_paths:&nbsp;'list[<a href="#SpriteExport">SpriteExport</a>]'&nbsp;=&nbsp;&amp;lt;factory&amp;gt;,&nbsp;manifest_json:&nbsp;'Path&nbsp;|&nbsp;None'&nbsp;=&nbsp;None,&nbsp;n_tiles:&nbsp;'int'&nbsp;=&nbsp;0,&nbsp;chr_bank:&nbsp;'int'&nbsp;=&nbsp;0,&nbsp;pattern_table:&nbsp;'int'&nbsp;=&nbsp;1,&nbsp;sprite_height:&nbsp;'int'&nbsp;=&nbsp;8,&nbsp;palette_source:&nbsp;'str'&nbsp;=&nbsp;'preview',&nbsp;palette_profile:&nbsp;'str'&nbsp;=&nbsp;'fceux-like',&nbsp;notes:&nbsp;'list[str]'&nbsp;=&nbsp;&amp;lt;factory&amp;gt;)&nbsp;-&amp;gt;&nbsp;None<br>
+&nbsp;<br>
+<a href="#SpriteExportManifest">SpriteExportManifest</a>(out_dir:&nbsp;'Path',&nbsp;spritesheet:&nbsp;'Path&nbsp;|&nbsp;None'&nbsp;=&nbsp;None,&nbsp;screen_png:&nbsp;'Path&nbsp;|&nbsp;None'&nbsp;=&nbsp;None,&nbsp;sprite_paths:&nbsp;'list[<a href="#SpriteExport">SpriteExport</a>]'&nbsp;=&nbsp;&lt;factory&gt;,&nbsp;manifest_json:&nbsp;'Path&nbsp;|&nbsp;None'&nbsp;=&nbsp;None,&nbsp;n_tiles:&nbsp;'int'&nbsp;=&nbsp;0,&nbsp;chr_bank:&nbsp;'int'&nbsp;=&nbsp;0,&nbsp;pattern_table:&nbsp;'int'&nbsp;=&nbsp;1,&nbsp;sprite_height:&nbsp;'int'&nbsp;=&nbsp;8,&nbsp;palette_source:&nbsp;'str'&nbsp;=&nbsp;'preview',&nbsp;palette_profile:&nbsp;'str'&nbsp;=&nbsp;'fceux-like',&nbsp;notes:&nbsp;'list[str]'&nbsp;=&nbsp;&lt;factory&gt;)<br>&nbsp;</span></td></tr>
+<tr><td>&nbsp;</td>
+<td class="singlecolumn">Methods defined here:<br>
+<dl><dt><a name="SpriteExportManifest-__eq__"><strong>__eq__</strong></a>(self, other)</dt><dd><span class="code">Return&nbsp;self==value.</span></dd></dl>
+
+<dl><dt><a name="SpriteExportManifest-__init__"><strong>__init__</strong></a>(self, out_dir: 'Path', spritesheet: 'Path | None' = None, screen_png: 'Path | None' = None, sprite_paths: 'list[SpriteExport]' = &lt;factory&gt;, manifest_json: 'Path | None' = None, n_tiles: 'int' = 0, chr_bank: 'int' = 0, pattern_table: 'int' = 1, sprite_height: 'int' = 8, palette_source: 'str' = 'preview', palette_profile: 'str' = 'fceux-like', notes: 'list[str]' = &lt;factory&gt;) -&gt; None</dt><dd><span class="code">Initialize&nbsp;self.&nbsp;&nbsp;See&nbsp;help(type(self))&nbsp;for&nbsp;accurate&nbsp;signature.</span></dd></dl>
+
+<dl><dt><a name="SpriteExportManifest-__repr__"><strong>__repr__</strong></a>(self)</dt><dd><span class="code">Return&nbsp;repr(self).</span></dd></dl>
+
+<hr>
+Data descriptors defined here:<br>
+<dl><dt><strong>__dict__</strong></dt>
+<dd><span class="code">dictionary&nbsp;for&nbsp;instance&nbsp;variables</span></dd>
+</dl>
+<dl><dt><strong>__weakref__</strong></dt>
+<dd><span class="code">list&nbsp;of&nbsp;weak&nbsp;references&nbsp;to&nbsp;the&nbsp;object</span></dd>
+</dl>
+<hr>
+Data and other attributes defined here:<br>
+<dl><dt><strong>__annotations__</strong> = {'chr_bank': 'int', 'manifest_json': 'Path | None', 'n_tiles': 'int', 'notes': 'list[str]', 'out_dir': 'Path', 'palette_profile': 'str', 'palette_source': 'str', 'pattern_table': 'int', 'screen_png': 'Path | None', 'sprite_height': 'int', ...}</dl>
+
+<dl><dt><strong>__dataclass_fields__</strong> = {'chr_bank': Field(name='chr_bank',type='int',default=0,defau...appingproxy({}),kw_only=False,_field_type=_FIELD), 'manifest_json': Field(name='manifest_json',type='Path | None',de...appingproxy({}),kw_only=False,_field_type=_FIELD), 'n_tiles': Field(name='n_tiles',type='int',default=0,defaul...appingproxy({}),kw_only=False,_field_type=_FIELD), 'notes': Field(name='notes',type='list[str]',default=&lt;dat...appingproxy({}),kw_only=False,_field_type=_FIELD), 'out_dir': Field(name='out_dir',type='Path',default=&lt;datacl...appingproxy({}),kw_only=False,_field_type=_FIELD), 'palette_profile': Field(name='palette_profile',type='str',default=...appingproxy({}),kw_only=False,_field_type=_FIELD), 'palette_source': Field(name='palette_source',type='str',default='...appingproxy({}),kw_only=False,_field_type=_FIELD), 'pattern_table': Field(name='pattern_table',type='int',default=1,...appingproxy({}),kw_only=False,_field_type=_FIELD), 'screen_png': Field(name='screen_png',type='Path | None',defau...appingproxy({}),kw_only=False,_field_type=_FIELD), 'sprite_height': Field(name='sprite_height',type='int',default=8,...appingproxy({}),kw_only=False,_field_type=_FIELD), ...}</dl>
+
+<dl><dt><strong>__dataclass_params__</strong> = _DataclassParams(init=True,repr=True,eq=True,ord...rue,kw_only=False,slots=False,weakref_slot=False)</dl>
+
+<dl><dt><strong>__hash__</strong> = None</dl>
+
+<dl><dt><strong>__match_args__</strong> = ('out_dir', 'spritesheet', 'screen_png', 'sprite_paths', 'manifest_json', 'n_tiles', 'chr_bank', 'pattern_table', 'sprite_height', 'palette_source', 'palette_profile', 'notes')</dl>
+
+<dl><dt><strong>chr_bank</strong> = 0</dl>
+
+<dl><dt><strong>manifest_json</strong> = None</dl>
+
+<dl><dt><strong>n_tiles</strong> = 0</dl>
+
+<dl><dt><strong>palette_profile</strong> = 'fceux-like'</dl>
+
+<dl><dt><strong>palette_source</strong> = 'preview'</dl>
+
+<dl><dt><strong>pattern_table</strong> = 1</dl>
+
+<dl><dt><strong>screen_png</strong> = None</dl>
+
+<dl><dt><strong>sprite_height</strong> = 8</dl>
+
+<dl><dt><strong>spritesheet</strong> = None</dl>
+
+</td></tr></table></td></tr></table><p>
+<table class="section">
+<tr class="decor functions-decor heading-text">
+<td class="section-title" colspan=3>&nbsp;<br><strong class="bigsection">Functions</strong></td></tr>
+    
+<tr><td class="decor functions-decor"><span class="code">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></td><td>&nbsp;</td>
+<td class="singlecolumn"><dl><dt><a name="-chr_from_ines"><strong>chr_from_ines</strong></a>(rom_bytes: 'bytes', *, chr_bank: 'int' = 0) -&gt; 'bytes'</dt><dd><span class="code">Extract&nbsp;one&nbsp;8&nbsp;KiB&nbsp;CHR&nbsp;bank&nbsp;from&nbsp;an&nbsp;iNES&nbsp;ROM.</span></dd></dl>
+ <dl><dt><a name="-decode_oam_sprite_pattern"><strong>decode_oam_sprite_pattern</strong></a>(chr_data: 'bytes', snapshot: 'RuntimeSpriteSnapshot', oam_index: 'int') -&gt; 'list[list[int]]'</dt><dd><span class="code">Decode&nbsp;one&nbsp;runtime&nbsp;OAM&nbsp;sprite&nbsp;using&nbsp;PPUCTRL&nbsp;size/table&nbsp;rules.</span></dd></dl>
+ <dl><dt><a name="-decode_sprite_pattern"><strong>decode_sprite_pattern</strong></a>(chr_data: 'bytes', tile_index: 'int', *, pattern_table: 'int' = 1, sprite_height: 'int' = 8) -&gt; 'list[list[int]]'</dt><dd><span class="code">Decode&nbsp;a&nbsp;sprite&nbsp;pattern&nbsp;as&nbsp;8x8&nbsp;or&nbsp;8x16&nbsp;color&nbsp;indexes.</span></dd></dl>
+ <dl><dt><a name="-export_in_process_runtime_sprites"><strong>export_in_process_runtime_sprites</strong></a>(rom_path: 'Path', out_dir: 'Path', *, frames: 'int' = 120, include_hidden: 'bool' = False) -&gt; 'SpriteExportManifest'</dt><dd><span class="code">Boot&nbsp;a&nbsp;simple&nbsp;mapper&nbsp;ROM&nbsp;in-process,&nbsp;capture&nbsp;PPU/OAM,&nbsp;and&nbsp;export&nbsp;sprites.<br>
+&nbsp;<br>
+This&nbsp;automatic&nbsp;path&nbsp;is&nbsp;intentionally&nbsp;conservative.&nbsp;It&nbsp;relies&nbsp;on&nbsp;the<br>
+in-process&nbsp;runner&nbsp;observing&nbsp;standard&nbsp;CPU&nbsp;writes&nbsp;to&nbsp;PPU&nbsp;palette&nbsp;RAM,&nbsp;pattern<br>
+table&nbsp;writes&nbsp;and&nbsp;OAM/OAMDMA.&nbsp;Games&nbsp;with&nbsp;advanced&nbsp;mappers,&nbsp;mid-frame&nbsp;palette<br>
+changes&nbsp;or&nbsp;advanced&nbsp;PPU&nbsp;effects&nbsp;need&nbsp;an&nbsp;external&nbsp;runtime&nbsp;snapshot.</span></dd></dl>
+ <dl><dt><a name="-export_runtime_oam_sprites"><strong>export_runtime_oam_sprites</strong></a>(rom_path: 'Path', snapshot_path: 'Path', out_dir: 'Path', *, include_hidden: 'bool' = False) -&gt; 'SpriteExportManifest'</dt><dd><span class="code">Export&nbsp;actual&nbsp;runtime&nbsp;OAM&nbsp;sprites&nbsp;using&nbsp;snapshot&nbsp;palette&nbsp;RAM.<br>
+&nbsp;<br>
+The&nbsp;snapshot&nbsp;supplies&nbsp;original&nbsp;palette/OAM&nbsp;state.&nbsp;CHR&nbsp;bytes&nbsp;still&nbsp;come&nbsp;from<br>
+the&nbsp;ROM's&nbsp;selected&nbsp;CHR&nbsp;bank,&nbsp;which&nbsp;is&nbsp;correct&nbsp;for&nbsp;simple&nbsp;CHR-ROM&nbsp;mapper<br>
+states&nbsp;and&nbsp;for&nbsp;snapshots&nbsp;that&nbsp;record&nbsp;the&nbsp;active&nbsp;bank.</span></dd></dl>
+ <dl><dt><a name="-export_sprite_pattern_table"><strong>export_sprite_pattern_table</strong></a>(rom_path: 'Path', out_dir: 'Path', *, chr_bank: 'int' = 0, pattern_table: 'int' = 1, sprite_height: 'int' = 8, palette_id: 'int' = 0, palette_values: 'Sequence[int] | None' = None, palette_source: 'str' = 'preview', per_tile: 'bool' = True) -&gt; 'SpriteExportManifest'</dt><dd><span class="code">Export&nbsp;CHR&nbsp;sprite&nbsp;pattern&nbsp;tiles&nbsp;to&nbsp;transparent&nbsp;PNGs.<br>
+&nbsp;<br>
+This&nbsp;is&nbsp;a&nbsp;static&nbsp;CHR&nbsp;export.&nbsp;If&nbsp;``palette_values``&nbsp;comes&nbsp;from&nbsp;runtime&nbsp;PPU<br>
+palette&nbsp;RAM,&nbsp;the&nbsp;colors&nbsp;correspond&nbsp;to&nbsp;that&nbsp;captured&nbsp;state.&nbsp;Otherwise&nbsp;the<br>
+manifest&nbsp;marks&nbsp;the&nbsp;palette&nbsp;as&nbsp;preview.</span></dd></dl>
+ <dl><dt><a name="-load_runtime_sprite_snapshot"><strong>load_runtime_sprite_snapshot</strong></a>(path: 'Path') -&gt; 'RuntimeSpriteSnapshot'</dt><dd><span class="code">Load&nbsp;a&nbsp;runtime&nbsp;sprite&nbsp;snapshot&nbsp;JSON&nbsp;file.<br>
+&nbsp;<br>
+Expected&nbsp;keys:<br>
+&nbsp;&nbsp;-&nbsp;``oam``:&nbsp;256&nbsp;integers&nbsp;or&nbsp;int&nbsp;strings<br>
+&nbsp;&nbsp;-&nbsp;``palette_ram``:&nbsp;32&nbsp;integers&nbsp;or&nbsp;int&nbsp;strings&nbsp;for&nbsp;PPU&nbsp;$3F00-$3F1F<br>
+&nbsp;&nbsp;-&nbsp;``ppuctrl``:&nbsp;integer&nbsp;or&nbsp;int&nbsp;string<br>
+Optional&nbsp;keys:&nbsp;``ppumask``,&nbsp;``frame``,&nbsp;``chr_bank``.</span></dd></dl>
+ <dl><dt><a name="-normalize_palette_ram"><strong>normalize_palette_ram</strong></a>(values: 'Sequence[int] | None') -&gt; 'tuple[int, ...]'</dt><dd><span class="code">Return&nbsp;32&nbsp;PPU&nbsp;palette&nbsp;RAM&nbsp;values.<br>
+&nbsp;<br>
+``None``&nbsp;means&nbsp;"preview&nbsp;palette".&nbsp;Four&nbsp;values&nbsp;mean&nbsp;"repeat&nbsp;this&nbsp;one&nbsp;sprite<br>
+palette&nbsp;across&nbsp;all&nbsp;four&nbsp;sprite&nbsp;palettes".&nbsp;Thirty-two&nbsp;values&nbsp;mean&nbsp;complete<br>
+PPU&nbsp;palette&nbsp;RAM.</span></dd></dl>
+ <dl><dt><a name="-parse_palette_values"><strong>parse_palette_values</strong></a>(text: 'str') -&gt; 'tuple[int, ...]'</dt><dd><span class="code">Parse&nbsp;comma/space-separated&nbsp;NES&nbsp;PPU&nbsp;palette&nbsp;values.<br>
+&nbsp;<br>
+Accepts&nbsp;decimal&nbsp;or&nbsp;Python-style&nbsp;integer&nbsp;strings&nbsp;such&nbsp;as&nbsp;``0x16``.&nbsp;Bare<br>
+two-digit&nbsp;hexadecimal&nbsp;tokens&nbsp;like&nbsp;``16``&nbsp;are&nbsp;treated&nbsp;as&nbsp;hex&nbsp;because&nbsp;NES<br>
+palette&nbsp;values&nbsp;are&nbsp;usually&nbsp;written&nbsp;that&nbsp;way.</span></dd></dl>
+ <dl><dt><a name="-rgba_for_sprite_pixel"><strong>rgba_for_sprite_pixel</strong></a>(color_index: 'int', *, palette_id: 'int', palette_ram: 'Sequence[int]') -&gt; 'tuple[int, int, int, int]'</dt><dd><span class="code">Resolve&nbsp;one&nbsp;decoded&nbsp;CHR&nbsp;pixel&nbsp;to&nbsp;RGBA.<br>
+&nbsp;<br>
+Sprite&nbsp;color&nbsp;index&nbsp;0&nbsp;is&nbsp;transparent&nbsp;on&nbsp;NES&nbsp;hardware,&nbsp;so&nbsp;it&nbsp;returns&nbsp;alpha&nbsp;0.<br>
+Other&nbsp;indexes&nbsp;resolve&nbsp;through&nbsp;sprite&nbsp;palette&nbsp;RAM&nbsp;at&nbsp;``$3F10-$3F1F``.</span></dd></dl>
+ <dl><dt><a name="-sprite_palette_to_palette_ram"><strong>sprite_palette_to_palette_ram</strong></a>(sprite_palette: 'Sequence[int]') -&gt; 'tuple[int, ...]'</dt><dd><span class="code">Build&nbsp;32-byte&nbsp;PPU&nbsp;palette&nbsp;RAM&nbsp;from&nbsp;one&nbsp;4-color&nbsp;sprite&nbsp;palette.</span></dd></dl>
+ <dl><dt><a name="-write_oam_screen_png"><strong>write_oam_screen_png</strong></a>(decoded_sprites: 'Sequence[list[list[int]]]', exports: 'Sequence[SpriteExport]', out_path: 'Path', *, palette_ram: 'Sequence[int]') -&gt; 'Path'</dt><dd><span class="code">Compose&nbsp;runtime&nbsp;OAM&nbsp;sprites&nbsp;at&nbsp;their&nbsp;screen&nbsp;positions&nbsp;on&nbsp;transparent&nbsp;canvas.<br>
+&nbsp;<br>
+The&nbsp;canvas&nbsp;is&nbsp;256x240&nbsp;RGBA.&nbsp;Composition&nbsp;walks&nbsp;sprites&nbsp;from&nbsp;high&nbsp;OAM&nbsp;index<br>
+down&nbsp;to&nbsp;low&nbsp;index&nbsp;so&nbsp;lower&nbsp;indexes&nbsp;appear&nbsp;in&nbsp;front,&nbsp;matching&nbsp;NES&nbsp;sprite<br>
+priority&nbsp;among&nbsp;sprites.&nbsp;Background&nbsp;priority&nbsp;is&nbsp;recorded&nbsp;in&nbsp;the&nbsp;manifest&nbsp;but<br>
+does&nbsp;not&nbsp;affect&nbsp;this&nbsp;transparent&nbsp;sprite-only&nbsp;image.</span></dd></dl>
+ <dl><dt><a name="-write_sprite_png"><strong>write_sprite_png</strong></a>(rows: 'list[list[int]]', out_path: 'Path', *, palette_id: 'int', palette_ram: 'Sequence[int]') -&gt; 'Path'</dt><dd><span class="code">Write&nbsp;one&nbsp;decoded&nbsp;sprite&nbsp;pattern&nbsp;as&nbsp;an&nbsp;RGBA&nbsp;PNG.</span></dd></dl>
+ <dl><dt><a name="-write_spritesheet_png"><strong>write_spritesheet_png</strong></a>(decoded_sprites: 'Sequence[list[list[int]]]', out_path: 'Path', *, palette_id: 'int', palette_ram: 'Sequence[int]', palette_ids: 'Sequence[int] | None' = None, columns: 'int' = 16) -&gt; 'Path'</dt><dd><span class="code">Pack&nbsp;decoded&nbsp;sprite&nbsp;patterns&nbsp;into&nbsp;a&nbsp;transparent&nbsp;RGBA&nbsp;spritesheet.</span></dd></dl>
+</td></tr></table><p>
+<table class="section">
+<tr class="decor data-decor heading-text">
+<td class="section-title" colspan=3>&nbsp;<br><strong class="bigsection">Data</strong></td></tr>
+    
+<tr><td class="decor data-decor"><span class="code">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></td><td>&nbsp;</td>
+<td class="singlecolumn"><strong>DEFAULT_SPRITE_PALETTE</strong> = (15, 48, 22, 39)<br>
+<strong>HEADER_SIZE</strong> = 16<br>
+<strong>NES_RGB_PALETTE</strong> = ((124, 124, 124), (0, 0, 252), (0, 0, 188), (68, 40, 188), (148, 0, 132), (168, 0, 32), (168, 16, 0), (136, 20, 0), (80, 48, 0), (0, 120, 0), (0, 104, 0), (0, 88, 0), (0, 64, 88), (0, 0, 0), (0, 0, 0), (0, 0, 0), (188, 188, 188), (0, 120, 248), (0, 88, 248), (104, 68, 252), ...)<br>
+<strong>PATTERN_TABLE_SIZE</strong> = 4096<br>
+<strong>SPRITE_TILE_WIDTH</strong> = 8<br>
+<strong>Sequence</strong> = typing.Sequence<br>
+<strong>TILE_BYTES</strong> = 16<br>
+<strong>__annotations__</strong> = {'NES_RGB_PALETTE': 'tuple[tuple[int, int, int], ...]'}</td></tr></table>
+</body></html>

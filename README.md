@@ -95,6 +95,15 @@ python -m qlnes smb-nsf "roms/Super Mario Bros. (World).nes" \
   -o out/smb.nsf \
   --split-dir out/smb-tracks \
   --mp3-dir out/smb-mp3
+
+# Extraire les sprites CHR en PNG RGBA avec index couleur 0 transparent
+python -m qlnes sprites ROM.nes -o out/sprites --palette 0F,30,16,27
+
+# Extraire les sprites OAM avec couleurs originales depuis un snapshot PPU/OAM
+python -m qlnes sprites ROM.nes -o out/oam-sprites --snapshot snapshot-ppu-oam.json
+
+# Mappers simples NROM/UxROM/CNROM : capture palette/OAM automatiquement
+python -m qlnes sprites ROM.nes -o out/oam-sprites --runtime-frames 120
 ```
 
 ## Documentation
@@ -102,6 +111,7 @@ python -m qlnes smb-nsf "roms/Super Mario Bros. (World).nes" \
 La documentation projet vit dans `docs/` :
 
 - [Vue d'ensemble audio NES, NSF et MP3](docs/audio-nes-nsf-mp3.md)
+- [Sprites NES couleurs et transparence](docs/sprites-nes-couleurs.md)
 - [Index documentation](docs/index.md)
 
 La documentation API peut être générée sans dépendance externe avec `pydoc` :
@@ -110,6 +120,7 @@ La documentation API peut être générée sans dépendance externe avec `pydoc`
 mkdir -p docs/api
 cd docs/api
 ../../.venv/bin/python -m pydoc -w qlnes.smb_nsf
+../../.venv/bin/python -m pydoc -w qlnes.sprites
 ```
 
 `pdoc`, Sphinx ou MkDocs peuvent être ajoutés plus tard si le projet veut un
@@ -167,6 +178,7 @@ write_smb_trimmed_mp3s(
 | Audio in-process | init/play 6502, APU software, rendu WAV/MP3 | qlnes/audio/ |
 | Export NSF | header NSF, INIT/PLAY, bankswitch NSF | qlnes/nsf.py |
 | Export SMB custom | wrapper $8000, queues $FB/$FC, timings sans loop | qlnes/smb_nsf.py |
+| Sprites couleur | CHR sprite → PNG RGBA, palette PPU, alpha index 0 | qlnes/sprites.py |
 
 ## Architecture
 
@@ -192,6 +204,7 @@ qlnes/
 ├── recompile.py    py65 + RomDiff + sha256
 ├── rom.py          Rom + Bank
 ├── smb_nsf.py      export NSF/MP3 spécifique Super Mario Bros.
+├── sprites.py      export sprites CHR/OAM en PNG RGBA transparent
 └── emu/
     ├── runner.py   wrapper cynes (Runner, Scenario, Snapshot)
     └── discover.py classify_durations, InteractionResult, Transition
@@ -214,6 +227,9 @@ qlnes/
 
 - **Mappers supportés** : 0 (NROM), 1 (MMC1 mode 3), 2 (UxROM), 3 (CNROM)
 - **Discovery dynamique** : nécessite `cynes`, supporté seulement pour mapper 0 (limitation runner actuelle)
+- **Capture sprites runtime** : couvre les cas simples NROM, UxROM et CNROM.
+  Les mappers avancés MMC1/MMC3 et les effets mid-frame demandent encore un
+  snapshot externe ou un observateur PPU plus complet.
 - **Détection éditeur** : pas de signature pour les moteurs sonores propriétaires sans string identifiable
 - **PPU stub** : pas implémenté nous-mêmes, on délègue à cynes (qui fait le full-NES)
 - **NSF générique** : fiable surtout pour NROM avec adresses INIT/PLAY simples.

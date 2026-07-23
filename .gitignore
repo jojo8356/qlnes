@@ -43,6 +43,7 @@ out/
 *.flac
 _bmad-output/external-fixtures/
 _bmad-output/external-tools/
+_bmad-output/sprite-validation/
 
 # Test corpus — hashes-only manifest is committed; ROM bytes + FCEUX
 # reference WAVs are user-supplied and must NEVER be redistributed.

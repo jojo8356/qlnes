@@ -454,6 +454,152 @@ def _check_fceux_on_path() -> None:
 
 
 @app.command()
+def sprites(
+    rom: Annotated[Path, typer.Argument(help="ROM .nes source", exists=True)],
+    output: Annotated[
+        Path,
+        typer.Option("-o", "--output", help="Dossier de sortie des sprites PNG"),
+    ],
+    pattern_table: Annotated[
+        int,
+        typer.Option(
+            "--pattern-table",
+            help="Pattern table PPU a exporter comme sprites : 0 ($0000) ou 1 ($1000)",
+        ),
+    ] = 1,
+    chr_bank: Annotated[
+        int,
+        typer.Option("--chr-bank", help="Banque CHR-ROM 8 KiB a utiliser"),
+    ] = 0,
+    sprite_height: Annotated[
+        int,
+        typer.Option("--sprite-height", help="Hauteur sprite NES : 8 ou 16"),
+    ] = 8,
+    palette_id: Annotated[
+        int,
+        typer.Option("--palette-id", help="Sous-palette sprite 0..3 a appliquer"),
+    ] = 0,
+    palette: Annotated[
+        str | None,
+        typer.Option(
+            "--palette",
+            help=(
+                "Palette NES PPU : 4 valeurs sprite ou 32 valeurs palette RAM "
+                "(hex separe par virgules, ex: 0F,30,16,27)"
+            ),
+        ),
+    ] = None,
+    snapshot: Annotated[
+        Path | None,
+        typer.Option(
+            "--snapshot",
+            help="JSON runtime avec oam[256], palette_ram[32], ppuctrl pour couleurs originales",
+        ),
+    ] = None,
+    include_hidden: Annotated[
+        bool,
+        typer.Option("--include-hidden", help="Inclure les sprites OAM masques hors ecran"),
+    ] = False,
+    runtime_frames: Annotated[
+        int | None,
+        typer.Option(
+            "--runtime-frames",
+            help="Boot in-process NROM pendant N frames puis capture palette/OAM automatiquement",
+        ),
+    ] = None,
+    no_tiles: Annotated[
+        bool,
+        typer.Option("--no-tiles", help="Ne pas ecrire un PNG par tile, seulement la spritesheet"),
+    ] = False,
+    quiet: Annotated[bool, typer.Option("-q", "--quiet")] = False,
+) -> None:
+    """Extrait les sprites CHR en PNG RGBA avec index 0 transparent.
+
+    Par defaut, cette commande applique une palette fournie ou une palette de
+    preview. Pour des couleurs originales, utiliser `--runtime-frames` sur les
+    ROMs NROM/UxROM/CNROM simples ou fournir un dump PPU/OAM externe via
+    `--snapshot`.
+    """
+    from .io.log import get_logger
+    from .sprites import (
+        export_in_process_runtime_sprites,
+        export_runtime_oam_sprites,
+        export_sprite_pattern_table,
+        parse_palette_values,
+    )
+
+    _resolve_log_level(quiet, log_level="INFO", color="auto")
+    logger = get_logger(__name__)
+
+    if snapshot is not None:
+        manifest = export_runtime_oam_sprites(
+            rom,
+            snapshot,
+            output,
+            include_hidden=include_hidden,
+        )
+        logger.info(
+            "✓ sprites OAM runtime ecrits : %s  (sprites=%d, frame=%s, alpha=index0)",
+            output,
+            manifest.n_tiles,
+            "snapshot",
+        )
+        if manifest.spritesheet:
+            logger.info("  spritesheet : %s", manifest.spritesheet)
+        if manifest.manifest_json:
+            logger.info("  manifeste : %s", manifest.manifest_json)
+        return
+
+    if runtime_frames is not None:
+        manifest = export_in_process_runtime_sprites(
+            rom,
+            output,
+            frames=runtime_frames,
+            include_hidden=include_hidden,
+        )
+        logger.info(
+            "✓ sprites runtime in-process ecrits : %s  (sprites=%d, frames=%d, alpha=index0)",
+            output,
+            manifest.n_tiles,
+            runtime_frames,
+        )
+        if manifest.spritesheet:
+            logger.info("  spritesheet : %s", manifest.spritesheet)
+        if manifest.manifest_json:
+            logger.info("  manifeste : %s", manifest.manifest_json)
+        for note in manifest.notes:
+            logger.warning("%s", note)
+        return
+
+    palette_values = parse_palette_values(palette) if palette else None
+    palette_source = "user" if palette_values is not None else "preview"
+    manifest = export_sprite_pattern_table(
+        rom,
+        output,
+        chr_bank=chr_bank,
+        pattern_table=pattern_table,
+        sprite_height=sprite_height,
+        palette_id=palette_id,
+        palette_values=palette_values,
+        palette_source=palette_source,
+        per_tile=not no_tiles,
+    )
+    logger.info(
+        "✓ sprites PNG ecrits : %s  (tiles=%d, pt=%d, chr_bank=%d, alpha=index0)",
+        output,
+        manifest.n_tiles,
+        manifest.pattern_table,
+        manifest.chr_bank,
+    )
+    if manifest.spritesheet:
+        logger.info("  spritesheet : %s", manifest.spritesheet)
+    if manifest.manifest_json:
+        logger.info("  manifeste : %s", manifest.manifest_json)
+    for note in manifest.notes:
+        logger.warning("%s", note)
+
+
+@app.command()
 def nsf(
     rom: Annotated[Path, typer.Argument(help="ROM .nes source", exists=True)],
     output: Annotated[Path, typer.Option("-o", "--output", help="Sortie .nsf")],

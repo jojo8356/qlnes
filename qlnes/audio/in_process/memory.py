@@ -1,8 +1,9 @@
 """Memory map for in-process music renders. Architecture step 20.5.
 
 The Memory ABC is what py65's MPU calls into. Concrete subclasses
-implement mapper-specific PRG/CHR layouts; F.3 ships NROMMemory (mapper 0)
-and F.8 will add MMC1Memory / MMC3Memory.
+implement mapper-specific PRG/CHR layouts. The in-process runner currently
+ships NROMMemory (mapper 0), UxROMMemory (mapper 2), and CNROMMemory
+(mapper 3).
 
 The APU observer lives inside __setitem__: when py65 writes to
 $4000-$4017, we record an ApuWriteEvent. PPU reads/writes go through
@@ -12,8 +13,19 @@ enable) — see arch step 20.7.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 from ..static.apu_event import ApuWriteEvent
+
+
+@dataclass(frozen=True)
+class PpuSnapshot:
+    ppuctrl: int
+    ppumask: int
+    palette_ram: bytes
+    oam: bytes
+    pattern_table: bytes
+    chr_bank: int = 0
 
 
 class Memory(ABC):
@@ -60,6 +72,15 @@ class NROMMemory(Memory):
         self.cpu_cycles: int = 0
         self.nmi_enabled: bool = False
         self.vbl_flag: bool = False
+        self.ppuctrl: int = 0
+        self.ppumask: int = 0
+        self._ppu_addr: int = 0
+        self._ppu_addr_latch_high: bool = True
+        self._oam_addr: int = 0
+        self._palette_ram = bytearray(32)
+        self._oam = bytearray(256)
+        self._pattern_table = bytearray(0x2000)
+        self.chr_bank: int = 0
 
     def __getitem__(self, addr: int) -> int:
         if addr < 0x2000:
@@ -71,6 +92,7 @@ class NROMMemory(Memory):
                 # PPUSTATUS: bit 7 = vblank, cleared on read
                 v = 0x80 if self.vbl_flag else 0
                 self.vbl_flag = False
+                self._ppu_addr_latch_high = True
                 return v
             return 0
         if addr < 0x4020:
@@ -82,6 +104,9 @@ class NROMMemory(Memory):
             return 0  # cartridge expansion (unused in NROM)
         if addr < 0x8000:
             return 0  # PRG-RAM stub
+        return self._read_prg(addr)
+
+    def _read_prg(self, addr: int) -> int:
         return self._rom[(addr - 0x8000) & 0x7FFF]
 
     def __setitem__(self, addr: int, value: int) -> None:
@@ -92,9 +117,31 @@ class NROMMemory(Memory):
         if addr < 0x4000:
             reg = (addr - 0x2000) & 7
             if reg == 0:  # PPUCTRL — bit 7 is NMI-on-vblank enable
+                self.ppuctrl = v
                 self.nmi_enabled = bool(v & 0x80)
+            elif reg == 1:  # PPUMASK
+                self.ppumask = v
+            elif reg == 3:  # OAMADDR
+                self._oam_addr = v
+            elif reg == 4:  # OAMDATA
+                self._oam[self._oam_addr] = v
+                self._oam_addr = (self._oam_addr + 1) & 0xFF
+            elif reg == 6:  # PPUADDR
+                if self._ppu_addr_latch_high:
+                    self._ppu_addr = (v & 0x3F) << 8
+                    self._ppu_addr_latch_high = False
+                else:
+                    self._ppu_addr = (self._ppu_addr & 0x3F00) | v
+                    self._ppu_addr_latch_high = True
+            elif reg == 7:  # PPUDATA
+                self._write_ppu_data(v)
             return
         if 0x4000 <= addr <= 0x4017:
+            if addr == 0x4014:
+                page = v << 8
+                for i in range(256):
+                    self._oam[(self._oam_addr + i) & 0xFF] = self[page + i]
+                self._oam_addr = (self._oam_addr + 256) & 0xFF
             self.apu_writes.append(
                 ApuWriteEvent(cpu_cycle=self.cpu_cycles, register=addr, value=v)
             )
@@ -111,6 +158,37 @@ class NROMMemory(Memory):
         self.apu_writes.clear()
         self.cpu_cycles = 0
 
+    def _palette_index(self, addr: int) -> int:
+        idx = (addr - 0x3F00) & 0x1F
+        # PPU palette mirrors: $3F10/$14/$18/$1C mirror the background
+        # universal entries. Store normalized RAM so sprite export sees the
+        # same value regardless of which mirror the ROM wrote.
+        if idx in (0x10, 0x14, 0x18, 0x1C):
+            idx -= 0x10
+        return idx
+
+    def _write_ppu_data(self, value: int) -> None:
+        addr = self._ppu_addr & 0x3FFF
+        if 0x0000 <= addr <= 0x1FFF:
+            self._pattern_table[addr] = value & 0xFF
+        elif 0x3F00 <= addr <= 0x3FFF:
+            self._palette_ram[self._palette_index(addr)] = value & 0x3F
+        increment = 32 if (self.ppuctrl & 0x04) else 1
+        self._ppu_addr = (self._ppu_addr + increment) & 0x7FFF
+
+    def ppu_snapshot(self) -> PpuSnapshot:
+        palette = bytearray(self._palette_ram)
+        for src, dst in ((0x00, 0x10), (0x04, 0x14), (0x08, 0x18), (0x0C, 0x1C)):
+            palette[dst] = palette[src]
+        return PpuSnapshot(
+            ppuctrl=self.ppuctrl,
+            ppumask=self.ppumask,
+            palette_ram=bytes(palette),
+            oam=bytes(self._oam),
+            pattern_table=bytes(self._pattern_table),
+            chr_bank=self.chr_bank,
+        )
+
     def reset_state(self) -> None:
         """Power-on-style reset: zero RAM, clear PPU/NMI flags, drop captures.
 
@@ -124,5 +202,62 @@ class NROMMemory(Memory):
         self._ram[:] = b"\x00" * 0x800
         self.nmi_enabled = False
         self.vbl_flag = False
+        self.ppuctrl = 0
+        self.ppumask = 0
+        self._ppu_addr = 0
+        self._ppu_addr_latch_high = True
+        self._oam_addr = 0
+        self._palette_ram[:] = b"\x00" * 32
+        self._oam[:] = b"\x00" * 256
+        self._pattern_table[:] = b"\x00" * 0x2000
+        self.chr_bank = 0
         self.apu_writes.clear()
         self.cpu_cycles = 0
+
+
+class CNROMMemory(NROMMemory):
+    """Mapper-3 CNROM memory.
+
+    CPU PRG layout is NROM-like; writes to $8000-$FFFF select an 8 KiB CHR-ROM
+    bank. For sprite extraction, tracking that active CHR bank is enough to
+    pick the right original tiles for the captured OAM/palette state.
+    """
+
+    def __init__(self, prg: bytes, chr_banks: int) -> None:
+        super().__init__(prg)
+        if chr_banks <= 0:
+            raise ValueError("CNROM requires at least one CHR bank")
+        self._chr_bank_count = chr_banks
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if addr >= 0x8000:
+            self.chr_bank = (value & 0x03) % self._chr_bank_count
+            return
+        super().__setitem__(addr, value)
+
+
+class UxROMMemory(NROMMemory):
+    """Mapper-2 UxROM memory.
+
+    $8000-$BFFF is a switchable 16 KiB PRG bank, $C000-$FFFF is fixed to the
+    last PRG bank. CHR is normally fixed CHR-ROM or CHR-RAM, so sprite export
+    only needs CPU bank tracking to let game init reach its palette/OAM writes.
+    """
+
+    def __init__(self, prg: bytes) -> None:
+        if len(prg) % 0x4000 != 0 or len(prg) < 0x8000:
+            raise ValueError("UxROM PRG must contain at least two 16 KiB banks")
+        self._banks = [prg[i : i + 0x4000] for i in range(0, len(prg), 0x4000)]
+        self._switch_bank = 0
+        super().__init__(self._banks[0] + self._banks[-1])
+
+    def _read_prg(self, addr: int) -> int:
+        if addr < 0xC000:
+            return self._banks[self._switch_bank][addr - 0x8000]
+        return self._banks[-1][addr - 0xC000]
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if addr >= 0x8000:
+            self._switch_bank = (value & 0x0F) % len(self._banks)
+            return
+        super().__setitem__(addr, value)

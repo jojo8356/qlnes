@@ -1,0 +1,457 @@
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+from PIL import Image
+
+from qlnes.sprites import (
+    DEFAULT_SPRITE_PALETTE,
+    chr_from_ines,
+    decode_sprite_pattern,
+    export_in_process_runtime_sprites,
+    export_runtime_oam_sprites,
+    export_sprite_pattern_table,
+    load_runtime_sprite_snapshot,
+    normalize_palette_ram,
+    parse_palette_values,
+    rgba_for_sprite_pixel,
+    sprite_palette_to_palette_ram,
+)
+from tests.test_setup import PRG_BANK, ines_header
+
+
+def _encode_tile(rows: list[list[int]]) -> bytes:
+    plane0: list[int] = []
+    plane1: list[int] = []
+    for row in rows:
+        lo = 0
+        hi = 0
+        for col, value in enumerate(row):
+            bit = 7 - col
+            lo |= (value & 1) << bit
+            hi |= ((value >> 1) & 1) << bit
+        plane0.append(lo)
+        plane1.append(hi)
+    return bytes(plane0 + plane1)
+
+
+def _sprite_test_rom() -> bytes:
+    prg = bytes([0xEA] * PRG_BANK)
+    chr_data = bytearray(0x2000)
+    rows = [[0, 1, 2, 3, 0, 1, 2, 3] for _ in range(8)]
+    # Tile $00 in sprite pattern table 1 ($1000).
+    chr_data[0x1000 : 0x1010] = _encode_tile(rows)
+    return ines_header(1, 1, 0) + prg + bytes(chr_data)
+
+
+def _runtime_sprite_test_rom() -> bytes:
+    code = [
+        0x78,  # SEI
+        0xD8,  # CLD
+        0xA2, 0x00,  # LDX #$00
+        0xA9, 0xF8,  # LDA #$F8
+        # fill_oam:
+        0x9D, 0x00, 0x02,  # STA $0200,X
+        0xE8,  # INX
+        0xD0, 0xFA,  # BNE fill_oam
+        0xA9, 0x14, 0x8D, 0x00, 0x02,  # sprite0 y=$14
+        0xA9, 0x00, 0x8D, 0x01, 0x02,  # sprite0 tile=$00
+        0xA9, 0x00, 0x8D, 0x02, 0x02,  # sprite0 attr palette 0
+        0xA9, 0x0C, 0x8D, 0x03, 0x02,  # sprite0 x=$0C
+        0xA9, 0x00, 0x8D, 0x03, 0x20,  # OAMADDR=0
+        0xA9, 0x02, 0x8D, 0x14, 0x40,  # OAMDMA page $02
+        0xAD, 0x02, 0x20,  # LDA PPUSTATUS (reset addr latch)
+        0xA9, 0x3F, 0x8D, 0x06, 0x20,  # PPUADDR high $3F
+        0xA9, 0x10, 0x8D, 0x06, 0x20,  # PPUADDR low $10
+    ]
+    for value in (0x0F, 0x30, 0x16, 0x27):
+        code.extend([0xA9, value, 0x8D, 0x07, 0x20])  # LDA #value ; STA PPUDATA
+    code.extend(
+        [
+            0xA9, 0x88, 0x8D, 0x00, 0x20,  # PPUCTRL: NMI on, sprite PT1
+            0xA9, 0x1E, 0x8D, 0x01, 0x20,  # PPUMASK
+        ]
+    )
+    loop_addr = 0x8000 + len(code)
+    code.extend([0x4C, loop_addr & 0xFF, loop_addr >> 8])  # JMP stable loop
+    prg = bytearray([0xEA] * PRG_BANK)
+    prg[: len(code)] = bytes(code)
+    prg[0x0100] = 0x40  # RTI for NMI/IRQ
+    prg[0x3FFA:0x3FFC] = (0x8100).to_bytes(2, "little")
+    prg[0x3FFC:0x3FFE] = (0x8000).to_bytes(2, "little")
+    prg[0x3FFE:0x4000] = (0x8100).to_bytes(2, "little")
+    chr_data = bytearray(0x2000)
+    rows = [[0, 1, 2, 3, 0, 1, 2, 3] for _ in range(8)]
+    chr_data[0x1000 : 0x1010] = _encode_tile(rows)
+    return ines_header(1, 1, 0) + bytes(prg) + bytes(chr_data)
+
+
+def _runtime_cnrom_sprite_test_rom() -> bytes:
+    code = [
+        0x78,  # SEI
+        0xD8,  # CLD
+        0xA9, 0x01, 0x8D, 0x00, 0x80,  # select CHR bank 1
+        0xA2, 0x00,  # LDX #$00
+        0xA9, 0xF8,  # LDA #$F8
+        0x9D, 0x00, 0x02,  # fill_oam: STA $0200,X
+        0xE8,  # INX
+        0xD0, 0xFA,  # BNE fill_oam
+        0xA9, 0x14, 0x8D, 0x00, 0x02,
+        0xA9, 0x00, 0x8D, 0x01, 0x02,
+        0xA9, 0x00, 0x8D, 0x02, 0x02,
+        0xA9, 0x0C, 0x8D, 0x03, 0x02,
+        0xA9, 0x00, 0x8D, 0x03, 0x20,
+        0xA9, 0x02, 0x8D, 0x14, 0x40,
+        0xAD, 0x02, 0x20,
+        0xA9, 0x3F, 0x8D, 0x06, 0x20,
+        0xA9, 0x10, 0x8D, 0x06, 0x20,
+    ]
+    for value in (0x0F, 0x30, 0x16, 0x27):
+        code.extend([0xA9, value, 0x8D, 0x07, 0x20])
+    code.extend([0xA9, 0x88, 0x8D, 0x00, 0x20])
+    loop_addr = 0x8000 + len(code)
+    code.extend([0x4C, loop_addr & 0xFF, loop_addr >> 8])
+    prg = bytearray([0xEA] * PRG_BANK)
+    prg[: len(code)] = bytes(code)
+    prg[0x0100] = 0x40
+    prg[0x3FFA:0x3FFC] = (0x8100).to_bytes(2, "little")
+    prg[0x3FFC:0x3FFE] = (0x8000).to_bytes(2, "little")
+    prg[0x3FFE:0x4000] = (0x8100).to_bytes(2, "little")
+    chr_data = bytearray(0x4000)
+    rows = [[0, 1, 2, 3, 0, 1, 2, 3] for _ in range(8)]
+    # Bank 0 is intentionally blank; bank 1 contains the sprite tile.
+    chr_data[0x2000 + 0x1000 : 0x2000 + 0x1010] = _encode_tile(rows)
+    return ines_header(1, 2, 3) + bytes(prg) + bytes(chr_data)
+
+
+def _runtime_uxrom_sprite_test_rom() -> bytes:
+    bank0 = bytearray([0xEA] * PRG_BANK)
+    bank1 = bytearray([0xEA] * PRG_BANK)
+    bank2 = bytearray([0xEA] * PRG_BANK)
+    bank3 = bytearray([0xEA] * PRG_BANK)
+
+    code = [
+        0x78,  # SEI
+        0xD8,  # CLD
+        0xA2, 0x00,
+        0xA9, 0xF8,
+        0x9D, 0x00, 0x02,
+        0xE8,
+        0xD0, 0xFA,
+        0xA9, 0x14, 0x8D, 0x00, 0x02,
+        0xA9, 0x00, 0x8D, 0x01, 0x02,
+        0xA9, 0x00, 0x8D, 0x02, 0x02,
+        0xA9, 0x0C, 0x8D, 0x03, 0x02,
+        0xA9, 0x00, 0x8D, 0x03, 0x20,
+        0xA9, 0x02, 0x8D, 0x14, 0x40,
+        0xAD, 0x02, 0x20,
+        0xA9, 0x3F, 0x8D, 0x06, 0x20,
+        0xA9, 0x10, 0x8D, 0x06, 0x20,
+    ]
+    for value in (0x0F, 0x30, 0x16, 0x27):
+        code.extend([0xA9, value, 0x8D, 0x07, 0x20])
+    code.extend([0xA9, 0x88, 0x8D, 0x00, 0x20])
+    loop_addr = 0x8000 + len(code)
+    code.extend([0x4C, loop_addr & 0xFF, loop_addr >> 8])
+    bank1[: len(code)] = bytes(code)
+
+    reset = [
+        0xA9, 0x01, 0x8D, 0x00, 0x80,  # select switchable PRG bank 1
+        0x4C, 0x00, 0x80,  # JMP $8000 in selected bank
+    ]
+    bank3[: len(reset)] = bytes(reset)
+    bank3[0x0100] = 0x40
+    bank3[0x3FFA:0x3FFC] = (0xC100).to_bytes(2, "little")
+    bank3[0x3FFC:0x3FFE] = (0xC000).to_bytes(2, "little")
+    bank3[0x3FFE:0x4000] = (0xC100).to_bytes(2, "little")
+
+    chr_data = bytearray(0x2000)
+    rows = [[0, 1, 2, 3, 0, 1, 2, 3] for _ in range(8)]
+    chr_data[0x1000 : 0x1010] = _encode_tile(rows)
+    return ines_header(4, 1, 2) + bytes(bank0 + bank1 + bank2 + bank3) + bytes(chr_data)
+
+
+class TestSpritePalettes(unittest.TestCase):
+    def test_parse_palette_values_accepts_hex_style(self):
+        self.assertEqual(parse_palette_values("0F,30,16,27"), (0x0F, 0x30, 0x16, 0x27))
+        self.assertEqual(parse_palette_values("0x0f 0x30 0x16 0x27"), (0x0F, 0x30, 0x16, 0x27))
+
+    def test_palette_ram_from_one_sprite_palette(self):
+        ram = sprite_palette_to_palette_ram((0x0F, 0x30, 0x16, 0x27))
+        self.assertEqual(len(ram), 32)
+        self.assertEqual(ram[0x10:0x14], (0x0F, 0x30, 0x16, 0x27))
+        self.assertEqual(ram[0x1C:0x20], (0x0F, 0x30, 0x16, 0x27))
+
+    def test_sprite_index_zero_is_transparent(self):
+        ram = sprite_palette_to_palette_ram(DEFAULT_SPRITE_PALETTE)
+        self.assertEqual(rgba_for_sprite_pixel(0, palette_id=0, palette_ram=ram), (0, 0, 0, 0))
+        self.assertEqual(rgba_for_sprite_pixel(1, palette_id=0, palette_ram=ram)[3], 255)
+
+    def test_normalize_accepts_full_palette_ram(self):
+        values = tuple(range(32))
+        self.assertEqual(normalize_palette_ram(values), values)
+
+
+class TestSpriteChrDecode(unittest.TestCase):
+    def test_extract_chr_bank_from_ines(self):
+        chr_data = chr_from_ines(_sprite_test_rom())
+        self.assertEqual(len(chr_data), 0x2000)
+
+    def test_decode_sprite_pattern_from_pattern_table_1(self):
+        chr_data = chr_from_ines(_sprite_test_rom())
+        rows = decode_sprite_pattern(chr_data, 0, pattern_table=1, sprite_height=8)
+        self.assertEqual(rows[0], [0, 1, 2, 3, 0, 1, 2, 3])
+
+
+class TestSpriteExport(unittest.TestCase):
+    def test_export_writes_transparent_png_and_manifest(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "sprite.nes"
+            rom_path.write_bytes(_sprite_test_rom())
+            out_dir = Path(td) / "sprites"
+
+            manifest = export_sprite_pattern_table(
+                rom_path,
+                out_dir,
+                pattern_table=1,
+                palette_values=(0x0F, 0x30, 0x16, 0x27),
+            )
+
+            self.assertTrue(manifest.spritesheet.exists())
+            self.assertTrue(manifest.manifest_json.exists())
+            self.assertEqual(len(manifest.sprite_paths), 256)
+
+            tile_png = manifest.sprite_paths[0].path
+            img = Image.open(tile_png).convert("RGBA")
+            self.assertEqual(img.size, (8, 8))
+            self.assertEqual(img.getpixel((0, 0))[3], 0)
+            self.assertEqual(img.getpixel((1, 0))[3], 255)
+
+            data = json.loads(manifest.manifest_json.read_text())
+            self.assertEqual(data["transparent_index"], 0)
+            self.assertEqual(data["palette_source"], "preview")
+            self.assertIn("spritesheet", data)
+
+    def test_cli_sprites_command(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "sprite.nes"
+            rom_path.write_bytes(_sprite_test_rom())
+            out_dir = Path(td) / "sprites"
+
+            from qlnes.cli import main
+
+            rc = main(
+                [
+                    "sprites",
+                    str(rom_path),
+                    "-o",
+                    str(out_dir),
+                    "--palette",
+                    "0F,30,16,27",
+                    "--quiet",
+                ]
+            )
+            self.assertEqual(rc, 0)
+            self.assertTrue((out_dir / "spritesheet-pt1-pal0.png").exists())
+            self.assertTrue((out_dir / "sprites-manifest.json").exists())
+
+    def test_cli_sprites_runtime_snapshot_command(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "sprite.nes"
+            rom_path.write_bytes(_sprite_test_rom())
+            snapshot_path = Path(td) / "snapshot.json"
+            palette_ram = [0x0F] * 32
+            palette_ram[0x10:0x14] = [0x0F, 0x30, 0x16, 0x27]
+            oam = [0xF8, 0, 0, 0] * 64
+            oam[0:4] = [20, 0x00, 0x00, 12]
+            snapshot_path.write_text(
+                json.dumps({"ppuctrl": "0x08", "palette_ram": palette_ram, "oam": oam})
+            )
+            out_dir = Path(td) / "runtime"
+
+            from qlnes.cli import main
+
+            rc = main(
+                [
+                    "sprites",
+                    str(rom_path),
+                    "-o",
+                    str(out_dir),
+                    "--snapshot",
+                    str(snapshot_path),
+                    "--quiet",
+                ]
+            )
+            self.assertEqual(rc, 0)
+            self.assertTrue((out_dir / "oam-spritesheet.png").exists())
+            self.assertTrue((out_dir / "oam" / "sprite-00-tile-00-pal0.png").exists())
+
+    def test_in_process_runtime_export_captures_palette_and_oam(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "runtime.nes"
+            rom_path.write_bytes(_runtime_sprite_test_rom())
+            out_dir = Path(td) / "auto"
+
+            manifest = export_in_process_runtime_sprites(rom_path, out_dir, frames=1)
+
+            self.assertEqual(manifest.palette_source, "runtime-snapshot")
+            self.assertEqual(manifest.n_tiles, 1)
+            sprite = out_dir / "oam" / "sprite-00-tile-00-pal0.png"
+            self.assertTrue(sprite.exists())
+            img = Image.open(sprite).convert("RGBA")
+            self.assertEqual(img.getpixel((0, 0))[3], 0)
+            self.assertEqual(img.getpixel((1, 0)), (0xFC, 0xFC, 0xFC, 255))
+            data = json.loads((out_dir / "sprites-manifest.json").read_text())
+            self.assertEqual(data["snapshot"], "in-process")
+            self.assertEqual(data["runtime_frames"], 1)
+            self.assertTrue((out_dir / "oam-screen.png").exists())
+            screen = Image.open(out_dir / "oam-screen.png").convert("RGBA")
+            self.assertEqual(screen.size, (256, 240))
+            self.assertEqual(screen.getpixel((12, 21))[3], 0)
+            self.assertEqual(screen.getpixel((13, 21)), (0xFC, 0xFC, 0xFC, 255))
+            self.assertEqual(screen.getpixel((0, 0))[3], 0)
+
+    def test_cli_sprites_runtime_frames_command(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "runtime.nes"
+            rom_path.write_bytes(_runtime_sprite_test_rom())
+            out_dir = Path(td) / "auto"
+
+            from qlnes.cli import main
+
+            rc = main(
+                [
+                    "sprites",
+                    str(rom_path),
+                    "-o",
+                    str(out_dir),
+                    "--runtime-frames",
+                    "1",
+                    "--quiet",
+                ]
+            )
+            self.assertEqual(rc, 0)
+            self.assertTrue((out_dir / "oam-spritesheet.png").exists())
+            self.assertTrue((out_dir / "sprites-manifest.json").exists())
+
+    def test_in_process_runtime_export_uses_cnrom_selected_chr_bank(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "runtime-cnrom.nes"
+            rom_path.write_bytes(_runtime_cnrom_sprite_test_rom())
+            out_dir = Path(td) / "auto-cnrom"
+
+            manifest = export_in_process_runtime_sprites(rom_path, out_dir, frames=1)
+
+            self.assertEqual(manifest.chr_bank, 1)
+            sprite = out_dir / "oam" / "sprite-00-tile-00-pal0.png"
+            img = Image.open(sprite).convert("RGBA")
+            self.assertEqual(img.getpixel((0, 0))[3], 0)
+            self.assertEqual(img.getpixel((1, 0)), (0xFC, 0xFC, 0xFC, 255))
+            data = json.loads((out_dir / "sprites-manifest.json").read_text())
+            self.assertEqual(data["chr_bank"], 1)
+            self.assertEqual(data["chr_source"], "rom")
+
+    def test_in_process_runtime_export_runs_uxrom_switched_init_bank(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "runtime-uxrom.nes"
+            rom_path.write_bytes(_runtime_uxrom_sprite_test_rom())
+            out_dir = Path(td) / "auto-uxrom"
+
+            manifest = export_in_process_runtime_sprites(rom_path, out_dir, frames=1)
+
+            self.assertEqual(manifest.chr_bank, 0)
+            sprite = out_dir / "oam" / "sprite-00-tile-00-pal0.png"
+            img = Image.open(sprite).convert("RGBA")
+            self.assertEqual(img.getpixel((0, 0))[3], 0)
+            self.assertEqual(img.getpixel((1, 0)), (0xFC, 0xFC, 0xFC, 255))
+            data = json.loads((out_dir / "sprites-manifest.json").read_text())
+            self.assertEqual(data["snapshot"], "in-process")
+            self.assertEqual(data["palette_source"], "runtime-snapshot")
+
+    def test_runtime_snapshot_exports_oam_sprites_with_original_palette(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "sprite.nes"
+            rom_path.write_bytes(_sprite_test_rom())
+            snapshot_path = Path(td) / "snapshot.json"
+            palette_ram = [0x0F] * 32
+            palette_ram[0x18:0x1C] = [0x0F, 0x30, 0x16, 0x27]
+            oam = [0xF8, 0, 0, 0] * 64
+            # Sprite 0 visible, tile $00, palette 2, x=12, y raw=20.
+            oam[0:4] = [20, 0x00, 0x02, 12]
+            snapshot_path.write_text(
+                json.dumps(
+                    {
+                        "frame": 123,
+                        "ppuctrl": "0x08",
+                        "ppumask": "0x1E",
+                        "palette_ram": palette_ram,
+                        "oam": oam,
+                    }
+                )
+            )
+            out_dir = Path(td) / "runtime"
+
+            manifest = export_runtime_oam_sprites(rom_path, snapshot_path, out_dir)
+
+            self.assertEqual(manifest.palette_source, "runtime-snapshot")
+            self.assertEqual(manifest.n_tiles, 1)
+            self.assertTrue((out_dir / "oam" / "sprite-00-tile-00-pal2.png").exists())
+            img = Image.open(out_dir / "oam" / "sprite-00-tile-00-pal2.png").convert("RGBA")
+            self.assertEqual(img.getpixel((0, 0))[3], 0)
+            self.assertEqual(img.getpixel((1, 0)), (0xFC, 0xFC, 0xFC, 255))
+
+            data = json.loads((out_dir / "sprites-manifest.json").read_text())
+            self.assertEqual(data["kind"], "runtime_oam_sprite_export")
+            self.assertEqual(data["palette_source"], "runtime-snapshot")
+            self.assertEqual(data["screen_png"], str(out_dir / "oam-screen.png"))
+            self.assertEqual(data["sprites"][0]["attr"], "0x02")
+            self.assertFalse(data["sprites"][0]["flip_h"])
+            self.assertFalse(data["sprites"][0]["flip_v"])
+            self.assertEqual(data["sprites"][0]["x"], 12)
+            self.assertEqual(data["sprites"][0]["y"], 21)
+
+    def test_runtime_snapshot_can_supply_chr_data_for_chr_ram_rom(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "chr-ram.nes"
+            rom_path.write_bytes(ines_header(1, 0, 0) + bytes([0xEA] * PRG_BANK))
+            snapshot_path = Path(td) / "snapshot.json"
+            palette_ram = [0x0F] * 32
+            palette_ram[0x10:0x14] = [0x0F, 0x30, 0x16, 0x27]
+            oam = [0xF8, 0, 0, 0] * 64
+            oam[0:4] = [20, 0x00, 0x00, 12]
+            chr_data = [0] * 0x2000
+            rows = [[0, 1, 2, 3, 0, 1, 2, 3] for _ in range(8)]
+            tile = _encode_tile(rows)
+            chr_data[0x1000 : 0x1010] = list(tile)
+            snapshot_path.write_text(
+                json.dumps(
+                    {
+                        "ppuctrl": "0x08",
+                        "palette_ram": palette_ram,
+                        "oam": oam,
+                        "chr_data": chr_data,
+                    }
+                )
+            )
+            out_dir = Path(td) / "runtime"
+
+            manifest = export_runtime_oam_sprites(rom_path, snapshot_path, out_dir)
+
+            self.assertEqual(manifest.n_tiles, 1)
+            img = Image.open(out_dir / "oam" / "sprite-00-tile-00-pal0.png").convert("RGBA")
+            self.assertEqual(img.getpixel((0, 0))[3], 0)
+            self.assertEqual(img.getpixel((1, 0)), (0xFC, 0xFC, 0xFC, 255))
+            data = json.loads((out_dir / "sprites-manifest.json").read_text())
+            self.assertEqual(data["chr_source"], "snapshot")
+
+    def test_load_runtime_snapshot_requires_complete_oam(self):
+        with tempfile.TemporaryDirectory() as td:
+            snapshot = Path(td) / "bad.json"
+            snapshot.write_text(json.dumps({"oam": [], "palette_ram": [0] * 32, "ppuctrl": 0}))
+            with self.assertRaises(ValueError):
+                load_runtime_sprite_snapshot(snapshot)
+
+
+if __name__ == "__main__":
+    unittest.main()
