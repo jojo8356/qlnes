@@ -22,7 +22,7 @@ Two run shapes are exposed:
 """
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -196,7 +196,12 @@ class InProcessRunner:
         )
         return iter(list(mem.apu_writes))
 
-    def run_natural_boot(self, *, frames: int = 600) -> Iterator[ApuWriteEvent]:
+    def run_natural_boot(
+        self,
+        *,
+        frames: int = 600,
+        controller1_frames: Sequence[int] | None = None,
+    ) -> Iterator[ApuWriteEvent]:
         """Self-running ROM: boot from reset vector, then drive NMIs.
 
         The ROM's own reset handler runs game-init (including audio init),
@@ -227,6 +232,8 @@ class InProcessRunner:
         frames_done = 0
         while frames_done < frames:
             if mpu.processorCycles >= next_nmi_at:
+                if controller1_frames is not None:
+                    self._set_controller1_state_for_frame(controller1_frames, frames_done + 1)
                 mem.vbl_flag = True
                 if mem.nmi_enabled:
                     trigger_nmi(mpu, mem)
@@ -241,6 +248,19 @@ class InProcessRunner:
             apu_event_count=len(mem.apu_writes),
         )
         return iter(list(mem.apu_writes))
+
+    def _set_controller1_state_for_frame(
+        self,
+        controller1_frames: Sequence[int],
+        frame: int,
+    ) -> None:
+        if not controller1_frames:
+            return
+        setter = getattr(self._mem, "set_controller1_state", None)
+        if setter is None:
+            return
+        idx = min(max(frame, 1), len(controller1_frames)) - 1
+        setter(int(controller1_frames[idx]) & 0xFF)
 
     def ppu_snapshot(self):
         """Return the current PPU/OAM snapshot when the memory backend supports it."""

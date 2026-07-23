@@ -17,6 +17,7 @@ from qlnes.sprites import (
     load_runtime_sprite_snapshot,
     normalize_palette_ram,
     parse_palette_values,
+    parse_runtime_input_script,
     rgba_for_sprite_pixel,
     sprite_palette_to_palette_ram,
 )
@@ -80,6 +81,55 @@ def _runtime_sprite_test_rom() -> bytes:
     prg = bytearray([0xEA] * PRG_BANK)
     prg[: len(code)] = bytes(code)
     prg[0x0100] = 0x40  # RTI for NMI/IRQ
+    prg[0x3FFA:0x3FFC] = (0x8100).to_bytes(2, "little")
+    prg[0x3FFC:0x3FFE] = (0x8000).to_bytes(2, "little")
+    prg[0x3FFE:0x4000] = (0x8100).to_bytes(2, "little")
+    chr_data = bytearray(0x2000)
+    rows = [[0, 1, 2, 3, 0, 1, 2, 3] for _ in range(8)]
+    chr_data[0x1000 : 0x1010] = _encode_tile(rows)
+    return ines_header(1, 1, 0) + bytes(prg) + bytes(chr_data)
+
+
+def _runtime_start_gated_sprite_test_rom() -> bytes:
+    reset = [
+        0x78,  # SEI
+        0xD8,  # CLD
+        0xA2, 0x00,  # LDX #0
+        0xA9, 0xF8,  # LDA #hidden Y
+        0x9D, 0x00, 0x02,  # fill_oam: STA $0200,X
+        0xE8,  # INX
+        0xD0, 0xFA,  # BNE fill_oam
+        0xA9, 0x00, 0x8D, 0x03, 0x20,  # OAMADDR=0
+        0xA9, 0x02, 0x8D, 0x14, 0x40,  # OAMDMA page $02
+        0xA9, 0x88, 0x8D, 0x00, 0x20,  # PPUCTRL: NMI on, sprite PT1
+        0xA9, 0x1E, 0x8D, 0x01, 0x20,  # PPUMASK
+        0x4C, 0x20, 0x80,  # JMP stable loop
+    ]
+    nmi = [
+        0xA9, 0x01, 0x8D, 0x16, 0x40,  # strobe controller
+        0xA9, 0x00, 0x8D, 0x16, 0x40,
+        0xAD, 0x16, 0x40,  # read A
+        0xAD, 0x16, 0x40,  # read B
+        0xAD, 0x16, 0x40,  # read Select
+        0xAD, 0x16, 0x40,  # read Start
+        0x29, 0x01,  # AND #1
+        0xF0, 0x3F,  # BEQ rti
+        0xA9, 0x14, 0x8D, 0x00, 0x02,
+        0xA9, 0x00, 0x8D, 0x01, 0x02,
+        0xA9, 0x00, 0x8D, 0x02, 0x02,
+        0xA9, 0x0C, 0x8D, 0x03, 0x02,
+        0xA9, 0x00, 0x8D, 0x03, 0x20,
+        0xA9, 0x02, 0x8D, 0x14, 0x40,
+        0xAD, 0x02, 0x20,
+        0xA9, 0x3F, 0x8D, 0x06, 0x20,
+        0xA9, 0x10, 0x8D, 0x06, 0x20,
+    ]
+    for value in (0x0F, 0x30, 0x16, 0x27):
+        nmi.extend([0xA9, value, 0x8D, 0x07, 0x20])
+    nmi.extend([0x40])  # RTI target for BEQ
+    prg = bytearray([0xEA] * PRG_BANK)
+    prg[: len(reset)] = bytes(reset)
+    prg[0x0100 : 0x0100 + len(nmi)] = bytes(nmi)
     prg[0x3FFA:0x3FFC] = (0x8100).to_bytes(2, "little")
     prg[0x3FFC:0x3FFE] = (0x8000).to_bytes(2, "little")
     prg[0x3FFE:0x4000] = (0x8100).to_bytes(2, "little")
@@ -635,6 +685,12 @@ class TestSpritePalettes(unittest.TestCase):
         self.assertEqual(parse_palette_values("0F,30,16,27"), (0x0F, 0x30, 0x16, 0x27))
         self.assertEqual(parse_palette_values("0x0f 0x30 0x16 0x27"), (0x0F, 0x30, 0x16, 0x27))
 
+    def test_parse_runtime_input_script_builds_frame_masks(self):
+        self.assertEqual(
+            parse_runtime_input_script("start@1:2,a+right@4", 5),
+            (0x08, 0x08, 0x00, 0x81, 0x00),
+        )
+
     def test_palette_ram_from_one_sprite_palette(self):
         ram = sprite_palette_to_palette_ram((0x0F, 0x30, 0x16, 0x27))
         self.assertEqual(len(ram), 32)
@@ -773,6 +829,34 @@ class TestSpriteExport(unittest.TestCase):
             self.assertEqual(screen.getpixel((13, 21)), (0xFC, 0xFC, 0xFC, 255))
             self.assertEqual(screen.getpixel((0, 0))[3], 0)
 
+    def test_in_process_runtime_export_accepts_controller_input_script(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "runtime-start-gated.nes"
+            rom_path.write_bytes(_runtime_start_gated_sprite_test_rom())
+            no_input_out = Path(td) / "no-input"
+            with_input_out = Path(td) / "with-input"
+
+            no_input = export_in_process_runtime_sprites(rom_path, no_input_out, frames=2)
+            self.assertEqual(no_input.n_tiles, 0)
+
+            controller_frames = parse_runtime_input_script("start@1:2", 2)
+            manifest = export_in_process_runtime_sprites(
+                rom_path,
+                with_input_out,
+                frames=2,
+                controller1_frames=controller_frames,
+                runtime_input_script="start@1:2",
+            )
+
+            self.assertEqual(manifest.n_tiles, 1)
+            sprite = with_input_out / "oam" / "sprite-00-tile-00-pal0.png"
+            img = Image.open(sprite).convert("RGBA")
+            self.assertEqual(img.getpixel((0, 0))[3], 0)
+            self.assertEqual(img.getpixel((1, 0)), (0xFC, 0xFC, 0xFC, 255))
+            data = json.loads((with_input_out / "sprites-manifest.json").read_text())
+            self.assertEqual(data["runtime_input"], "start@1:2")
+            self.assertEqual(data["controller1_nonzero_frames"], 2)
+
     def test_cli_sprites_runtime_frames_command(self):
         with tempfile.TemporaryDirectory() as td:
             rom_path = Path(td) / "runtime.nes"
@@ -795,6 +879,32 @@ class TestSpriteExport(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertTrue((out_dir / "oam-spritesheet.png").exists())
             self.assertTrue((out_dir / "sprites-manifest.json").exists())
+
+    def test_cli_sprites_runtime_input_command(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "runtime-start-gated.nes"
+            rom_path.write_bytes(_runtime_start_gated_sprite_test_rom())
+            out_dir = Path(td) / "runtime-input"
+
+            from qlnes.cli import main
+
+            rc = main(
+                [
+                    "sprites",
+                    str(rom_path),
+                    "-o",
+                    str(out_dir),
+                    "--runtime-frames",
+                    "2",
+                    "--runtime-input",
+                    "start@1:2",
+                    "--quiet",
+                ]
+            )
+            self.assertEqual(rc, 0)
+            self.assertTrue((out_dir / "oam" / "sprite-00-tile-00-pal0.png").exists())
+            data = json.loads((out_dir / "sprites-manifest.json").read_text())
+            self.assertEqual(data["runtime_input"], "start@1:2")
 
     def test_in_process_runtime_sample_export_writes_one_directory_per_frame(self):
         with tempfile.TemporaryDirectory() as td:

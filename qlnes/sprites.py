@@ -25,6 +25,17 @@ from .rom import Rom
 PATTERN_TABLE_SIZE = 0x1000
 SPRITE_TILE_WIDTH = 8
 DEFAULT_SPRITE_PALETTE = (0x0F, 0x30, 0x16, 0x27)
+CONTROLLER_BUTTON_MASKS: dict[str, int] = {
+    "a": 0x01,
+    "b": 0x02,
+    "select": 0x04,
+    "sel": 0x04,
+    "start": 0x08,
+    "up": 0x10,
+    "down": 0x20,
+    "left": 0x40,
+    "right": 0x80,
+}
 
 # FCEUX-like 64-color palette. qlnes keeps PPU palette values in manifests so
 # the RGB profile can be changed later without losing original index evidence.
@@ -160,6 +171,57 @@ def parse_palette_values(text: str) -> tuple[int, ...]:
             raise ValueError(f"NES palette value out of range 0x00..0x3F: {part}")
         values.append(value)
     return tuple(values)
+
+
+def parse_runtime_input_script(text: str, frames: int) -> tuple[int, ...]:
+    """Parse a controller-1 input script into one NES button mask per frame.
+
+    Syntax is a comma/space separated list of `buttons@frame` or
+    `buttons@start:end` entries. Buttons can be combined with `+`, for example
+    `start@1:20,a+right@60:120`. Frames are 1-based and ranges are inclusive.
+    """
+
+    if frames <= 0:
+        raise ValueError("input script frames must be positive")
+    masks = [0] * frames
+    for raw_entry in text.replace(",", " ").split():
+        if not raw_entry:
+            continue
+        buttons_text, sep, frame_text = raw_entry.partition("@")
+        if not sep:
+            raise ValueError(f"runtime input entry must use buttons@frame: {raw_entry!r}")
+        mask = 0
+        for button in buttons_text.split("+"):
+            key = button.strip().lower()
+            if not key:
+                continue
+            try:
+                mask |= CONTROLLER_BUTTON_MASKS[key]
+            except KeyError as exc:
+                valid = ", ".join(sorted(CONTROLLER_BUTTON_MASKS))
+                raise ValueError(f"unknown runtime input button {button!r}; valid: {valid}") from exc
+        if mask == 0:
+            raise ValueError(f"runtime input entry has no buttons: {raw_entry!r}")
+        start, end = _parse_input_frame_span(frame_text, frames)
+        for idx in range(start - 1, end):
+            masks[idx] |= mask
+    return tuple(masks)
+
+
+def _parse_input_frame_span(text: str, frames: int) -> tuple[int, int]:
+    if ":" in text:
+        start_text, end_text = text.split(":", 1)
+        start = int(start_text)
+        end = int(end_text)
+    else:
+        start = end = int(text)
+    if start <= 0 or end <= 0:
+        raise ValueError("runtime input frames are 1-based and must be positive")
+    if end < start:
+        raise ValueError(f"runtime input range end before start: {text!r}")
+    if start > frames:
+        return frames, frames - 1
+    return start, min(end, frames)
 
 
 def sprite_palette_to_palette_ram(sprite_palette: Sequence[int]) -> tuple[int, ...]:
@@ -801,6 +863,7 @@ def export_runtime_oam_sprites(
             palette_ram=snapshot.palette_ram,
         )
     manifest_json = out_dir / "sprites-manifest.json"
+    out_dir.mkdir(parents=True, exist_ok=True)
     sprite_entries: list[dict[str, object]] = []
     for sprite in exports:
         entry = {
@@ -856,6 +919,8 @@ def export_in_process_runtime_sprites(
     *,
     frames: int = 120,
     include_hidden: bool = False,
+    controller1_frames: Sequence[int] | None = None,
+    runtime_input_script: str | None = None,
 ) -> SpriteExportManifest:
     """Boot a simple mapper ROM in-process, capture PPU/OAM, and export sprites.
 
@@ -870,7 +935,7 @@ def export_in_process_runtime_sprites(
     rom_path = Path(rom_path)
     rom = Rom.from_file(rom_path)
     runner = InProcessRunner(rom)
-    list(runner.run_natural_boot(frames=frames))
+    list(runner.run_natural_boot(frames=frames, controller1_frames=controller1_frames))
     snap = runner.ppu_snapshot()
     with tempfile.TemporaryDirectory(prefix="qlnes-sprite-snapshot-") as td:
         snapshot_path = Path(td) / "snapshot.json"
@@ -895,6 +960,10 @@ def export_in_process_runtime_sprites(
         data = json.loads(manifest.manifest_json.read_text(encoding="utf-8"))
         data["snapshot"] = "in-process"
         data["runtime_frames"] = frames
+        if runtime_input_script is not None:
+            data["runtime_input"] = runtime_input_script
+        if controller1_frames is not None:
+            data["controller1_nonzero_frames"] = sum(1 for value in controller1_frames if value)
         data.setdefault("notes", []).append(
             "Captured by qlnes in-process PPU/OAM observer; advanced PPU effects are not modeled."
         )
@@ -919,6 +988,8 @@ def export_in_process_runtime_sprite_samples(
     *,
     sample_frames: Sequence[int],
     include_hidden: bool = False,
+    controller1_frames: Sequence[int] | None = None,
+    runtime_input_script: str | None = None,
 ) -> RuntimeSpriteSamplesManifest:
     """Export original-palette OAM sprites at several runtime frame checkpoints.
 
@@ -939,6 +1010,8 @@ def export_in_process_runtime_sprite_samples(
             frame_out,
             frames=frame,
             include_hidden=include_hidden,
+            controller1_frames=controller1_frames,
+            runtime_input_script=runtime_input_script,
         )
         samples.samples.append(
             RuntimeSpriteSample(
@@ -1023,6 +1096,12 @@ def export_in_process_runtime_sprite_samples(
                 "kind": "runtime_sprite_samples_export",
                 "rom": str(rom_path),
                 "sample_frames": list(frames),
+                "runtime_input": runtime_input_script,
+                "controller1_nonzero_frames": (
+                    sum(1 for value in controller1_frames if value)
+                    if controller1_frames is not None
+                    else None
+                ),
                 "sample_count": len(samples.samples),
                 "total_exported_sprites": samples.n_tiles,
                 "unique_sprite_count": samples.unique_count,
@@ -1145,6 +1224,8 @@ def export_sprite_batch(
     recursive: bool = False,
     runtime_frames: int | None = None,
     runtime_sample_frames: Sequence[int] | None = None,
+    controller1_frames: Sequence[int] | None = None,
+    runtime_input_script: str | None = None,
     include_hidden: bool = False,
     chr_bank: int = 0,
     pattern_table: int = 1,
@@ -1180,6 +1261,8 @@ def export_sprite_batch(
                     rom_out,
                     sample_frames=runtime_sample_frames,
                     include_hidden=include_hidden,
+                    controller1_frames=controller1_frames,
+                    runtime_input_script=runtime_input_script,
                 )
                 if sampled.manifest_json is not None:
                     sampled_data = json.loads(
@@ -1210,6 +1293,8 @@ def export_sprite_batch(
                     rom_out,
                     frames=runtime_frames,
                     include_hidden=include_hidden,
+                    controller1_frames=controller1_frames,
+                    runtime_input_script=runtime_input_script,
                 )
                 if manifest.manifest_json is not None:
                     all_unique_entries.extend(
@@ -1330,6 +1415,12 @@ def export_sprite_batch(
                     else "static"
                 ),
                 "runtime_frames": runtime_frames,
+                "runtime_input": runtime_input_script,
+                "controller1_nonzero_frames": (
+                    sum(1 for value in controller1_frames if value)
+                    if controller1_frames is not None
+                    else None
+                ),
                 "runtime_sample_frames": (
                     list(normalize_sample_frames(runtime_sample_frames))
                     if runtime_sample_frames is not None

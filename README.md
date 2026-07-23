@@ -109,6 +109,9 @@ python -m qlnes sprites ROM.nes -o out/oam-sprites --runtime-frames 120
 # et produire aussi unique/*.png, unique-trimmed/*.png et leurs spritesheets
 python -m qlnes sprites ROM.nes -o out/oam-samples --runtime-sample-range 1:300:30
 
+# Appuyer sur la manette pendant une capture runtime pour atteindre menu/niveau/animations
+python -m qlnes sprites ROM.nes -o out/oam-samples --runtime-sample-range 1:600:30 --runtime-input start@1:30,a+right@120:240
+
 # Traiter tout un dossier de ROMs .nes, avec un sous-dossier de sortie par ROM
 python -m qlnes sprites-batch roms/ -o out/sprites-batch --recursive --runtime-sample-range 1:300:30
 ```
@@ -242,6 +245,9 @@ qlnes/
   split simples, FME-7 couvre les fenêtres CHR 1 KiB simples. Les variantes
   mapper complexes, les IRQ/raster effects et les changements mid-frame
   demandent encore un snapshot externe ou un observateur PPU plus complet.
+- **Inputs runtime** : `--runtime-input` pilote la manette 1 avec des plages de
+  frames (`start@1:30,a+right@120:240`) pour atteindre plus d'états de jeu
+  avant l'export PNG.
 - **Détection éditeur** : pas de signature pour les moteurs sonores propriétaires sans string identifiable
 - **PPU stub** : pas implémenté nous-mêmes, on délègue à cynes (qui fait le full-NES)
 - **NSF générique** : fiable surtout pour NROM avec adresses INIT/PLAY simples.

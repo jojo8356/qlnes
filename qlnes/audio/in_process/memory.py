@@ -87,6 +87,10 @@ class NROMMemory(Memory):
         self._oam = bytearray(256)
         self._pattern_table = bytearray(0x2000)
         self.chr_bank: int = 0
+        self._controller1_state: int = 0
+        self._controller1_latch: int = 0
+        self._controller1_shift: int = 0
+        self._controller_strobe: bool = False
 
     def __getitem__(self, addr: int) -> int:
         if addr < 0x2000:
@@ -102,6 +106,10 @@ class NROMMemory(Memory):
                 return v
             return 0
         if addr < 0x4020:
+            if addr == 0x4016:
+                return self._read_controller1()
+            if addr == 0x4017:
+                return 0
             # APU/IO read stubs. Real APU would return $4015 channel state
             # and $4016/$4017 controller bits; music drivers don't depend
             # on these for the Alter Ego case (verified in F.2 spike).
@@ -143,6 +151,8 @@ class NROMMemory(Memory):
                 self._write_ppu_data(v)
             return
         if 0x4000 <= addr <= 0x4017:
+            if addr == 0x4016:
+                self._write_controller_strobe(v)
             if addr == 0x4014:
                 page = v << 8
                 for i in range(256):
@@ -153,6 +163,30 @@ class NROMMemory(Memory):
             )
             return
         # $4018-$401F APU test, $4020+ cart expansion: silently ignored.
+
+    def set_controller1_state(self, state: int) -> None:
+        """Set current controller-1 buttons as NES bitmask A,B,Select,Start,U,D,L,R."""
+
+        self._controller1_state = state & 0xFF
+        if self._controller_strobe:
+            self._controller1_latch = self._controller1_state
+            self._controller1_shift = 0
+
+    def _write_controller_strobe(self, value: int) -> None:
+        strobe = bool(value & 0x01)
+        if strobe or self._controller_strobe:
+            self._controller1_latch = self._controller1_state
+            self._controller1_shift = 0
+        self._controller_strobe = strobe
+
+    def _read_controller1(self) -> int:
+        if self._controller_strobe:
+            return self._controller1_state & 0x01
+        if self._controller1_shift < 8:
+            value = (self._controller1_latch >> self._controller1_shift) & 0x01
+            self._controller1_shift += 1
+            return value
+        return 1
 
     def reset_capture(self) -> None:
         """Clear captured events + cycle counter only.
@@ -217,6 +251,10 @@ class NROMMemory(Memory):
         self._oam[:] = b"\x00" * 256
         self._pattern_table[:] = b"\x00" * 0x2000
         self.chr_bank = 0
+        self._controller1_state = 0
+        self._controller1_latch = 0
+        self._controller1_shift = 0
+        self._controller_strobe = False
         self.apu_writes.clear()
         self.cpu_cycles = 0
 

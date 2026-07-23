@@ -418,13 +418,13 @@ Data and other attributes defined here:<br>
  <dl><dt><a name="-decode_oam_sprite_pattern"><strong>decode_oam_sprite_pattern</strong></a>(chr_data: 'bytes', snapshot: 'RuntimeSpriteSnapshot', oam_index: 'int') -&gt; 'list[list[int]]'</dt><dd><span class="code">Decode&nbsp;one&nbsp;runtime&nbsp;OAM&nbsp;sprite&nbsp;using&nbsp;PPUCTRL&nbsp;size/table&nbsp;rules.</span></dd></dl>
  <dl><dt><a name="-decode_sprite_pattern"><strong>decode_sprite_pattern</strong></a>(chr_data: 'bytes', tile_index: 'int', *, pattern_table: 'int' = 1, sprite_height: 'int' = 8) -&gt; 'list[list[int]]'</dt><dd><span class="code">Decode&nbsp;a&nbsp;sprite&nbsp;pattern&nbsp;as&nbsp;8x8&nbsp;or&nbsp;8x16&nbsp;color&nbsp;indexes.</span></dd></dl>
  <dl><dt><a name="-discover_nes_roms"><strong>discover_nes_roms</strong></a>(path: 'Path', *, recursive: 'bool' = False) -&gt; 'list[Path]'</dt><dd><span class="code">Return&nbsp;`.nes`&nbsp;ROM&nbsp;paths&nbsp;from&nbsp;one&nbsp;file&nbsp;or&nbsp;directory.</span></dd></dl>
- <dl><dt><a name="-export_in_process_runtime_sprite_samples"><strong>export_in_process_runtime_sprite_samples</strong></a>(rom_path: 'Path', out_dir: 'Path', *, sample_frames: 'Sequence[int]', include_hidden: 'bool' = False) -&gt; 'RuntimeSpriteSamplesManifest'</dt><dd><span class="code">Export&nbsp;original-palette&nbsp;OAM&nbsp;sprites&nbsp;at&nbsp;several&nbsp;runtime&nbsp;frame&nbsp;checkpoints.<br>
+ <dl><dt><a name="-export_in_process_runtime_sprite_samples"><strong>export_in_process_runtime_sprite_samples</strong></a>(rom_path: 'Path', out_dir: 'Path', *, sample_frames: 'Sequence[int]', include_hidden: 'bool' = False, controller1_frames: 'Sequence[int] | None' = None, runtime_input_script: 'str | None' = None) -&gt; 'RuntimeSpriteSamplesManifest'</dt><dd><span class="code">Export&nbsp;original-palette&nbsp;OAM&nbsp;sprites&nbsp;at&nbsp;several&nbsp;runtime&nbsp;frame&nbsp;checkpoints.<br>
 &nbsp;<br>
 Each&nbsp;checkpoint&nbsp;reboots&nbsp;the&nbsp;ROM&nbsp;and&nbsp;captures&nbsp;the&nbsp;PPU/OAM&nbsp;state&nbsp;after&nbsp;that<br>
 many&nbsp;frames.&nbsp;This&nbsp;intentionally&nbsp;favors&nbsp;deterministic,&nbsp;isolated&nbsp;samples&nbsp;over<br>
 emulator&nbsp;speed.&nbsp;The&nbsp;result&nbsp;helps&nbsp;collect&nbsp;sprites&nbsp;that&nbsp;only&nbsp;appear&nbsp;during<br>
 early&nbsp;boot,&nbsp;title,&nbsp;blink,&nbsp;or&nbsp;animation&nbsp;frames.</span></dd></dl>
- <dl><dt><a name="-export_in_process_runtime_sprites"><strong>export_in_process_runtime_sprites</strong></a>(rom_path: 'Path', out_dir: 'Path', *, frames: 'int' = 120, include_hidden: 'bool' = False) -&gt; 'SpriteExportManifest'</dt><dd><span class="code">Boot&nbsp;a&nbsp;simple&nbsp;mapper&nbsp;ROM&nbsp;in-process,&nbsp;capture&nbsp;PPU/OAM,&nbsp;and&nbsp;export&nbsp;sprites.<br>
+ <dl><dt><a name="-export_in_process_runtime_sprites"><strong>export_in_process_runtime_sprites</strong></a>(rom_path: 'Path', out_dir: 'Path', *, frames: 'int' = 120, include_hidden: 'bool' = False, controller1_frames: 'Sequence[int] | None' = None, runtime_input_script: 'str | None' = None) -&gt; 'SpriteExportManifest'</dt><dd><span class="code">Boot&nbsp;a&nbsp;simple&nbsp;mapper&nbsp;ROM&nbsp;in-process,&nbsp;capture&nbsp;PPU/OAM,&nbsp;and&nbsp;export&nbsp;sprites.<br>
 &nbsp;<br>
 This&nbsp;automatic&nbsp;path&nbsp;is&nbsp;intentionally&nbsp;conservative.&nbsp;It&nbsp;relies&nbsp;on&nbsp;the<br>
 in-process&nbsp;runner&nbsp;observing&nbsp;standard&nbsp;CPU&nbsp;writes&nbsp;to&nbsp;PPU&nbsp;palette&nbsp;RAM,&nbsp;pattern<br>
@@ -435,7 +435,7 @@ changes&nbsp;or&nbsp;advanced&nbsp;PPU&nbsp;effects&nbsp;need&nbsp;an&nbsp;exter
 The&nbsp;snapshot&nbsp;supplies&nbsp;original&nbsp;palette/OAM&nbsp;state.&nbsp;CHR&nbsp;bytes&nbsp;still&nbsp;come&nbsp;from<br>
 the&nbsp;ROM's&nbsp;selected&nbsp;CHR&nbsp;bank,&nbsp;which&nbsp;is&nbsp;correct&nbsp;for&nbsp;simple&nbsp;CHR-ROM&nbsp;mapper<br>
 states&nbsp;and&nbsp;for&nbsp;snapshots&nbsp;that&nbsp;record&nbsp;the&nbsp;active&nbsp;bank.</span></dd></dl>
- <dl><dt><a name="-export_sprite_batch"><strong>export_sprite_batch</strong></a>(input_path: 'Path', out_dir: 'Path', *, recursive: 'bool' = False, runtime_frames: 'int | None' = None, runtime_sample_frames: 'Sequence[int] | None' = None, include_hidden: 'bool' = False, chr_bank: 'int' = 0, pattern_table: 'int' = 1, sprite_height: 'int' = 8, palette_id: 'int' = 0, palette_values: 'Sequence[int] | None' = None, palette_source: 'str' = 'preview', per_tile: 'bool' = True) -&gt; 'BatchSpriteExportManifest'</dt><dd><span class="code">Export&nbsp;transparent&nbsp;sprite&nbsp;PNGs&nbsp;for&nbsp;every&nbsp;`.nes`&nbsp;ROM&nbsp;under&nbsp;`input_path`.<br>
+ <dl><dt><a name="-export_sprite_batch"><strong>export_sprite_batch</strong></a>(input_path: 'Path', out_dir: 'Path', *, recursive: 'bool' = False, runtime_frames: 'int | None' = None, runtime_sample_frames: 'Sequence[int] | None' = None, controller1_frames: 'Sequence[int] | None' = None, runtime_input_script: 'str | None' = None, include_hidden: 'bool' = False, chr_bank: 'int' = 0, pattern_table: 'int' = 1, sprite_height: 'int' = 8, palette_id: 'int' = 0, palette_values: 'Sequence[int] | None' = None, palette_source: 'str' = 'preview', per_tile: 'bool' = True) -&gt; 'BatchSpriteExportManifest'</dt><dd><span class="code">Export&nbsp;transparent&nbsp;sprite&nbsp;PNGs&nbsp;for&nbsp;every&nbsp;`.nes`&nbsp;ROM&nbsp;under&nbsp;`input_path`.<br>
 &nbsp;<br>
 Static&nbsp;mode&nbsp;writes&nbsp;CHR&nbsp;preview&nbsp;sprites&nbsp;for&nbsp;every&nbsp;discovered&nbsp;ROM.&nbsp;Runtime<br>
 mode&nbsp;(`runtime_frames`&nbsp;or&nbsp;`runtime_sample_frames`&nbsp;set)&nbsp;boots&nbsp;each&nbsp;ROM&nbsp;with<br>
@@ -466,6 +466,11 @@ PPU&nbsp;palette&nbsp;RAM.</span></dd></dl>
 Accepts&nbsp;decimal&nbsp;or&nbsp;Python-style&nbsp;integer&nbsp;strings&nbsp;such&nbsp;as&nbsp;``0x16``.&nbsp;Bare<br>
 two-digit&nbsp;hexadecimal&nbsp;tokens&nbsp;like&nbsp;``16``&nbsp;are&nbsp;treated&nbsp;as&nbsp;hex&nbsp;because&nbsp;NES<br>
 palette&nbsp;values&nbsp;are&nbsp;usually&nbsp;written&nbsp;that&nbsp;way.</span></dd></dl>
+ <dl><dt><a name="-parse_runtime_input_script"><strong>parse_runtime_input_script</strong></a>(text: 'str', frames: 'int') -&gt; 'tuple[int, ...]'</dt><dd><span class="code">Parse&nbsp;a&nbsp;controller-1&nbsp;input&nbsp;script&nbsp;into&nbsp;one&nbsp;NES&nbsp;button&nbsp;mask&nbsp;per&nbsp;frame.<br>
+&nbsp;<br>
+Syntax&nbsp;is&nbsp;a&nbsp;comma/space&nbsp;separated&nbsp;list&nbsp;of&nbsp;`buttons@frame`&nbsp;or<br>
+`buttons@start:end`&nbsp;entries.&nbsp;Buttons&nbsp;can&nbsp;be&nbsp;combined&nbsp;with&nbsp;`+`,&nbsp;for&nbsp;example<br>
+`start@1:20,a+right@60:120`.&nbsp;Frames&nbsp;are&nbsp;1-based&nbsp;and&nbsp;ranges&nbsp;are&nbsp;inclusive.</span></dd></dl>
  <dl><dt><a name="-png_spritesheet_atlas"><strong>png_spritesheet_atlas</strong></a>(sprite_paths: 'Sequence[Path]', *, columns: 'int' = 16) -&gt; 'list[dict[str, int]]'</dt><dd><span class="code">Return&nbsp;grid&nbsp;coordinates&nbsp;matching&nbsp;`write_png_spritesheet`.</span></dd></dl>
  <dl><dt><a name="-rgba_for_sprite_pixel"><strong>rgba_for_sprite_pixel</strong></a>(color_index: 'int', *, palette_id: 'int', palette_ram: 'Sequence[int]') -&gt; 'tuple[int, int, int, int]'</dt><dd><span class="code">Resolve&nbsp;one&nbsp;decoded&nbsp;CHR&nbsp;pixel&nbsp;to&nbsp;RGBA.<br>
 &nbsp;<br>
@@ -489,12 +494,13 @@ does&nbsp;not&nbsp;affect&nbsp;this&nbsp;transparent&nbsp;sprite-only&nbsp;image
 <td class="section-title" colspan=3>&nbsp;<br><strong class="bigsection">Data</strong></td></tr>
     
 <tr><td class="decor data-decor"><span class="code">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></td><td>&nbsp;</td>
-<td class="singlecolumn"><strong>DEFAULT_SPRITE_PALETTE</strong> = (15, 48, 22, 39)<br>
+<td class="singlecolumn"><strong>CONTROLLER_BUTTON_MASKS</strong> = {'a': 1, 'b': 2, 'down': 32, 'left': 64, 'right': 128, 'sel': 4, 'select': 4, 'start': 8, 'up': 16}<br>
+<strong>DEFAULT_SPRITE_PALETTE</strong> = (15, 48, 22, 39)<br>
 <strong>HEADER_SIZE</strong> = 16<br>
 <strong>NES_RGB_PALETTE</strong> = ((124, 124, 124), (0, 0, 252), (0, 0, 188), (68, 40, 188), (148, 0, 132), (168, 0, 32), (168, 16, 0), (136, 20, 0), (80, 48, 0), (0, 120, 0), (0, 104, 0), (0, 88, 0), (0, 64, 88), (0, 0, 0), (0, 0, 0), (0, 0, 0), (188, 188, 188), (0, 120, 248), (0, 88, 248), (104, 68, 252), ...)<br>
 <strong>PATTERN_TABLE_SIZE</strong> = 4096<br>
 <strong>SPRITE_TILE_WIDTH</strong> = 8<br>
 <strong>Sequence</strong> = typing.Sequence<br>
 <strong>TILE_BYTES</strong> = 16<br>
-<strong>__annotations__</strong> = {'NES_RGB_PALETTE': 'tuple[tuple[int, int, int], ...]'}</td></tr></table>
+<strong>__annotations__</strong> = {'CONTROLLER_BUTTON_MASKS': 'dict[str, int]', 'NES_RGB_PALETTE': 'tuple[tuple[int, int, int], ...]'}</td></tr></table>
 </body></html>

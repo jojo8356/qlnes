@@ -139,6 +139,32 @@ python -m qlnes sprites ROM.nes \
   --runtime-sample-range 1:300:30
 ```
 
+Pour atteindre plus d'états de jeu, ajouter des inputs manette 1 pendant la
+capture runtime :
+
+```bash
+python -m qlnes sprites ROM.nes \
+  -o out/oam-samples \
+  --runtime-sample-range 1:600:30 \
+  --runtime-input start@1:30,a+right@120:240
+```
+
+Syntaxe `--runtime-input` :
+
+- les frames sont 1-based ;
+- `button@frame` presse un bouton sur une frame ;
+- `button@start:end` presse un bouton sur une plage inclusive ;
+- plusieurs boutons se combinent avec `+` ;
+- plusieurs entrées se séparent par virgule ou espace ;
+- boutons acceptés : `a`, `b`, `select`, `start`, `up`, `down`, `left`,
+  `right`.
+
+Exemples :
+
+- `start@1:30` : maintenir Start sur les 30 premières frames ;
+- `a+right@120:240` : maintenir A et Droite sur les frames 120 à 240 ;
+- `start@1:20,a@80,b@100:110` : séquence menu puis deux actions.
+
 Chaque sous-dossier `frame-000120/` contient les mêmes PNG OAM transparents que
 `--runtime-frames`. Le manifeste `runtime-sprite-samples-manifest.json` liste
 toutes les frames capturées, leurs manifestes locaux, et un dossier `unique/`
@@ -162,6 +188,17 @@ python -m qlnes sprites-batch roms/ \
   -o out/sprites-batch \
   --recursive \
   --runtime-sample-range 1:300:30
+```
+
+`--runtime-input` est aussi disponible en batch. Le même script d'input est
+appliqué à chaque ROM :
+
+```bash
+python -m qlnes sprites-batch roms/ \
+  -o out/sprites-batch \
+  --recursive \
+  --runtime-sample-range 1:600:30 \
+  --runtime-input start@1:30,a+right@120:240
 ```
 
 Le batch continue quand une ROM échoue, enregistre l'erreur dans le manifeste

@@ -101,6 +101,16 @@ def test_oamdata_and_oamdma_are_captured():
     assert m.nmi_enabled is False
 
 
+def test_controller1_strobe_latches_and_shifts_button_bits():
+    m = NROMMemory(_prg32())
+    m.set_controller1_state(0x09)  # A + Start
+    m[0x4016] = 0x01
+    m[0x4016] = 0x00
+    reads = [m[0x4016] & 0x01 for _ in range(8)]
+    assert reads == [1, 0, 0, 1, 0, 0, 0, 0]
+    assert m[0x4016] & 0x01 == 1
+
+
 def test_apu_writes_captured_in_4000_4017():
     m = NROMMemory(_prg32())
     m.cpu_cycles = 1000

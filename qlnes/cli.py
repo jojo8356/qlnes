@@ -544,7 +544,7 @@ def sprites(
         int | None,
         typer.Option(
             "--runtime-frames",
-            help="Boot in-process NROM pendant N frames puis capture palette/OAM automatiquement",
+            help="Boot in-process pendant N frames puis capture palette/OAM automatiquement",
         ),
     ] = None,
     runtime_sample_frames: Annotated[
@@ -559,6 +559,13 @@ def sprites(
         typer.Option(
             "--runtime-sample-range",
             help="Plage inclusive start:end:step a capturer, ex: 1:300:30",
+        ),
+    ] = None,
+    runtime_input: Annotated[
+        str | None,
+        typer.Option(
+            "--runtime-input",
+            help="Script manette 1 pour capture runtime, ex: start@1:30,a+right@60:120",
         ),
     ] = None,
     no_tiles: Annotated[
@@ -581,6 +588,7 @@ def sprites(
         export_runtime_oam_sprites,
         export_sprite_pattern_table,
         parse_palette_values,
+        parse_runtime_input_script,
     )
 
     _resolve_log_level(quiet, log_level="INFO", color="auto")
@@ -590,6 +598,12 @@ def sprites(
         raise typer.BadParameter(
             "--runtime-frames est exclusif avec les options runtime sample"
         )
+    if runtime_input is not None and runtime_frames is None and sample_frames is None:
+        raise typer.BadParameter("--runtime-input demande --runtime-frames ou --runtime-sample-*")
+    controller1_frames = None
+    if runtime_input is not None:
+        controller_frame_count = runtime_frames if runtime_frames is not None else max(sample_frames or (1,))
+        controller1_frames = parse_runtime_input_script(runtime_input, controller_frame_count)
 
     if snapshot is not None:
         manifest = export_runtime_oam_sprites(
@@ -616,6 +630,8 @@ def sprites(
             output,
             sample_frames=sample_frames,
             include_hidden=include_hidden,
+            controller1_frames=controller1_frames,
+            runtime_input_script=runtime_input,
         )
         logger.info(
             "✓ sprites runtime echantillonnes ecrits : %s  (samples=%d, sprites=%d, alpha=index0)",
@@ -633,6 +649,8 @@ def sprites(
             output,
             frames=runtime_frames,
             include_hidden=include_hidden,
+            controller1_frames=controller1_frames,
+            runtime_input_script=runtime_input,
         )
         logger.info(
             "✓ sprites runtime in-process ecrits : %s  (sprites=%d, frames=%d, alpha=index0)",
@@ -738,6 +756,13 @@ def sprites_batch(
             help="Plage inclusive start:end:step a capturer pour chaque ROM, ex: 1:300:30",
         ),
     ] = None,
+    runtime_input: Annotated[
+        str | None,
+        typer.Option(
+            "--runtime-input",
+            help="Script manette 1 pour capture runtime, ex: start@1:30,a+right@60:120",
+        ),
+    ] = None,
     include_hidden: Annotated[
         bool,
         typer.Option("--include-hidden", help="Inclure les sprites OAM masques hors ecran"),
@@ -754,7 +779,7 @@ def sprites_batch(
 ) -> None:
     """Extrait des sprites PNG transparents pour toutes les ROMs `.nes` d'un dossier."""
     from .io.log import get_logger
-    from .sprites import export_sprite_batch, parse_palette_values
+    from .sprites import export_sprite_batch, parse_palette_values, parse_runtime_input_script
 
     _resolve_log_level(quiet, log_level="INFO", color="auto")
     logger = get_logger(__name__)
@@ -766,12 +791,20 @@ def sprites_batch(
         raise typer.BadParameter(
             "--runtime-frames est exclusif avec les options runtime sample"
         )
+    if runtime_input is not None and runtime_frames is None and sample_frames is None:
+        raise typer.BadParameter("--runtime-input demande --runtime-frames ou --runtime-sample-*")
+    controller1_frames = None
+    if runtime_input is not None:
+        controller_frame_count = runtime_frames if runtime_frames is not None else max(sample_frames or (1,))
+        controller1_frames = parse_runtime_input_script(runtime_input, controller_frame_count)
     manifest = export_sprite_batch(
         input_path,
         output,
         recursive=recursive,
         runtime_frames=runtime_frames,
         runtime_sample_frames=sample_frames,
+        controller1_frames=controller1_frames,
+        runtime_input_script=runtime_input,
         include_hidden=include_hidden,
         chr_bank=chr_bank,
         pattern_table=pattern_table,

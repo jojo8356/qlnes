@@ -689,6 +689,10 @@ La premiere implementation qlnes suit cette decision :
   1 KiB/2 KiB, fenêtres CHR NINA 4 KiB, PRG banks AxROM, PRG-CHR banks Color
   Dreams et PRG-CHR banks GxROM, ainsi que les fenêtres PRG 8 KiB et CHR 1 KiB
   FME-7.
+- `--runtime-input start@1:30,a+right@120:240` pilote la manette 1 pendant la
+  capture runtime. Cela permet d'atteindre plus d'etats de jeu que le boot
+  naturel seul : ecran titre, debut de niveau, saut, attaque, marche, etc. Le
+  manifeste conserve `runtime_input` et `controller1_nonzero_frames`.
 - Pour mapper 11/Color Dreams, NESdev documente une fenêtre CPU 32 KiB
   switchable à `$8000-$FFFF`, une fenêtre PPU CHR 8 KiB à `$0000-$1FFF`, et
   un registre `CCCC LLPP` : bits `0-1` pour le PRG bank 32 KiB, bits `4-7`
