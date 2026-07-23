@@ -1026,6 +1026,55 @@ def smb_title_assets(
     logger.info("  manifeste : %s", manifest.manifest_json)
 
 
+@app.command("bundle-rom")
+def bundle_rom(
+    rom: Annotated[Path, typer.Argument(help="ROM .nes source", exists=True)],
+    output: Annotated[
+        Path,
+        typer.Option("-o", "--output", help="Dossier du projet launcher genere"),
+    ],
+    name: Annotated[
+        str | None,
+        typer.Option("--name", help="Nom de l'application generee"),
+    ] = None,
+    target: Annotated[
+        str,
+        typer.Option("--target", help="portable | pyinstaller | appimage | all"),
+    ] = "all",
+    emulator: Annotated[
+        str,
+        typer.Option("--emulator", help="Executable emulateur par defaut si non bundle"),
+    ] = "fceux",
+    force: Annotated[bool, typer.Option("--force", help="Ecraser un dossier existant")] = False,
+    quiet: Annotated[bool, typer.Option("-q", "--quiet")] = False,
+) -> None:
+    """Genere un launcher pour packager une ROM NES en .exe/AppImage."""
+    from .io.log import get_logger, setup_logging
+    from .rom_bundle import SUPPORTED_TARGETS, create_rom_bundle
+
+    setup_logging(level="WARNING" if quiet else "INFO")
+    logger = get_logger(__name__)
+    if target not in SUPPORTED_TARGETS:
+        raise typer.BadParameter(f"--target doit etre: {', '.join(SUPPORTED_TARGETS)}")
+
+    try:
+        manifest = create_rom_bundle(
+            rom,
+            output,
+            app_name=name,
+            target=target,
+            emulator=emulator,
+            force=force,
+        )
+    except (FileExistsError, ValueError) as e:
+        raise typer.BadParameter(str(e)) from e
+    logger.info("✓ bundle ROM genere : %s", manifest.output_dir)
+    logger.info("  launcher : %s", manifest.launcher_path)
+    logger.info("  manifeste : %s", manifest.manifest_path)
+    for script in manifest.build_scripts:
+        logger.info("  build : %s", script)
+
+
 @app.command()
 def nsf(
     rom: Annotated[Path, typer.Argument(help="ROM .nes source", exists=True)],
