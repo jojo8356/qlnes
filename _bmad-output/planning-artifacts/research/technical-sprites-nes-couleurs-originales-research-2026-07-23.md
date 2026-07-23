@@ -64,6 +64,7 @@ Sources principales :
 - NESdev, VRC2 and VRC4 : https://www.nesdev.org/wiki/VRC2_and_VRC4
 - NESdev, VRC6 : https://www.nesdev.org/wiki/VRC6
 - NESdev, VRC7 / INES Mapper 085 : https://www.nesdev.org/wiki/INES_Mapper_085
+- NESdev, VRC1 / INES Mapper 075 : https://www.nesdev.org/wiki/VRC1
 - NESdev, RAMBO-1 / INES Mapper 064 : https://www.nesdev.org/wiki/RAMBO-1
 - NESdev, INES Mapper 016 : https://www.nesdev.org/wiki/INES_Mapper_016
 - NESdev, INES Mapper 018 : https://www.nesdev.org/wiki/INES_Mapper_018
@@ -84,6 +85,9 @@ Sources principales :
 - FCEUX, PPU Viewer : https://fceux.com/web/help/PPUViewer.html
 - FCEUX, Name Table Viewer : https://fceux.com/web/help/NameTableViewer.html
 - FCEUX, Palette config : https://fceux.com/web/help/Palette.html
+- NESdev, Tools : https://www.nesdev.org/wiki/Tools
+- Zophar's Domain, Graphics Extractor and Inserter :
+  https://www.zophar.net/utilities/nesgraph/graphics-extractor-and-inserter.html
 
 Verification web faite le 2026-07-23. Les points importants confirmes :
 
@@ -133,6 +137,31 @@ dessine rien. qlnes mappe cet index vers alpha `0` dans les PNG.
 Ce rendu utilise une palette par defaut de 4 niveaux. C'est utile pour voir les
 formes, mais ce n'est pas une extraction des couleurs originales. La raison est
 structurelle : la CHR n'a pas les couleurs finales.
+
+## Outils dedies deja identifies
+
+Les outils dedies restent utiles, mais il faut les classer correctement :
+
+- `Graphics Extractor and Inserter` : Zophar le decrit comme un couple
+  extracteur/inserteur qui rippe les tiles graphiques depuis une ROM NES vers
+  des bitmaps Windows modifiables. C'est utile pour la CHR statique, moins pour
+  garantir palette RAM/OAM runtime. Source :
+  https://www.zophar.net/utilities/nesgraph/graphics-extractor-and-inserter.html
+- `YY-CHR`, `Tile Molester`, `Tile Layer`, `Famitile`, `Nasu`, `NEXXT` et outils
+  voisins : NESdev les classe comme editeurs de tiles/CHR ou outils de
+  nametable. Ils sont bons pour inspecter ou editer des banks CHR, mais ne
+  remplacent pas un snapshot PPU/OAM si l'objectif est "couleurs originales" en
+  PNG transparent. Source : https://www.nesdev.org/wiki/Tools
+- `NesTile`, `Scalnes` et `Extract NES Graphics` : noms d'outils a conserver
+  dans la veille utilisateur, mais a traiter comme `candidate_tool` tant qu'une
+  source maintenue, un depot ou un binaire testable n'est pas pointe dans le
+  projet. Leur integration potentielle est une couche adapter/import, pas le
+  coeur de verite des couleurs.
+
+Conclusion pratique : ces outils automatisent surtout le niveau **CHR brute**.
+qlnes doit pouvoir importer leurs sorties si cela accelere le workflow, mais
+pour obtenir des sprites couleurs originales avec transparence, le pipeline de
+reference reste CHR visible + OAM + palette RAM + etat mapper au runtime.
 
 ## Modele hardware minimal
 
@@ -726,12 +755,12 @@ La premiere implementation qlnes suit cette decision :
   MMC4/FxROM, Color Dreams, Bandai FCG, Jaleco SS88006, Namco 129/163,
   VRC2/VRC4, VRC6, VRC7, Irem G-101, Taito TC0190,
   BNROM/NINA, Mapper 42, RAMBO-1, GxROM/GNROM, Sunsoft FME-7/5B, Bandai, Camerica,
-  JF-17 et NINA-03/06 avec l'observateur in-process et capture automatiquement
+  JF-17, VRC1 et NINA-03/06 avec l'observateur in-process et capture automatiquement
   PPUCTRL, PPUMASK, palette RAM, OAM/OAMDMA, pattern table CHR-RAM simple,
   CHR bank CNROM actif, fenêtres CHR MMC1 8 KiB/split 4 KiB, fenêtres CHR MMC3
   1 KiB/2 KiB, fenêtres CHR MMC5 sprite, fenêtres CHR MMC2/MMC4 4 KiB latchées, fenêtres CHR NINA 4 KiB, PRG banks AxROM, PRG-CHR banks Color
   Dreams et PRG-CHR banks GxROM, ainsi que les fenêtres PRG 8 KiB et CHR 1 KiB
-  FME-7, les fenêtres CHR 1 KiB Bandai FCG/Jaleco SS88006/Namco 129-163/VRC2-VRC4/VRC6/VRC7/RAMBO-1/Irem G-101 et 2 KiB/1 KiB Taito TC0190, le registre `PPPP CCCC` Bandai, les bits de commande PRG/CHR JF-17 et
+  FME-7, les fenêtres CHR 1 KiB Bandai FCG/Jaleco SS88006/Namco 129-163/VRC2-VRC4/VRC6/VRC7/RAMBO-1/Irem G-101, les fenêtres CHR 4 KiB VRC1 et 2 KiB/1 KiB Taito TC0190, le registre `PPPP CCCC` Bandai, les bits de commande PRG/CHR JF-17 et
   le registre expansion NINA-03/06.
 - `--runtime-input start@1:30,a+right@120:240` pilote la manette 1 pendant la
   capture runtime. Cela permet d'atteindre plus d'etats de jeu que le boot
@@ -808,6 +837,12 @@ La premiere implementation qlnes suit cette decision :
   même structure. qlnes observe `$8000/$8001`, applique les bits `C/P/K`,
   compose la pattern table visible en 1 KiB/2 KiB, et ignore IRQ/mirroring pour
   le chemin export sprites. Source : https://www.nesdev.org/wiki/RAMBO-1
+- Pour mapper 75/VRC1, NESdev documente trois fenêtres PRG-ROM 8 KiB
+  switchables, une dernière fenêtre PRG fixe, deux fenêtres CHR-ROM 4 KiB, et
+  un registre `$9000` qui fournit les bits hauts des deux sélections CHR.
+  qlnes observe `$8000/$A000/$C000/$9000/$E000/$F000` et compose la pattern
+  table visible pour les sprites ; le mirroring reste hors du chemin export
+  sprites. Source : https://www.nesdev.org/wiki/VRC1
 - Pour mapper 32/Irem G-101, NESdev documente deux fenêtres PRG-ROM 8 KiB
   switchables, deux fenêtres PRG fixes avec mode d'échange `$8000/$C000`, et
   huit fenêtres CHR-ROM 1 KiB. qlnes observe les registres PRG/CHR nécessaires

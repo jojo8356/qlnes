@@ -15,6 +15,7 @@ MMC5Memory (mapper 5) supports MMC5 PRG modes and CHR windows for sprite capture
 VRC24Memory (mappers 21/22/23/25) supports Konami VRC2/VRC4 PRG and CHR windows.
 VRC6Memory (mappers 24/26) supports Konami VRC6 PRG and 1 KiB CHR windows.
 VRC7Memory (mapper 85) supports Konami VRC7 PRG and 1 KiB CHR windows.
+VRC1Memory (mapper 75) supports Konami VRC1 PRG and 4 KiB CHR windows.
 IremG101Memory (mapper 32) supports G-101 PRG and 1 KiB CHR windows.
 Taito33Memory (mapper 33) supports TC0190 PRG and mixed 2/1 KiB CHR windows.
 NINA0306Memory (mapper 79) supports AVE NINA-03/NINA-06 PRG/CHR banking.
@@ -1418,6 +1419,96 @@ class VRC7Memory(NROMMemory):
         super().reset_state()
         self._prg_regs = [0, 1, 2]
         self._chr_regs = list(range(8))
+
+
+class VRC1Memory(NROMMemory):
+    """Mapper-75 Konami VRC1 memory for runtime sprite capture.
+
+    VRC1 exposes three switchable 8 KiB PRG windows and two switchable 4 KiB
+    CHR windows. `$9000` supplies the high CHR bank bits; mirroring is ignored
+    because it does not affect sprite PNG extraction.
+    """
+
+    def __init__(self, prg: bytes, chr_data: bytes) -> None:
+        if len(prg) % 0x2000 != 0 or len(prg) < 0x8000:
+            raise ValueError("VRC1 PRG must contain at least four 8 KiB banks")
+        initial = prg[:0x6000] + prg[-0x2000:]
+        super().__init__(initial)
+        if not chr_data:
+            raise ValueError("VRC1 requires CHR-ROM data")
+        self._prg_banks = [prg[i : i + 0x2000] for i in range(0, len(prg), 0x2000)]
+        self._chr_rom = bytes(chr_data)
+        self._chr_4k_count = max(len(self._chr_rom) // 0x1000, 1)
+        self._prg_regs = [0, 1, 2]
+        self._chr_low = [0, 1]
+        self._chr_high = [0, 0]
+
+    def _read_prg(self, addr: int) -> int:
+        if addr < 0xA000:
+            return self._prg_banks[self._prg_regs[0] % len(self._prg_banks)][addr - 0x8000]
+        if addr < 0xC000:
+            return self._prg_banks[self._prg_regs[1] % len(self._prg_banks)][addr - 0xA000]
+        if addr < 0xE000:
+            return self._prg_banks[self._prg_regs[2] % len(self._prg_banks)][addr - 0xC000]
+        return self._prg_banks[-1][addr - 0xE000]
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if 0x8000 <= addr <= 0xFFFF:
+            self._write_mapper_register(addr, value & 0xFF)
+            return
+        super().__setitem__(addr, value)
+
+    def _write_mapper_register(self, addr: int, value: int) -> None:
+        reg = addr & 0xF000
+        if reg == 0x8000:
+            self._prg_regs[0] = value & 0x0F
+        elif reg == 0xA000:
+            self._prg_regs[1] = value & 0x0F
+        elif reg == 0xC000:
+            self._prg_regs[2] = value & 0x0F
+        elif reg == 0x9000:
+            self._chr_high[0] = (value >> 1) & 1
+            self._chr_high[1] = (value >> 2) & 1
+            self.chr_bank = self._dominant_chr_8k_bank()
+        elif reg == 0xE000:
+            self._chr_low[0] = value & 0x0F
+            self.chr_bank = self._dominant_chr_8k_bank()
+        elif reg == 0xF000:
+            self._chr_low[1] = value & 0x0F
+            self.chr_bank = self._dominant_chr_8k_bank()
+
+    def _chr_4k_bank(self, slot: int) -> int:
+        return (self._chr_low[slot] | (self._chr_high[slot] << 4)) % self._chr_4k_count
+
+    def _mapped_chr_pattern_table(self) -> bytes:
+        out = bytearray(0x2000)
+        for slot in range(2):
+            bank = self._chr_4k_bank(slot)
+            start = bank * 0x1000
+            out[slot * 0x1000 : (slot + 1) * 0x1000] = self._chr_rom[start : start + 0x1000]
+        return bytes(out)
+
+    def _dominant_chr_8k_bank(self) -> int:
+        if self._chr_4k_count < 2:
+            return 0
+        return self._chr_4k_bank(0) // 2
+
+    def ppu_snapshot(self) -> PpuSnapshot:
+        snap = super().ppu_snapshot()
+        return PpuSnapshot(
+            ppuctrl=snap.ppuctrl,
+            ppumask=snap.ppumask,
+            palette_ram=snap.palette_ram,
+            oam=snap.oam,
+            pattern_table=self._mapped_chr_pattern_table(),
+            chr_bank=self._dominant_chr_8k_bank(),
+        )
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        self._prg_regs = [0, 1, 2]
+        self._chr_low = [0, 1]
+        self._chr_high = [0, 0]
 
 
 class IremG101Memory(NROMMemory):
