@@ -56,7 +56,9 @@ Sources principales :
 - NESdev, PPU pattern tables : https://www.nesdev.org/wiki/PPU_pattern_tables
 - NESdev, PPU palettes : https://www.nesdev.org/wiki/PPU_palettes
 - NESdev, PPU OAM : https://www.nesdev.org/wiki/PPU_OAM
+- NESdev, List of mappers : https://www.nesdev.org/wiki/List_of_mappers
 - NESdev, INES Mapper 042 : https://www.nesdev.org/wiki/INES_Mapper_042
+- NESdev, MMC4 / mapper 010 : https://www.nesdev.org/wiki/MMC4
 - NESdev, INES Mapper 070 : https://www.nesdev.org/wiki/INES_Mapper_070
 - NESdev, INES Mapper 072 : https://www.nesdev.org/wiki/INES_Mapper_072
 - NESdev, INES Mapper 079 / NINA-003-006 : https://www.nesdev.org/wiki/INES_Mapper_079
@@ -707,12 +709,13 @@ La premiere implementation qlnes suit cette decision :
   exporte les sprites OAM avec palette RAM runtime, flips, taille 8x8/8x16 et
   canvas `oam-screen.png`.
 - `python -m qlnes sprites ROM.nes -o out/oam --runtime-frames 120` boote les
-  ROMs simples NROM, MMC1/SxROM, UxROM, CNROM, MMC3, AxROM, Color Dreams,
+  ROMs simples NROM, MMC1/SxROM, UxROM, CNROM, MMC3, AxROM, MMC2/PxROM,
+  MMC4/FxROM, Color Dreams,
   BNROM/NINA, Mapper 42, GxROM/GNROM, Sunsoft FME-7/5B, Bandai, Camerica,
   JF-17 et NINA-03/06 avec l'observateur in-process et capture automatiquement
   PPUCTRL, PPUMASK, palette RAM, OAM/OAMDMA, pattern table CHR-RAM simple,
   CHR bank CNROM actif, fenêtres CHR MMC1 8 KiB/split 4 KiB, fenêtres CHR MMC3
-  1 KiB/2 KiB, fenêtres CHR NINA 4 KiB, PRG banks AxROM, PRG-CHR banks Color
+  1 KiB/2 KiB, fenêtres CHR MMC2/MMC4 4 KiB latchées, fenêtres CHR NINA 4 KiB, PRG banks AxROM, PRG-CHR banks Color
   Dreams et PRG-CHR banks GxROM, ainsi que les fenêtres PRG 8 KiB et CHR 1 KiB
   FME-7, le registre `PPPP CCCC` Bandai, les bits de commande PRG/CHR JF-17 et
   le registre expansion NINA-03/06.
@@ -732,6 +735,17 @@ La premiere implementation qlnes suit cette decision :
   bits `LH` où bit 0 = bit CHR haut et bit 1 = bit CHR bas ; qlnes applique ce
   bit-order inversé avant de choisir la CHR bank runtime. Source :
   https://www.nesdev.org/wiki/INES_Mapper_087
+- Pour mapper 9/MMC2, NESdev liste PxROM/MMC2 dans la table iNES et le modèle
+  MMC4 documente le même principe de fenêtres CHR-ROM 4 KiB sélectionnées par
+  latches PPU `$0FD8/$0FE8` et `$1FD8/$1FE8`. qlnes compose donc deux fenêtres
+  CHR 4 KiB dans le snapshot runtime depuis les registres `$B000-$E000`, et
+  modèle la fenêtre PRG 8 KiB switchable à `$8000-$9FFF`. Sources :
+  https://www.nesdev.org/wiki/List_of_mappers et https://www.nesdev.org/wiki/MMC4
+- Pour mapper 10/MMC4, NESdev documente une PRG bank 16 KiB switchable à
+  `$8000-$BFFF`, la dernière PRG bank fixe à `$C000-$FFFF`, et deux fenêtres
+  CHR-ROM 4 KiB sélectionnées par les mêmes latches que MMC2. qlnes exporte
+  donc les sprites depuis la pattern table CHR mappée dans le snapshot. Source :
+  https://www.nesdev.org/wiki/MMC4
 - Pour mapper 101/JF-10, NESdev documente la même famille de board mais avec le
   bit-order CHR normal `HL` à `$6000-$7FFF`, plus une extension oversize mieux
   définie. qlnes sélectionne donc directement la valeur écrite comme CHR bank

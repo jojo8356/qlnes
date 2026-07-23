@@ -6,6 +6,8 @@ ships NROMMemory (mapper 0), UxROMMemory (mapper 2), CNROMMemory
 (mapper 3), ColorDreamsMemory (mapper 11), GxROMMemory (mapper 66),
 and a conservative MMC1Memory (mapper 1). MMC3Memory (mapper 4) supports
 enough PRG/CHR banking for runtime sprite capture on simple boot snapshots.
+MMC2Memory (mapper 9) and MMC4Memory (mapper 10) support latch-selected
+4 KiB CHR windows for original-color sprite snapshots.
 NINA0306Memory (mapper 79) supports AVE NINA-03/NINA-06 PRG/CHR banking.
 AxROMMemory (mapper 7) supports 32 KiB PRG switching with CHR-RAM captures.
 BNROMNINAMemory (mapper 34) supports BNROM PRG switching and NINA split CHR.
@@ -117,6 +119,8 @@ class NROMMemory(Memory):
                 self.vbl_flag = False
                 self._ppu_addr_latch_high = True
                 return v
+            if reg == 7:
+                return self._read_ppu_data()
             return 0
         if addr < 0x4020:
             if addr == 0x4016:
@@ -231,6 +235,18 @@ class NROMMemory(Memory):
             self._palette_ram[self._palette_index(addr)] = value & 0x3F
         increment = 32 if (self.ppuctrl & 0x04) else 1
         self._ppu_addr = (self._ppu_addr + increment) & 0x7FFF
+
+    def _read_ppu_data(self) -> int:
+        addr = self._ppu_addr & 0x3FFF
+        if 0x0000 <= addr <= 0x1FFF:
+            value = self._pattern_table[addr]
+        elif 0x3F00 <= addr <= 0x3FFF:
+            value = self._palette_ram[self._palette_index(addr)]
+        else:
+            value = 0
+        increment = 32 if (self.ppuctrl & 0x04) else 1
+        self._ppu_addr = (self._ppu_addr + increment) & 0x7FFF
+        return value
 
     def ppu_snapshot(self) -> PpuSnapshot:
         palette = bytearray(self._palette_ram)
@@ -499,6 +515,128 @@ class AxROMMemory(NROMMemory):
     def reset_state(self) -> None:
         super().reset_state()
         self._prg_bank = 0
+
+
+class MMC2Memory(NROMMemory):
+    """Mapper-9 MMC2/PxROM memory.
+
+    CPU $8000-$9FFF is one switchable 8 KiB PRG bank and $A000-$FFFF is fixed
+    to the last three 8 KiB PRG banks. PPU $0000-$0FFF and $1000-$1FFF are two
+    latch-selected 4 KiB CHR-ROM windows. The full PPU latch timing is not
+    rendered here, but the selected latch registers are mapped into the runtime
+    pattern-table snapshot so OAM sprite PNGs use the active original tiles.
+    """
+
+    def __init__(self, prg: bytes, chr_data: bytes) -> None:
+        if len(prg) % 0x2000 != 0 or len(prg) < 0x8000:
+            raise ValueError("MMC2 PRG must contain at least four 8 KiB banks")
+        self._prg_banks = [prg[i : i + 0x2000] for i in range(0, len(prg), 0x2000)]
+        initial = self._prg_banks[0] + self._prg_banks[-3] + self._prg_banks[-2] + self._prg_banks[-1]
+        super().__init__(initial)
+        if not chr_data:
+            raise ValueError("MMC2 requires CHR-ROM data")
+        self._chr_rom = bytes(chr_data)
+        self._chr_4k_count = max(len(self._chr_rom) // 0x1000, 1)
+        self._prg_bank = 0
+        self._chr_regs = [0, 0, 0, 0]
+        self._chr_latches = [0xFD, 0xFD]
+
+    def _read_prg(self, addr: int) -> int:
+        if addr < 0xA000:
+            return self._prg_banks[self._prg_bank % len(self._prg_banks)][addr - 0x8000]
+        if addr < 0xC000:
+            return self._prg_banks[-3][addr - 0xA000]
+        if addr < 0xE000:
+            return self._prg_banks[-2][addr - 0xC000]
+        return self._prg_banks[-1][addr - 0xE000]
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if addr >= 0x8000:
+            self._write_mapper_register(addr, value & 0xFF)
+            return
+        super().__setitem__(addr, value)
+
+    def _write_mapper_register(self, addr: int, value: int) -> None:
+        reg = addr & 0xF000
+        if reg == 0xA000:
+            self._prg_bank = value & 0x0F
+        elif reg == 0xB000:
+            self._chr_regs[0] = value & 0x1F
+        elif reg == 0xC000:
+            self._chr_regs[1] = value & 0x1F
+        elif reg == 0xD000:
+            self._chr_regs[2] = value & 0x1F
+        elif reg == 0xE000:
+            self._chr_regs[3] = value & 0x1F
+        # $F000 mirroring writes do not affect sprite extraction.
+
+    def _mapped_chr_pattern_table(self) -> bytes:
+        out = bytearray(0x2000)
+        reg0 = 0 if self._chr_latches[0] == 0xFD else 1
+        reg1 = 2 if self._chr_latches[1] == 0xFD else 3
+        bank0 = self._chr_regs[reg0] % self._chr_4k_count
+        bank1 = self._chr_regs[reg1] % self._chr_4k_count
+        out[0x0000:0x1000] = self._chr_rom[bank0 * 0x1000 : (bank0 + 1) * 0x1000]
+        out[0x1000:0x2000] = self._chr_rom[bank1 * 0x1000 : (bank1 + 1) * 0x1000]
+        return bytes(out)
+
+    def _read_ppu_data(self) -> int:
+        addr = self._ppu_addr & 0x3FFF
+        if 0x0FD8 <= addr <= 0x0FDF:
+            self._chr_latches[0] = 0xFD
+        elif 0x0FE8 <= addr <= 0x0FEF:
+            self._chr_latches[0] = 0xFE
+        elif 0x1FD8 <= addr <= 0x1FDF:
+            self._chr_latches[1] = 0xFD
+        elif 0x1FE8 <= addr <= 0x1FEF:
+            self._chr_latches[1] = 0xFE
+
+        if 0x0000 <= addr <= 0x1FFF:
+            value = self._mapped_chr_pattern_table()[addr]
+        elif 0x3F00 <= addr <= 0x3FFF:
+            value = self._palette_ram[self._palette_index(addr)]
+        else:
+            value = 0
+        increment = 32 if (self.ppuctrl & 0x04) else 1
+        self._ppu_addr = (self._ppu_addr + increment) & 0x7FFF
+        return value
+
+    def ppu_snapshot(self) -> PpuSnapshot:
+        snap = super().ppu_snapshot()
+        return PpuSnapshot(
+            ppuctrl=snap.ppuctrl,
+            ppumask=snap.ppumask,
+            palette_ram=snap.palette_ram,
+            oam=snap.oam,
+            pattern_table=self._mapped_chr_pattern_table(),
+            chr_bank=(self._chr_regs[0] % self._chr_4k_count) // 2,
+        )
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        self._prg_bank = 0
+        self._chr_regs = [0, 0, 0, 0]
+        self._chr_latches = [0xFD, 0xFD]
+
+
+class MMC4Memory(MMC2Memory):
+    """Mapper-10 MMC4/FxROM memory.
+
+    MMC4 keeps the same 4 KiB latch-selected CHR register layout as MMC2, but
+    CPU PRG uses a switchable 16 KiB bank at $8000-$BFFF and a fixed last
+    16 KiB bank at $C000-$FFFF.
+    """
+
+    def __init__(self, prg: bytes, chr_data: bytes) -> None:
+        if len(prg) % 0x4000 != 0 or len(prg) < 0x8000:
+            raise ValueError("MMC4 PRG must contain at least two 16 KiB banks")
+        self._prg16_banks = [prg[i : i + 0x4000] for i in range(0, len(prg), 0x4000)]
+        super().__init__(self._prg16_banks[0] + self._prg16_banks[-1], chr_data)
+
+    def _read_prg(self, addr: int) -> int:
+        if addr < 0xC000:
+            return self._prg16_banks[self._prg_bank % len(self._prg16_banks)][addr - 0x8000]
+        return self._prg16_banks[-1][addr - 0xC000]
 
 
 class CPROMMemory(NROMMemory):

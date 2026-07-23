@@ -17,7 +17,9 @@ from qlnes.audio.in_process.memory import (
     JF10Memory,
     JF17Memory,
     MMC1Memory,
+    MMC2Memory,
     MMC3Memory,
+    MMC4Memory,
     Mapper42Memory,
     Namco108Memory,
     NINA0306Memory,
@@ -393,6 +395,59 @@ def test_axrom_reset_state_restores_initial_prg_bank():
     assert m[0x8000] == 1
     m.reset_state()
     assert m[0x8000] == 0
+
+
+def test_mmc2_mapper9_switches_8k_prg_and_latched_4k_chr_windows():
+    banks = [bytes([bank_id] * 0x2000) for bank_id in range(6)]
+    chr_data = b"".join(bytes([bank_id] * 0x1000) for bank_id in range(8))
+    m = MMC2Memory(b"".join(banks), chr_data=chr_data)
+    assert m[0x8000] == 0
+    assert m[0xA000] == 3
+    assert m[0xC000] == 4
+    assert m[0xE000] == 5
+
+    m[0xA000] = 0x02
+    m[0xB000] = 0x01
+    m[0xC000] = 0x04
+    m[0xD000] = 0x03
+    m[0xE000] = 0x05
+    snap = m.ppu_snapshot()
+    assert m[0x8000] == 2
+    assert snap.pattern_table[0x0000] == 1
+    assert snap.pattern_table[0x0FFF] == 1
+    assert snap.pattern_table[0x1000] == 3
+    assert snap.pattern_table[0x1FFF] == 3
+
+    m[0x2006] = 0x1F
+    m[0x2006] = 0xE8
+    assert m[0x2007] == 5
+    snap = m.ppu_snapshot()
+    assert snap.pattern_table[0x1000] == 5
+
+
+def test_mmc4_mapper10_switches_16k_prg_and_latched_4k_chr_windows():
+    banks = [bytes([bank_id] * 0x4000) for bank_id in range(4)]
+    chr_data = b"".join(bytes([bank_id] * 0x1000) for bank_id in range(8))
+    m = MMC4Memory(b"".join(banks), chr_data=chr_data)
+    assert m[0x8000] == 0
+    assert m[0xC000] == 3
+
+    m[0xA000] = 0x02
+    m[0xB000] = 0x01
+    m[0xD000] = 0x03
+    snap = m.ppu_snapshot()
+    assert m[0x8000] == 2
+    assert m[0xBFFF] == 2
+    assert m[0xC000] == 3
+    assert snap.pattern_table[0x0000] == 1
+    assert snap.pattern_table[0x1000] == 3
+
+    m[0xC000] = 0x04
+    m[0x2006] = 0x0F
+    m[0x2006] = 0xE8
+    assert m[0x2007] == 4
+    snap = m.ppu_snapshot()
+    assert snap.pattern_table[0x0000] == 4
 
 
 def test_mapper34_bnrom_switches_32k_prg_bank():

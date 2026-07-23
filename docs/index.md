@@ -20,8 +20,8 @@ La documentation HTML peut etre generee sans installer d'outil externe :
 ```bash
 mkdir -p docs/api
 cd docs/api
-../../.venv/bin/python -m pydoc -w qlnes.smb_nsf
-../../.venv/bin/python -m pydoc -w qlnes.sprites
+PYTHONPATH=../.. ../../.venv/bin/python -m pydoc -w qlnes.smb_nsf
+PYTHONPATH=../.. ../../.venv/bin/python -m pydoc -w qlnes.sprites
 ```
 
 Le fichier HTML genere est volontairement ignore si un jour on decide de ne

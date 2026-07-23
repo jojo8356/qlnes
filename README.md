@@ -102,7 +102,7 @@ python -m qlnes sprites ROM.nes -o out/sprites --palette 0F,30,16,27
 # Extraire les sprites OAM avec couleurs originales depuis un snapshot PPU/OAM
 python -m qlnes sprites ROM.nes -o out/oam-sprites --snapshot snapshot-ppu-oam.json
 
-# Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/CPROM/BNROM/Mapper 42/GxROM/FME-7/Bandai/Camerica/JF-17/Holy Diver/NINA-03-06/J87/JF-10/Namco 108 : capture palette/OAM automatiquement
+# Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/AxROM/MMC2/MMC4/Color Dreams/CPROM/BNROM/Mapper 42/GxROM/FME-7/Bandai/Camerica/JF-17/Holy Diver/NINA-03-06/J87/JF-10/Namco 108 : capture palette/OAM automatiquement
 # Inclut les ROMs CHR-RAM simples quand les patterns sont écrits en VRAM au boot.
 python -m qlnes sprites ROM.nes -o out/oam-sprites --runtime-frames 120
 
@@ -130,8 +130,8 @@ La documentation API peut être générée sans dépendance externe avec `pydoc`
 ```bash
 mkdir -p docs/api
 cd docs/api
-../../.venv/bin/python -m pydoc -w qlnes.smb_nsf
-../../.venv/bin/python -m pydoc -w qlnes.sprites
+PYTHONPATH=../.. ../../.venv/bin/python -m pydoc -w qlnes.smb_nsf
+PYTHONPATH=../.. ../../.venv/bin/python -m pydoc -w qlnes.sprites
 ```
 
 `pdoc`, Sphinx ou MkDocs peuvent être ajoutés plus tard si le projet veut un
@@ -237,17 +237,20 @@ qlnes/
 ## Limites connues
 
 - **Mappers supportés** : 0 (NROM), 1 (MMC1 mode 3), 2 (UxROM), 3 (CNROM),
-  4 (MMC3 initial), 7 (AxROM), 11 (Color Dreams), 13 (CPROM), 34 (BNROM/NINA),
+  4 (MMC3 initial), 7 (AxROM), 9 (MMC2/PxROM), 10 (MMC4/FxROM),
+  11 (Color Dreams), 13 (CPROM), 34 (BNROM/NINA),
   42 (FDS conversions), 66 (GxROM/GNROM), 69 (Sunsoft FME-7/5B initial),
   70 (Bandai),
   71 (Camerica), 72 (Jaleco JF-17), 78 (Holy Diver), 79 (AVE NINA-03/06),
   87 (J87), 101 (JF-10), 206 (Namco 108)
 - **Discovery dynamique** : nécessite `cynes`, supporté seulement pour mapper 0 (limitation runner actuelle)
 - **Capture sprites runtime** : couvre les cas simples NROM, MMC1/SxROM,
-  UxROM, CNROM, MMC3, AxROM, Color Dreams, CPROM, BNROM/NINA, GxROM/GNROM,
+  UxROM, CNROM, MMC3, AxROM, MMC2/PxROM, MMC4/FxROM, Color Dreams, CPROM, BNROM/NINA, GxROM/GNROM,
   Mapper 42, Sunsoft FME-7/5B, Bandai, Camerica, JF-17, Holy Diver, NINA-03/06, J87, JF-10 et Namco 108. MMC1 et NINA
   couvrent les fenêtres CHR 4 KiB split simples, CPROM couvre la fenêtre
-  CHR-RAM 4 KiB switchable, FME-7 et Namco 108 couvrent les fenêtres CHR
+  CHR-RAM 4 KiB switchable, MMC2/MMC4 couvrent les fenêtres CHR-ROM 4 KiB
+  sélectionnées par latch au moment du snapshot,
+  FME-7 et Namco 108 couvrent les fenêtres CHR
   1 KiB/2 KiB simples, Mapper 42 couvre CHR-ROM 8 KiB via `$8000` et PRG-ROM
   8 KiB à `$6000-$7FFF` via `$E000`, JF-17 couvre PRG 16 KiB + CHR-ROM
   8 KiB via bits de commande, Bandai couvre PRG 16 KiB + CHR-ROM 8 KiB via

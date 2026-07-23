@@ -6,7 +6,7 @@ HEADER_SIZE = 16
 PRG_BANK = 0x4000
 CHR_BANK = 0x2000
 
-SUPPORTED_MAPPERS = (0, 1, 2, 3, 4, 7, 11, 13, 34, 42, 66, 69, 70, 71, 72, 78, 79, 87, 101, 206)
+SUPPORTED_MAPPERS = (0, 1, 2, 3, 4, 7, 9, 10, 11, 13, 34, 42, 66, 69, 70, 71, 72, 78, 79, 87, 101, 206)
 
 
 @dataclass
@@ -156,6 +156,20 @@ def _layout_mmc3_initial(prg: bytes) -> list[tuple[int, bytes]]:
     return [(0, bytes(image))]
 
 
+def _layout_mmc2_initial(prg: bytes) -> list[tuple[int, bytes]]:
+    # Mapper 9 (MMC2): one switchable 8 KiB PRG bank at $8000-$9FFF and
+    # fixed last three 8 KiB banks at $A000-$FFFF.
+    if len(prg) % 0x2000 != 0 or len(prg) < 0x8000:
+        raise ValueError(f"MMC2 PRG size {len(prg):#x} must be at least 32K")
+    banks = [prg[i : i + 0x2000] for i in range(0, len(prg), 0x2000)]
+    image = bytearray(0x10000)
+    image[0x8000:0xA000] = banks[0]
+    image[0xA000:0xC000] = banks[-3]
+    image[0xC000:0xE000] = banks[-2]
+    image[0xE000:0x10000] = banks[-1]
+    return [(0, bytes(image))]
+
+
 def _layout_fme7_initial(prg: bytes) -> list[tuple[int, bytes]]:
     # Mapper 69 (Sunsoft FME-7/5B): CPU PRG windows are 8 KiB at
     # $8000/$A000/$C000 and the last 8 KiB bank is fixed at $E000-$FFFF.
@@ -214,6 +228,10 @@ def rom_to_images(data: bytes) -> list[tuple[int, bytes]]:
         return _layout_mmc3_initial(prg)
     if h.mapper == 7:
         return _layout_axrom(prg)
+    if h.mapper == 9:
+        return _layout_mmc2_initial(prg)
+    if h.mapper == 10:
+        return _layout_uxrom(prg)
     if h.mapper in (11, 79):
         return _layout_colordreams(prg)
     if h.mapper == 34:

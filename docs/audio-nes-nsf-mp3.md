@@ -179,8 +179,8 @@ Generation HTML locale :
 ```bash
 mkdir -p docs/api
 cd docs/api
-../../.venv/bin/python -m pydoc -w qlnes.smb_nsf
-../../.venv/bin/python -m pydoc -w qlnes.sprites
+PYTHONPATH=../.. ../../.venv/bin/python -m pydoc -w qlnes.smb_nsf
+PYTHONPATH=../.. ../../.venv/bin/python -m pydoc -w qlnes.sprites
 ```
 
 Pour une documentation plus riche, installer `pdoc` et lancer :
