@@ -43,6 +43,7 @@ from .memory import (
     MMC1Memory,
     MMC3Memory,
     Memory,
+    Namco108Memory,
     NROMMemory,
     UxROMMemory,
 )
@@ -80,9 +81,9 @@ class InProcessRunner:
     @staticmethod
     def _build_memory(rom: Rom) -> Memory:
         mapper = rom.mapper
-        if mapper not in (0, 1, 2, 3, 4, 7, 11, 13, 34, 66, 69, 71, 78, 87, 101, None):
+        if mapper not in (0, 1, 2, 3, 4, 7, 11, 13, 34, 66, 69, 71, 78, 87, 101, 206, None):
             raise ValueError(
-                f"InProcessRunner currently supports mapper 0, 1, 2, 3, 4, 7, 11, 13, 34, 66, 69, 71, 78, 87 and 101 only; "
+                f"InProcessRunner currently supports mapper 0, 1, 2, 3, 4, 7, 11, 13, 34, 66, 69, 71, 78, 87, 101 and 206 only; "
                 f"got mapper {mapper}."
             )
         prg = rom.prg if rom.header is not None else rom.raw
@@ -114,6 +115,8 @@ class InProcessRunner:
             return J87Memory(prg, rom.header.chr_banks)
         if mapper == 101 and rom.header is not None:
             return JF10Memory(prg, rom.header.chr_banks)
+        if mapper == 206 and rom.header is not None:
+            return Namco108Memory(prg, InProcessRunner._chr_rom(rom))
         return NROMMemory(prg)
 
     @staticmethod

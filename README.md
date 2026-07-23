@@ -102,7 +102,7 @@ python -m qlnes sprites ROM.nes -o out/sprites --palette 0F,30,16,27
 # Extraire les sprites OAM avec couleurs originales depuis un snapshot PPU/OAM
 python -m qlnes sprites ROM.nes -o out/oam-sprites --snapshot snapshot-ppu-oam.json
 
-# Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/CPROM/BNROM/GxROM/FME-7/Camerica/Holy Diver/J87/JF-10 : capture palette/OAM automatiquement
+# Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/CPROM/BNROM/GxROM/FME-7/Camerica/Holy Diver/J87/JF-10/Namco 108 : capture palette/OAM automatiquement
 # Inclut les ROMs CHR-RAM simples quand les patterns sont écrits en VRAM au boot.
 python -m qlnes sprites ROM.nes -o out/oam-sprites --runtime-frames 120
 
@@ -239,15 +239,16 @@ qlnes/
 - **Mappers supportés** : 0 (NROM), 1 (MMC1 mode 3), 2 (UxROM), 3 (CNROM),
   4 (MMC3 initial), 7 (AxROM), 11 (Color Dreams), 13 (CPROM), 34 (BNROM/NINA),
   66 (GxROM/GNROM), 69 (Sunsoft FME-7/5B initial), 71 (Camerica), 78 (Holy Diver),
-  87 (J87), 101 (JF-10)
+  87 (J87), 101 (JF-10), 206 (Namco 108)
 - **Discovery dynamique** : nécessite `cynes`, supporté seulement pour mapper 0 (limitation runner actuelle)
 - **Capture sprites runtime** : couvre les cas simples NROM, MMC1/SxROM,
   UxROM, CNROM, MMC3, AxROM, Color Dreams, CPROM, BNROM/NINA, GxROM/GNROM,
-  Sunsoft FME-7/5B, Camerica, Holy Diver, J87 et JF-10. MMC1 et NINA couvrent
-  les fenêtres CHR 4 KiB split simples, CPROM couvre la fenêtre CHR-RAM 4 KiB
-  switchable, FME-7 couvre les fenêtres CHR 1 KiB simples, Holy Diver couvre
-  PRG 16 KiB + CHR-ROM 8 KiB sur un registre combiné, J87 couvre la fenêtre
-  CHR-ROM 8 KiB à bit-order inversé, JF-10 la variante à bit-order normal. Les ROMs
+  Sunsoft FME-7/5B, Camerica, Holy Diver, J87, JF-10 et Namco 108. MMC1 et NINA
+  couvrent les fenêtres CHR 4 KiB split simples, CPROM couvre la fenêtre
+  CHR-RAM 4 KiB switchable, FME-7 et Namco 108 couvrent les fenêtres CHR
+  1 KiB/2 KiB simples, Holy Diver couvre PRG 16 KiB + CHR-ROM 8 KiB sur un
+  registre combiné, J87 couvre la fenêtre CHR-ROM 8 KiB à bit-order inversé,
+  JF-10 la variante à bit-order normal. Les ROMs
   CHR-RAM simples sont exportées depuis les writes runtime vers la pattern
   table, avec `chr_ram: true` et `chr_source: snapshot` dans le manifeste. Le
   runner fournit aussi une PRG-RAM `$6000-$7FFF` zero-init pour capturer les

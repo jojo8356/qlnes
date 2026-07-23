@@ -6,7 +6,7 @@ HEADER_SIZE = 16
 PRG_BANK = 0x4000
 CHR_BANK = 0x2000
 
-SUPPORTED_MAPPERS = (0, 1, 2, 3, 4, 7, 11, 13, 34, 66, 69, 71, 78, 87, 101)
+SUPPORTED_MAPPERS = (0, 1, 2, 3, 4, 7, 11, 13, 34, 66, 69, 71, 78, 87, 101, 206)
 
 
 @dataclass
@@ -198,7 +198,7 @@ def rom_to_images(data: bytes) -> list[tuple[int, bytes]]:
         return _layout_uxrom(prg)
     if h.mapper == 1:
         return _layout_mmc1_default(prg)
-    if h.mapper == 4:
+    if h.mapper in (4, 206):
         return _layout_mmc3_initial(prg)
     if h.mapper == 7:
         return _layout_axrom(prg)

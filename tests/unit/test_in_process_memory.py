@@ -16,6 +16,7 @@ from qlnes.audio.in_process.memory import (
     JF10Memory,
     MMC1Memory,
     MMC3Memory,
+    Namco108Memory,
     NROMMemory,
     UxROMMemory,
 )
@@ -498,6 +499,22 @@ def test_mmc3_bank_select_maps_chr_windows_into_snapshot_pattern_table():
     chr_data = b"".join(bytes([bank_id] * 0x0400) for bank_id in range(16))
     m = MMC3Memory(b"".join(banks), chr_data=chr_data)
     m[0x8000] = 0x02
+    m[0x8001] = 0x07
+    snap = m.ppu_snapshot()
+    assert snap.pattern_table[0x1000] == 7
+    assert snap.pattern_table[0x13FF] == 7
+
+
+def test_mapper206_ignores_mmc3_mode_bits_and_maps_chr_windows():
+    banks = [bytes([bank_id] * 0x2000) for bank_id in range(8)]
+    chr_data = b"".join(bytes([bank_id] * 0x0400) for bank_id in range(16))
+    m = Namco108Memory(b"".join(banks), chr_data=chr_data)
+    m[0x8000] = 0x86  # upper mode bits ignored; select PRG register 6
+    m[0x8001] = 0x03
+    assert m[0x8000] == 3
+    assert m[0xC000] == 6
+
+    m[0x8000] = 0x82  # upper mode bits ignored; select CHR register 2
     m[0x8001] = 0x07
     snap = m.ppu_snapshot()
     assert snap.pattern_table[0x1000] == 7

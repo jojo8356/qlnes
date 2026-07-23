@@ -14,6 +14,7 @@ CamericaMemory (mapper 71) supports the Codemasters/Camerica UNROM variant.
 J87Memory (mapper 87) and JF10Memory (mapper 101) support fixed PRG with
 switchable 8 KiB CHR-ROM.
 HolyDiverMemory (mapper 78) supports switchable 16 KiB PRG and 8 KiB CHR-ROM.
+Namco108Memory (mapper 206) supports MMC3-like PRG/CHR banking without mode bits.
 
 The APU observer lives inside __setitem__: when py65 writes to
 $4000-$4017, we record an ApuWriteEvent. PPU reads/writes go through
@@ -837,6 +838,24 @@ class MMC3Memory(NROMMemory):
         super().reset_state()
         self._bank_select = 0
         self._regs = [0, 2, 4, 5, 6, 7, 0, 1]
+
+
+class Namco108Memory(MMC3Memory):
+    """Mapper-206 Namco 108/109/118/MIMIC-1 memory.
+
+    This is MMC3-like for the sprite capture path but without PRG/CHR mode
+    control bits. The last two 8 KiB PRG banks stay fixed and the CHR layout is
+    always two 2 KiB banks at $0000-$0FFF plus four 1 KiB banks at
+    $1000-$1FFF.
+    """
+
+    def _write_mapper_register(self, addr: int, value: int) -> None:
+        if 0x8000 <= addr <= 0x9FFF:
+            if addr & 1:
+                self._regs[self._bank_select & 0x07] = value
+                self.chr_bank = self._dominant_chr_8k_bank()
+            else:
+                self._bank_select = value & 0x07
 
 
 class FME7Memory(NROMMemory):

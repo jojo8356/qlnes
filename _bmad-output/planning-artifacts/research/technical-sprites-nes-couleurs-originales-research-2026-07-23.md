@@ -719,6 +719,12 @@ La premiere implementation qlnes suit cette decision :
   switchable via le même registre `CCCC MPPP` à `$8000-$FFFF`. qlnes utilise
   bits `0-2` pour PRG et bits `4-7` pour la CHR bank runtime. Source :
   https://www.nesdev.org/wiki/INES_Mapper_078
+- Pour mapper 206/Namco 108, NESdev documente une variante MMC3-like sans IRQ
+  ni bits de mode PRG/CHR : les deux dernières PRG banks 8 KiB sont fixes, et
+  la CHR est composée de deux fenêtres 2 KiB à gauche plus quatre fenêtres 1
+  KiB à droite. qlnes ignore donc les bits hauts de `$8000` et exporte les
+  sprites depuis la pattern table CHR mappée dans le snapshot. Source :
+  https://www.nesdev.org/wiki/INES_Mapper_206
 - Pour mapper 11/Color Dreams, NESdev documente une fenêtre CPU 32 KiB
   switchable à `$8000-$FFFF`, une fenêtre PPU CHR 8 KiB à `$0000-$1FFF`, et
   un registre `CCCC LLPP` : bits `0-1` pour le PRG bank 32 KiB, bits `4-7`
