@@ -792,10 +792,13 @@ def export_runtime_oam_sprites(
 
     rom_path = Path(rom_path)
     snapshot = load_runtime_sprite_snapshot(snapshot_path)
+    rom_bytes = rom_path.read_bytes()
+    header = parse_header(rom_bytes)
+    chr_ram = header is not None and header.chr_size == 0
     chr_data = (
         snapshot.chr_data
         if snapshot.chr_data is not None
-        else chr_from_ines(rom_path.read_bytes(), chr_bank=snapshot.chr_bank)
+        else chr_from_ines(rom_bytes, chr_bank=snapshot.chr_bank)
     )
     if len(chr_data) < 0x2000:
         raise ValueError(f"snapshot chr_data must contain at least 8192 bytes, got {len(chr_data)}")
@@ -846,6 +849,10 @@ def export_runtime_oam_sprites(
         sprite_height=snapshot.sprite_height,
         palette_source="runtime-snapshot",
     )
+    if chr_ram and snapshot.chr_data is not None:
+        manifest.notes.append(
+            "CHR-RAM runtime export: pattern table bytes came from captured PPU writes."
+        )
     if decoded:
         sheet = out_dir / "oam-spritesheet.png"
         manifest.spritesheet = write_spritesheet_png(
@@ -898,6 +905,7 @@ def export_runtime_oam_sprites(
                 "palette_profile": manifest.palette_profile,
                 "palette_ram": [f"0x{value:02X}" for value in snapshot.palette_ram],
                 "chr_source": "snapshot" if snapshot.chr_data is not None else "rom",
+                "chr_ram": chr_ram,
                 "transparent_index": 0,
                 "spritesheet": str(manifest.spritesheet) if manifest.spritesheet else None,
                 "screen_png": str(manifest.screen_png) if manifest.screen_png else None,

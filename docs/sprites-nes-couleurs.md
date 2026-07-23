@@ -122,6 +122,14 @@ Ensuite il exporte les sprites OAM comme le mode `--snapshot`, avec
 Chaque entrée `sprites[]` contient aussi `palette_ppu` et `palette_rgba`, pour
 retracer les quatre couleurs NES utilisées par le PNG exporté.
 
+Pour les ROMs CHR-RAM simples (`chr_banks = 0` dans l'en-tête iNES), il n'y a
+pas de CHR-ROM statique à extraire. Le mode runtime capture donc les writes
+`PPUDATA` vers `$0000-$1FFF` et exporte les sprites depuis cette pattern table
+VRAM capturée. Le manifeste écrit alors `chr_ram: true`, `chr_source:
+snapshot`, et conserve une note `CHR-RAM runtime export`. C'est le chemin à
+utiliser pour obtenir les PNG RGBA transparents avec couleurs runtime sur les
+jeux qui chargent leurs sprites au boot.
+
 Pour capturer plusieurs moments runtime, utiliser `--runtime-sample-frames`.
 qlnes reboote la ROM pour chaque checkpoint et écrit un sous-dossier par frame :
 

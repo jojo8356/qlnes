@@ -693,6 +693,10 @@ La premiere implementation qlnes suit cette decision :
   capture runtime. Cela permet d'atteindre plus d'etats de jeu que le boot
   naturel seul : ecran titre, debut de niveau, saut, attaque, marche, etc. Le
   manifeste conserve `runtime_input` et `controller1_nonzero_frames`.
+- Les ROMs CHR-RAM simples n'ont pas de données graphiques CHR statiques dans
+  le fichier `.nes`. L'export runtime capture donc les writes `PPUDATA` vers
+  `$0000-$1FFF` et marque le manifeste avec `chr_ram: true`, `chr_source:
+  snapshot` et une note `CHR-RAM runtime export`.
 - Pour mapper 11/Color Dreams, NESdev documente une fenêtre CPU 32 KiB
   switchable à `$8000-$FFFF`, une fenêtre PPU CHR 8 KiB à `$0000-$1FFF`, et
   un registre `CCCC LLPP` : bits `0-1` pour le PRG bank 32 KiB, bits `4-7`

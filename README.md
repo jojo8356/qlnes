@@ -103,6 +103,7 @@ python -m qlnes sprites ROM.nes -o out/sprites --palette 0F,30,16,27
 python -m qlnes sprites ROM.nes -o out/oam-sprites --snapshot snapshot-ppu-oam.json
 
 # Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/BNROM/GxROM/FME-7/Camerica : capture palette/OAM automatiquement
+# Inclut les ROMs CHR-RAM simples quand les patterns sont écrits en VRAM au boot.
 python -m qlnes sprites ROM.nes -o out/oam-sprites --runtime-frames 120
 
 # Capturer plusieurs frames runtime pour récupérer plus d'états OAM/palettes
@@ -242,9 +243,12 @@ qlnes/
 - **Capture sprites runtime** : couvre les cas simples NROM, MMC1/SxROM,
   UxROM, CNROM, MMC3, AxROM, Color Dreams, BNROM/NINA, GxROM/GNROM,
   Sunsoft FME-7/5B et Camerica. MMC1 et NINA couvrent les fenêtres CHR 4 KiB
-  split simples, FME-7 couvre les fenêtres CHR 1 KiB simples. Les variantes
-  mapper complexes, les IRQ/raster effects et les changements mid-frame
-  demandent encore un snapshot externe ou un observateur PPU plus complet.
+  split simples, FME-7 couvre les fenêtres CHR 1 KiB simples. Les ROMs
+  CHR-RAM simples sont exportées depuis les writes runtime vers la pattern
+  table, avec `chr_ram: true` et `chr_source: snapshot` dans le manifeste. Les
+  variantes mapper complexes, les IRQ/raster effects et les changements
+  mid-frame demandent encore un snapshot externe ou un observateur PPU plus
+  complet.
 - **Inputs runtime** : `--runtime-input` pilote la manette 1 avec des plages de
   frames (`start@1:30,a+right@120:240`) pour atteindre plus d'états de jeu
   avant l'export PNG.
