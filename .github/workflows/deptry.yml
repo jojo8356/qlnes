@@ -37,5 +37,5 @@ jobs:
           deptry qlnes \
             --requirements-files requirements.txt \
             --known-first-party qlnes \
-            --package-module-name-map "ucolor-python=ucolor,ulog-python[storage,web]=ulog" \
-            --per-rule-ignores "DEP002=ucolor-python|django-lucide"
+            --package-module-name-map "ucolor-python=ucolor,ulog-python=ulog" \
+            --per-rule-ignores "DEP002=ucolor-python|django|sqlalchemy|django-lucide"

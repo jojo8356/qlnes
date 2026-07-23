@@ -13,9 +13,11 @@ lameenc>=1.8.0,<1.9
 # `ulog` lives at vendor/ulog-python/ as a git submodule (jojo8356/ulog-python).
 # It upgrades stdlib logging with sensible defaults, ucolor formatters,
 # SQL/JSON/CSV storage handlers, and a Django + Tailwind inspection UI.
-# Extras `[storage]` brings sqlalchemy (needed by SQLHandler);
-# extras `[web]` brings django (needed by `ulog web` to inspect logs).
--e ./vendor/ulog-python[storage,web]
+# `ulog` is installed editable from the submodule. Keep its optional runtime
+# deps explicit here so dependency scanners do not have to parse editable extras.
+-e ./vendor/ulog-python
+sqlalchemy>=2.0
+django>=5.0
 # `django-lucide` — lucide-icons SVG rendering as Django template tags
 # {% lucide "name" size=… class="…" %}. Used by the ulog Django UI for
 # every visual icon; renders inline SVGs with currentColor (theme-aware).
