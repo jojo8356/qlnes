@@ -57,6 +57,7 @@ Sources principales :
 - NESdev, PPU palettes : https://www.nesdev.org/wiki/PPU_palettes
 - NESdev, PPU OAM : https://www.nesdev.org/wiki/PPU_OAM
 - NESdev, List of mappers : https://www.nesdev.org/wiki/List_of_mappers
+- NESdev, MMC5 : https://www.nesdev.org/wiki/MMC5
 - NESdev, INES Mapper 016 : https://www.nesdev.org/wiki/INES_Mapper_016
 - NESdev, INES Mapper 018 : https://www.nesdev.org/wiki/INES_Mapper_018
 - NESdev, INES Mapper 019 : https://www.nesdev.org/wiki/INES_Mapper_019
@@ -714,14 +715,14 @@ La premiere implementation qlnes suit cette decision :
   exporte les sprites OAM avec palette RAM runtime, flips, taille 8x8/8x16 et
   canvas `oam-screen.png`.
 - `python -m qlnes sprites ROM.nes -o out/oam --runtime-frames 120` boote les
-  ROMs simples NROM, MMC1/SxROM, UxROM, CNROM, MMC3, AxROM, MMC2/PxROM,
+  ROMs simples NROM, MMC1/SxROM, UxROM, CNROM, MMC3, MMC5, AxROM, MMC2/PxROM,
   MMC4/FxROM, Color Dreams, Bandai FCG, Jaleco SS88006, Namco 129/163,
   Irem G-101, Taito TC0190,
   BNROM/NINA, Mapper 42, GxROM/GNROM, Sunsoft FME-7/5B, Bandai, Camerica,
   JF-17 et NINA-03/06 avec l'observateur in-process et capture automatiquement
   PPUCTRL, PPUMASK, palette RAM, OAM/OAMDMA, pattern table CHR-RAM simple,
   CHR bank CNROM actif, fenêtres CHR MMC1 8 KiB/split 4 KiB, fenêtres CHR MMC3
-  1 KiB/2 KiB, fenêtres CHR MMC2/MMC4 4 KiB latchées, fenêtres CHR NINA 4 KiB, PRG banks AxROM, PRG-CHR banks Color
+  1 KiB/2 KiB, fenêtres CHR MMC5 sprite, fenêtres CHR MMC2/MMC4 4 KiB latchées, fenêtres CHR NINA 4 KiB, PRG banks AxROM, PRG-CHR banks Color
   Dreams et PRG-CHR banks GxROM, ainsi que les fenêtres PRG 8 KiB et CHR 1 KiB
   FME-7, les fenêtres CHR 1 KiB Bandai FCG/Jaleco SS88006/Namco 129-163/Irem G-101 et 2 KiB/1 KiB Taito TC0190, le registre `PPPP CCCC` Bandai, les bits de commande PRG/CHR JF-17 et
   le registre expansion NINA-03/06.
@@ -768,6 +769,12 @@ La premiere implementation qlnes suit cette decision :
   pour les pattern tables. qlnes compose ces huit fenêtres dans le snapshot
   runtime ; IRQ, expansion audio et banking nametable spécial restent hors du
   chemin export sprites. Source : https://www.nesdev.org/wiki/INES_Mapper_019
+- Pour mapper 5/MMC5, NESdev documente quatre modes PRG, quatre modes CHR, les
+  registres PRG `$5114-$5117`, les registres CHR `$5120-$512B` et les bits hauts
+  `$5130`. qlnes observe ces registres pour reconstruire les fenêtres CHR sprite
+  visibles dans le snapshot runtime ; IRQ, audio MMC5, ExRAM, split screen et
+  attributs étendus restent hors du chemin export sprites. Source :
+  https://www.nesdev.org/wiki/MMC5
 - Pour mapper 32/Irem G-101, NESdev documente deux fenêtres PRG-ROM 8 KiB
   switchables, deux fenêtres PRG fixes avec mode d'échange `$8000/$C000`, et
   huit fenêtres CHR-ROM 1 KiB. qlnes observe les registres PRG/CHR nécessaires

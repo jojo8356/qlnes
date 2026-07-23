@@ -79,10 +79,10 @@ sprite-only avec fond transparent.
 Les sprites masques hors ecran (`Y >= 0xEF`) sont ignores par defaut. Ajouter
 `--include-hidden` pour les exporter aussi.
 
-## Mode runtime automatique NROM/MMC1/UxROM/CNROM/MMC3/AxROM/MMC2/MMC4/Color Dreams/CPROM/Bandai FCG/Jaleco SS88006/Namco 163/Irem G-101/Taito TC0190/BNROM/Mapper 42/GxROM/FME-7/Bandai/Camerica/JF-17/Holy Diver/NINA-03-06/J87/JF-10/Namco 108
+## Mode runtime automatique NROM/MMC1/UxROM/CNROM/MMC3/MMC5/AxROM/MMC2/MMC4/Color Dreams/CPROM/Bandai FCG/Jaleco SS88006/Namco 163/Irem G-101/Taito TC0190/BNROM/Mapper 42/GxROM/FME-7/Bandai/Camerica/JF-17/Holy Diver/NINA-03-06/J87/JF-10/Namco 108
 
 Pour les ROMs mapper 0/NROM, mapper 1/MMC1 simple, mapper 2/UxROM, mapper
-3/CNROM, mapper 4/MMC3 simple, mapper 7/AxROM, mapper 9/MMC2, mapper
+3/CNROM, mapper 4/MMC3 simple, mapper 5/MMC5 simple, mapper 7/AxROM, mapper 9/MMC2, mapper
 10/MMC4, mapper 11/Color Dreams, mapper 13/CPROM, mapper 16/Bandai FCG,
 mapper 18/Jaleco SS88006, mapper 19/Namco 129-163, mapper 32/Irem G-101,
 mapper 33/Taito TC0190,
@@ -115,6 +115,9 @@ Ce mode boote la ROM en-process avec `py65`, observe :
 - les writes mapper 3/CNROM vers `$8000-$FFFF` pour choisir le CHR bank actif ;
 - les writes mapper 4/MMC3 vers `$8000/$8001` pour choisir les PRG banks et
   composer les fenêtres CHR 1 KiB/2 KiB visibles dans le snapshot ;
+- les writes mapper 5/MMC5 vers `$5100/$5101`, `$5114-$5117`,
+  `$5120-$512B` et `$5130` pour choisir les modes PRG/CHR, les banques PRG et
+  les fenêtres CHR sprite visibles dans le snapshot ;
 - les writes mapper 7/AxROM vers `$8000-$FFFF` pour choisir la PRG bank 32 KiB ;
 - les writes mapper 9/MMC2 vers `$A000-$EFFF` pour choisir la PRG bank 8 KiB
   basse et les deux fenêtres CHR-ROM 4 KiB latchées visibles dans le snapshot ;
@@ -289,7 +292,7 @@ python -m qlnes sprites ROM.nes \
 ## Limite actuelle
 
 La commande sait capturer automatiquement les cas
-NROM/MMC1/UxROM/CNROM/MMC3/AxROM/MMC2/MMC4/Color Dreams/CPROM/Bandai FCG/Jaleco SS88006/Namco 163/Irem G-101/Taito TC0190/BNROM/Mapper 42/GxROM/FME-7/Bandai/Camerica/JF-17/Holy Diver/NINA-03-06/J87/JF-10/Namco 108
+NROM/MMC1/UxROM/CNROM/MMC3/MMC5/AxROM/MMC2/MMC4/Color Dreams/CPROM/Bandai FCG/Jaleco SS88006/Namco 163/Irem G-101/Taito TC0190/BNROM/Mapper 42/GxROM/FME-7/Bandai/Camerica/JF-17/Holy Diver/NINA-03-06/J87/JF-10/Namco 108
 simples, y compris une partie des ROMs CHR-RAM si les tiles sont ecrites via
 `PPUDATA` pendant la fenetre capturee.
 Elle ne couvre pas encore tous les jeux NES :

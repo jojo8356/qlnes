@@ -148,7 +148,7 @@ class TestProfileWithDynamic(unittest.TestCase):
 
 class TestUnknownMapper(unittest.TestCase):
     def test_unsupported_mapper_raises(self):
-        rom_bytes = fake_rom(2, 5)
+        rom_bytes = fake_rom(2, 6)
         with self.assertRaises(NotImplementedError):
             Rom(rom_bytes)
 

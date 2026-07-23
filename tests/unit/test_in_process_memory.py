@@ -20,6 +20,7 @@ from qlnes.audio.in_process.memory import (
     JF10Memory,
     JF17Memory,
     MMC1Memory,
+    MMC5Memory,
     MMC2Memory,
     MMC3Memory,
     MMC4Memory,
@@ -521,6 +522,31 @@ def test_mapper19_namco163_switches_prg_and_1k_chr_windows():
     assert m[0xE000] == 7
 
     m[0xA000] = 0x1B
+    snap = m.ppu_snapshot()
+    assert snap.pattern_table[0x1000] == 27
+    assert snap.pattern_table[0x13FF] == 27
+
+
+def test_mapper5_mmc5_switches_prg_and_1k_chr_windows():
+    banks = [bytes([bank_id] * 0x2000) for bank_id in range(8)]
+    chr_data = b"".join(bytes([bank_id] * 0x0400) for bank_id in range(32))
+    m = MMC5Memory(b"".join(banks), chr_data=chr_data)
+    assert m[0x8000] == 4
+    assert m[0xA000] == 5
+    assert m[0xC000] == 6
+    assert m[0xE000] == 7
+
+    m[0x5114] = 0x84
+    m[0x5115] = 0x85
+    m[0x5116] = 0x86
+    m[0x5117] = 0x87
+    assert m[0x8000] == 4
+    assert m[0xA000] == 5
+    assert m[0xC000] == 6
+    assert m[0xE000] == 7
+
+    m[0x5101] = 0x03
+    m[0x5124] = 0x1B
     snap = m.ppu_snapshot()
     assert snap.pattern_table[0x1000] == 27
     assert snap.pattern_table[0x13FF] == 27
