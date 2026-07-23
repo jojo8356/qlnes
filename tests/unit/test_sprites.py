@@ -992,6 +992,50 @@ def _runtime_mmc4_sprite_test_rom() -> bytes:
     return ines_header(4, 4, 10) + b"".join(bytes(bank) for bank in banks) + bytes(chr_data)
 
 
+def _runtime_mapper16_sprite_test_rom() -> bytes:
+    body = [
+        0xA2, 0x00,
+        0xA9, 0xF8,
+        0x9D, 0x00, 0x02,
+        0xE8,
+        0xD0, 0xFA,
+        0xA9, 0x14, 0x8D, 0x00, 0x02,
+        0xA9, 0x00, 0x8D, 0x01, 0x02,
+        0xA9, 0x00, 0x8D, 0x02, 0x02,
+        0xA9, 0x0C, 0x8D, 0x03, 0x02,
+        0xA9, 0x00, 0x8D, 0x03, 0x20,
+        0xA9, 0x02, 0x8D, 0x14, 0x40,
+        0xAD, 0x02, 0x20,
+        0xA9, 0x3F, 0x8D, 0x06, 0x20,
+        0xA9, 0x10, 0x8D, 0x06, 0x20,
+    ]
+    for value in (0x0F, 0x30, 0x16, 0x27):
+        body.extend([0xA9, value, 0x8D, 0x07, 0x20])
+    body.extend([0xA9, 0x88, 0x8D, 0x00, 0x20])
+    loop_addr = 0x8000 + len(body)
+    body.extend([0x4C, loop_addr & 0xFF, loop_addr >> 8])
+
+    banks = [bytearray([0xEA] * 0x4000) for _ in range(4)]
+    banks[2][: len(body)] = bytes(body)
+    banks[-1][0x0100] = 0x40
+    banks[-1][0x3FFA:0x3FFC] = (0xC100).to_bytes(2, "little")
+    banks[-1][0x3FFC:0x3FFE] = (0xC000).to_bytes(2, "little")
+    banks[-1][0x3FFE:0x4000] = (0xC100).to_bytes(2, "little")
+    reset = [
+        0x78,
+        0xD8,
+        0xA9, 0x05, 0x8D, 0x04, 0x60,  # CHR slot 4 ($1000-$13FF) = 1 KiB bank 5
+        0xA9, 0x02, 0x8D, 0x08, 0x60,  # PRG bank 2 at $8000-$BFFF
+        0x4C, 0x00, 0x80,
+    ]
+    banks[-1][: len(reset)] = bytes(reset)
+
+    chr_data = bytearray(0x4000)
+    rows = [[0, 1, 2, 3, 0, 1, 2, 3] for _ in range(8)]
+    chr_data[5 * 0x0400 : 5 * 0x0400 + 0x10] = _encode_tile(rows)
+    return ines_header(4, 2, 16) + b"".join(bytes(bank) for bank in banks) + bytes(chr_data)
+
+
 def _runtime_mapper71_sprite_test_rom() -> bytes:
     bank0 = bytearray([0xEA] * PRG_BANK)
     bank1 = bytearray([0xEA] * PRG_BANK)
@@ -1940,6 +1984,24 @@ class TestSpriteExport(unittest.TestCase):
             rom_path = Path(td) / "runtime-mmc4.nes"
             rom_path.write_bytes(_runtime_mmc4_sprite_test_rom())
             out_dir = Path(td) / "auto-mmc4"
+
+            manifest = export_in_process_runtime_sprites(rom_path, out_dir, frames=1)
+
+            self.assertEqual(manifest.n_tiles, 1)
+            sprite = out_dir / "oam" / "sprite-00-tile-00-pal0.png"
+            img = Image.open(sprite).convert("RGBA")
+            self.assertEqual(img.getpixel((0, 0))[3], 0)
+            self.assertEqual(img.getpixel((1, 0)), (0xFC, 0xFC, 0xFC, 255))
+            data = json.loads((out_dir / "sprites-manifest.json").read_text())
+            self.assertEqual(data["chr_source"], "snapshot")
+            self.assertEqual(data["snapshot"], "in-process")
+            self.assertEqual(data["sprites"][0]["palette_ppu"], ["0x0F", "0x30", "0x16", "0x27"])
+
+    def test_in_process_runtime_export_runs_mapper16_bandai_fcg_and_uses_1k_chr_window(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "runtime-mapper16.nes"
+            rom_path.write_bytes(_runtime_mapper16_sprite_test_rom())
+            out_dir = Path(td) / "auto-mapper16"
 
             manifest = export_in_process_runtime_sprites(rom_path, out_dir, frames=1)
 

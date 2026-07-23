@@ -8,6 +8,7 @@ and a conservative MMC1Memory (mapper 1). MMC3Memory (mapper 4) supports
 enough PRG/CHR banking for runtime sprite capture on simple boot snapshots.
 MMC2Memory (mapper 9) and MMC4Memory (mapper 10) support latch-selected
 4 KiB CHR windows for original-color sprite snapshots.
+Bandai16Memory (mapper 16) supports Bandai FCG PRG and 1 KiB CHR windows.
 NINA0306Memory (mapper 79) supports AVE NINA-03/NINA-06 PRG/CHR banking.
 AxROMMemory (mapper 7) supports 32 KiB PRG switching with CHR-RAM captures.
 BNROMNINAMemory (mapper 34) supports BNROM PRG switching and NINA split CHR.
@@ -637,6 +638,79 @@ class MMC4Memory(MMC2Memory):
         if addr < 0xC000:
             return self._prg16_banks[self._prg_bank % len(self._prg16_banks)][addr - 0x8000]
         return self._prg16_banks[-1][addr - 0xC000]
+
+
+class Bandai16Memory(NROMMemory):
+    """Mapper-16 Bandai FCG memory.
+
+    CPU $8000-$BFFF is a switchable 16 KiB PRG bank and $C000-$FFFF is fixed
+    to the last PRG bank. Registers at `$6000-$6008` or `$8000-$8008` select
+    eight 1 KiB CHR-ROM windows and the low PRG bank. IRQ, mirroring and EEPROM
+    registers are outside this sprite snapshot path.
+    """
+
+    def __init__(self, prg: bytes, chr_data: bytes) -> None:
+        if len(prg) % 0x4000 != 0 or len(prg) < 0x8000:
+            raise ValueError("Mapper 16 PRG must contain at least two 16 KiB banks")
+        self._banks = [prg[i : i + 0x4000] for i in range(0, len(prg), 0x4000)]
+        super().__init__(self._banks[0] + self._banks[-1])
+        if not chr_data:
+            raise ValueError("Mapper 16 requires CHR-ROM data")
+        self._chr_rom = bytes(chr_data)
+        self._chr_1k_count = max(len(self._chr_rom) // 0x0400, 1)
+        self._switch_bank = 0
+        self._chr_regs = list(range(8))
+
+    def _read_prg(self, addr: int) -> int:
+        if addr < 0xC000:
+            return self._banks[self._switch_bank][addr - 0x8000]
+        return self._banks[-1][addr - 0xC000]
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if 0x6000 <= addr <= 0x600F or 0x8000 <= addr <= 0x800F:
+            self._write_mapper_register(addr, value & 0xFF)
+            return
+        if addr >= 0x8000:
+            return
+        super().__setitem__(addr, value)
+
+    def _write_mapper_register(self, addr: int, value: int) -> None:
+        reg = addr & 0x000F
+        if 0 <= reg <= 7:
+            self._chr_regs[reg] = value
+            self.chr_bank = self._dominant_chr_8k_bank()
+        elif reg == 8:
+            self._switch_bank = value % len(self._banks)
+        # $9 mirroring, $A-$C IRQ and $D EEPROM are ignored here.
+
+    def _mapped_chr_pattern_table(self) -> bytes:
+        out = bytearray(0x2000)
+        for slot, reg in enumerate(self._chr_regs):
+            bank = reg % self._chr_1k_count
+            start = bank * 0x0400
+            out[slot * 0x0400 : (slot + 1) * 0x0400] = self._chr_rom[start : start + 0x0400]
+        return bytes(out)
+
+    def _dominant_chr_8k_bank(self) -> int:
+        if self._chr_1k_count < 8:
+            return 0
+        return (self._chr_regs[0] % self._chr_1k_count) // 8
+
+    def ppu_snapshot(self) -> PpuSnapshot:
+        snap = super().ppu_snapshot()
+        return PpuSnapshot(
+            ppuctrl=snap.ppuctrl,
+            ppumask=snap.ppumask,
+            palette_ram=snap.palette_ram,
+            oam=snap.oam,
+            pattern_table=self._mapped_chr_pattern_table(),
+            chr_bank=self._dominant_chr_8k_bank(),
+        )
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        self._switch_bank = 0
+        self._chr_regs = list(range(8))
 
 
 class CPROMMemory(NROMMemory):

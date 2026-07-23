@@ -5,6 +5,7 @@ import pytest
 
 from qlnes.audio.in_process.memory import (
     AxROMMemory,
+    Bandai16Memory,
     Bandai70Memory,
     BNROMNINAMemory,
     CamericaMemory,
@@ -448,6 +449,27 @@ def test_mmc4_mapper10_switches_16k_prg_and_latched_4k_chr_windows():
     assert m[0x2007] == 4
     snap = m.ppu_snapshot()
     assert snap.pattern_table[0x0000] == 4
+
+
+def test_mapper16_bandai_fcg_switches_prg_and_1k_chr_windows():
+    banks = [bytes([bank_id] * 0x4000) for bank_id in range(4)]
+    chr_data = b"".join(bytes([bank_id] * 0x0400) for bank_id in range(16))
+    m = Bandai16Memory(b"".join(banks), chr_data=chr_data)
+    assert m[0x8000] == 0
+    assert m[0xC000] == 3
+
+    m[0x6008] = 0x02
+    m[0x6004] = 0x0B
+    assert m[0x8000] == 2
+    assert m[0xBFFF] == 2
+    assert m[0xC000] == 3
+    snap = m.ppu_snapshot()
+    assert snap.pattern_table[0x1000] == 11
+    assert snap.pattern_table[0x13FF] == 11
+
+    m[0x8005] = 0x0C
+    snap = m.ppu_snapshot()
+    assert snap.pattern_table[0x1400] == 12
 
 
 def test_mapper34_bnrom_switches_32k_prg_bank():

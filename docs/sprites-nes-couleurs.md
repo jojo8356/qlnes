@@ -79,11 +79,12 @@ sprite-only avec fond transparent.
 Les sprites masques hors ecran (`Y >= 0xEF`) sont ignores par defaut. Ajouter
 `--include-hidden` pour les exporter aussi.
 
-## Mode runtime automatique NROM/MMC1/UxROM/CNROM/MMC3/AxROM/MMC2/MMC4/Color Dreams/CPROM/BNROM/Mapper 42/GxROM/FME-7/Bandai/Camerica/JF-17/Holy Diver/NINA-03-06/J87/JF-10/Namco 108
+## Mode runtime automatique NROM/MMC1/UxROM/CNROM/MMC3/AxROM/MMC2/MMC4/Color Dreams/CPROM/Bandai FCG/BNROM/Mapper 42/GxROM/FME-7/Bandai/Camerica/JF-17/Holy Diver/NINA-03-06/J87/JF-10/Namco 108
 
 Pour les ROMs mapper 0/NROM, mapper 1/MMC1 simple, mapper 2/UxROM, mapper
 3/CNROM, mapper 4/MMC3 simple, mapper 7/AxROM, mapper 9/MMC2, mapper
-10/MMC4, mapper 11/Color Dreams, mapper 13/CPROM, mapper 34/BNROM-NINA,
+10/MMC4, mapper 11/Color Dreams, mapper 13/CPROM, mapper 16/Bandai FCG,
+mapper 34/BNROM-NINA,
 mapper 42/FDS conversions, mapper 66/GxROM,
 mapper 69/Sunsoft FME-7/5B, mapper 70/Bandai, mapper 71/Camerica, mapper
 72/JF-17, mapper 78/Holy Diver, mapper 79/NINA-03-06, mapper 87/J87, mapper
@@ -121,6 +122,8 @@ Ce mode boote la ROM en-process avec `py65`, observe :
   32 KiB via bits `0-1` et le CHR bank 8 KiB via bits `4-7` ;
 - les writes mapper 13/CPROM vers `$8000-$FFFF` pour choisir la page CHR-RAM
   4 KiB visible en PPU `$1000-$1FFF` ;
+- les writes mapper 16/Bandai FCG vers `$6000-$6008` ou `$8000-$8008` pour
+  choisir les huit fenêtres CHR-ROM 1 KiB et la PRG bank 16 KiB basse ;
 - les writes mapper 34/BNROM vers `$8000-$FFFF` pour choisir la PRG bank 32 KiB
   ou, en mode NINA, `$7FFD/$7FFE/$7FFF` pour choisir PRG 32 KiB et deux
   fenêtres CHR 4 KiB ;
@@ -276,7 +279,7 @@ python -m qlnes sprites ROM.nes \
 ## Limite actuelle
 
 La commande sait capturer automatiquement les cas
-NROM/MMC1/UxROM/CNROM/MMC3/AxROM/MMC2/MMC4/Color Dreams/CPROM/BNROM/Mapper 42/GxROM/FME-7/Bandai/Camerica/JF-17/Holy Diver/NINA-03-06/J87/JF-10/Namco 108
+NROM/MMC1/UxROM/CNROM/MMC3/AxROM/MMC2/MMC4/Color Dreams/CPROM/Bandai FCG/BNROM/Mapper 42/GxROM/FME-7/Bandai/Camerica/JF-17/Holy Diver/NINA-03-06/J87/JF-10/Namco 108
 simples, y compris une partie des ROMs CHR-RAM si les tiles sont ecrites via
 `PPUDATA` pendant la fenetre capturee.
 Elle ne couvre pas encore tous les jeux NES :
