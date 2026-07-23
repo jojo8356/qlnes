@@ -1,0 +1,92 @@
+# generated: 2026-07-22
+# last_updated: 2026-07-22
+# project: qlnes
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: /home/jojokes/Documents/programmation/projets/autres/qlnes/_bmad-output/implementation-artifacts
+#
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog -> in-progress: Automatically when first story is created via create-story
+#   - in-progress -> done: Manually when all stories reach done status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Generated from the authoritative addendum 2026-07-22 in planning-artifacts/epics-and-stories.md.
+# - Historical A-E stories remain reference material for detailed acceptance criteria and dev notes.
+# - 2026-07-22 audio validation evidence:
+#   _bmad-output/audio-validation/epic-1-validation-2026-07-22.md.
+# - Epic 1 done on the addendum scope: first supported mapper/engine vertical
+#   slice with WAV/MP3, deterministic per-song files, loop provenance,
+#   canonical PCM hashes, and unknown-engine unverified fallback.
+# - Arbitrary exporter-specific FT table walking and broad real-ROM
+#   sample-equivalence move to Epic 2 / Epic 6 coverage work.
+
+generated: 2026-07-22
+last_updated: 2026-07-22
+project: qlnes
+project_key: NOKEY
+tracking_system: file-system
+story_location: /home/jojokes/Documents/programmation/projets/autres/qlnes/_bmad-output/implementation-artifacts
+
+development_status:
+  epic-1: done
+  1-1-premier-wav-verifie-depuis-une-rom-mapper-0: done
+  1-2-exhaustive-song-table-enumeration: done
+  1-3-loop-aware-wav-output: done
+  1-4-mp3-output-from-canonical-pcm: done
+  1-5-unknown-engine-fallback-tagged-unverified: done
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-verification-audio-dune-rom-contre-fceux: backlog
+  2-2-corpus-manifest-and-reference-generation: backlog
+  2-3-qlnes-audit-writes-bilan-json: backlog
+  2-4-qlnes-coverage-table-and-json: backlog
+  2-5-stale-coverage-and-refresh: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-nsf2-header-et-payload-mapper-0: backlog
+  3-2-nsfe-metadata-chunks: backlog
+  3-3-nsf-output-shares-song-enumeration-with-audio-output: backlog
+  3-4-nsf-unsupported-mapper-expansion-failure: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-erreurs-structurees-et-exit-codes: backlog
+  4-2-atomic-output-and-overwrite-protection: backlog
+  4-3-layered-configuration-for-audio-commands: backlog
+  4-4-batch-mode-flags-and-non-tty-behavior: backlog
+  4-5-shell-completion-and-help-contract: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-regression-tests-pour-ingestion-et-analyse-rom: backlog
+  5-2-regression-tests-pour-recompile-et-verify: backlog
+  5-3-regression-tests-pour-assets-png: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-ajouter-un-nouveau-mapper-engine-audio-a-la-matrice: backlog
+  6-2-chr-png-round-trip-growth-story: backlog
+  6-3-packaging-growth-story: backlog
+  6-4-interactive-rom-shell-vision-story: backlog
+  epic-6-retrospective: optional

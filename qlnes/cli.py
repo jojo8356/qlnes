@@ -272,6 +272,10 @@ def audio(
         bool,
         typer.Option("--force", help="Écraser les fichiers de sortie existants"),
     ] = False,
+    bilan: Annotated[
+        Path | None,
+        typer.Option("--bilan", help="Écrire un bilan JSON de provenance audio"),
+    ] = None,
     quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Silencer les lignes info")] = False,
     no_hints: Annotated[
         bool, typer.Option("--no-hints", help="Supprime la ligne `hint:` sur erreurs/warnings")
@@ -306,6 +310,7 @@ def audio(
     70 internal, 73 cant_create, 100 unsupported_mapper / in_process_unavailable,
     130 SIGINT.
     """
+    from .audio.bilan import write_audio_bilan
     from .audio.renderer import ENGINE_MODE_VALUES, render_rom_audio_v2
     from .config import ConfigLoader
     from .io.errors import QlnesError, emit
@@ -366,6 +371,15 @@ def audio(
         )
         for p in result.output_paths:
             logger.info("✓ %s", p)
+        if result.engine_name == "unknown":
+            logger.warning(
+                "moteur audio non reconnu: mapper=%s sha256=%s statut=unverified",
+                result.mapper,
+                result.rom_sha256,
+            )
+        if bilan is not None:
+            write_audio_bilan(bilan, result, fmt=resolved_fmt, frames=resolved_frames)
+            logger.info("✓ bilan écrit : %s", bilan)
         logger.info(
             "✓ %d %s écrit(s)  (moteur=%s, tier=%d, mode=%s)",
             len(result.output_paths),
@@ -491,6 +505,97 @@ def nsf(
     )
     if build.note:
         logger.info("%s", build.note)
+
+
+@app.command("smb-nsf")
+def smb_nsf(
+    rom: Annotated[Path, typer.Argument(help="ROM Super Mario Bros. .nes source", exists=True)],
+    output: Annotated[Path, typer.Option("-o", "--output", help="Sortie .nsf")],
+    split_dir: Annotated[
+        Path | None,
+        typer.Option("--split-dir", help="Dossier optionnel pour écrire un NSF par piste"),
+    ] = None,
+    mp3_dir: Annotated[
+        Path | None,
+        typer.Option("--mp3-dir", help="Dossier optionnel pour écrire les MP3 coupés avant loop"),
+    ] = None,
+    fade_seconds: Annotated[
+        float,
+        typer.Option("--fade-seconds", help="Fade appliqué en fin de MP3, sans dépasser la durée réelle"),
+    ] = 2.0,
+    bitrate: Annotated[str, typer.Option("--bitrate", help="Bitrate ffmpeg/libmp3lame")] = "192k",
+    title: Annotated[
+        str, typer.Option("--title", help="Titre NSF")
+    ] = "Super Mario Bros. SMB custom soundtrack",
+    artist: Annotated[str, typer.Option("--artist")] = "Koji Kondo",
+    copyright_: Annotated[
+        str,
+        typer.Option("--copyright"),
+    ] = "Local private rip; do not distribute commercial ROM audio",
+    quiet: Annotated[bool, typer.Option("-q", "--quiet")] = False,
+) -> None:
+    """Construit un NSF banked specifique au moteur audio custom de SMB."""
+    from .io.log import get_logger
+    from .smb_nsf import (
+        SMB_TRACKS,
+        read_smb_track_timings,
+        write_smb_nsf,
+        write_smb_split_nsfs,
+        write_smb_trimmed_mp3s,
+    )
+
+    _resolve_log_level(quiet, log_level="INFO", color="auto")
+    logger = get_logger(__name__)
+
+    build = write_smb_nsf(
+        rom,
+        output,
+        title=title,
+        artist=artist,
+        copyright_=copyright_,
+    )
+    logger.info(
+        "✓ NSF SMB écrit : %s  (tracks=%d, load=$%04X, init=$%04X, play=$%04X)",
+        output,
+        len(SMB_TRACKS),
+        build.load_addr,
+        build.init_addr,
+        build.play_addr,
+    )
+    if build.note:
+        logger.info("%s", build.note)
+    resolved_split_dir = split_dir
+    if resolved_split_dir is None and mp3_dir is not None:
+        resolved_split_dir = output.parent / "split"
+    if resolved_split_dir is not None:
+        written = write_smb_split_nsfs(
+            rom,
+            resolved_split_dir,
+            artist=artist,
+            copyright_=copyright_,
+        )
+        logger.info("✓ NSF SMB séparés écrits : %s  (count=%d)", resolved_split_dir, len(written))
+    if mp3_dir is not None:
+        if resolved_split_dir is None:
+            raise RuntimeError("internal error: split dir should be resolved before MP3 export")
+        mp3s = write_smb_trimmed_mp3s(
+            rom,
+            resolved_split_dir,
+            mp3_dir,
+            fade_s=fade_seconds,
+            bitrate=bitrate,
+        )
+        timings = read_smb_track_timings(rom.read_bytes())
+        logger.info("✓ MP3 SMB coupés avant loop écrits : %s  (count=%d)", mp3_dir, len(mp3s))
+        for timing in timings:
+            logger.info(
+                "  %02d-%s: %.3fs (%d frames, %s)",
+                timing.track.index + 1,
+                timing.track.label,
+                timing.seconds,
+                timing.frames,
+                timing.reason,
+            )
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -14,6 +14,9 @@ round-trip de ROM NES en Python.
   + `.png` (background + sprites séparés)
 - une **vérification round-trip** : la ROM peut être recompilée
   byte-pour-byte identique à l'originale (sha256 vérifié)
+- des **exports audio** : rendu WAV/MP3 depuis le moteur audio détecté,
+  génération NSF générique pour NROM, et rip SMB spécifique au moteur audio
+  custom de Super Mario Bros.
 
 ## Démo en 1 commande
 
@@ -79,12 +82,45 @@ python -m qlnes recompile ROM.nes -o /tmp/rec.nes
 # Comparer deux ROMs (ou round-trip auto si seule l'originale est donnée)
 python -m qlnes verify ROM.nes
 python -m qlnes verify ORIG.nes RECOMPILED.nes
+
+# Rendre l'audio d'une ROM vers WAV ou MP3
+python -m qlnes audio ROM.nes -o out.wav --format wav --seconds 30
+python -m qlnes audio ROM.nes -o out.mp3 --format mp3 --seconds 30
+
+# Construire un NSF générique depuis une ROM NROM mapper 0
+python -m qlnes nsf ROM.nes -o out.nsf --title "Local rip"
+
+# Super Mario Bros. : NSF multi-track, NSF séparés, puis MP3 sans répétition
+python -m qlnes smb-nsf "roms/Super Mario Bros. (World).nes" \
+  -o out/smb.nsf \
+  --split-dir out/smb-tracks \
+  --mp3-dir out/smb-mp3
 ```
+
+## Documentation
+
+La documentation projet vit dans `docs/` :
+
+- [Vue d'ensemble audio NES, NSF et MP3](docs/audio-nes-nsf-mp3.md)
+- [Index documentation](docs/index.md)
+
+La documentation API peut être générée sans dépendance externe avec `pydoc` :
+
+```bash
+mkdir -p docs/api
+cd docs/api
+../../.venv/bin/python -m pydoc -w qlnes.smb_nsf
+```
+
+`pdoc`, Sphinx ou MkDocs peuvent être ajoutés plus tard si le projet veut un
+site complet. Pour l'instant, les modules importants exposent des docstrings
+lisibles par `pydoc` et par les IDE Python.
 
 ## API Python
 
 ```python
 from qlnes import RomProfile, Rom
+from qlnes.smb_nsf import write_smb_nsf, write_smb_split_nsfs, write_smb_trimmed_mp3s
 
 rom = Rom.from_file("game.nes")
 profile = RomProfile.from_rom(rom).analyze_static()
@@ -103,6 +139,15 @@ profile.extract_assets("assets/game/")
 # Round-trip
 diff = profile.verify_round_trip()
 print(diff.summary())  # "identique (32784 octets, sha256 abc...)"
+
+# Audio SMB custom : utiliser uniquement avec une ROM fournie localement.
+write_smb_nsf("roms/Super Mario Bros. (World).nes", "out/smb.nsf")
+write_smb_split_nsfs("roms/Super Mario Bros. (World).nes", "out/smb-tracks")
+write_smb_trimmed_mp3s(
+    "roms/Super Mario Bros. (World).nes",
+    "out/smb-tracks",
+    "out/smb-mp3",
+)
 ```
 
 ## Pipeline de détection
@@ -119,26 +164,34 @@ print(diff.summary())  # "identique (32784 octets, sha256 abc...)"
 | Détection toolchain | cc65 vs ASM hand-written vs homebrew | qlnes/lang_detect.py |
 | Discovery dynamique | runs cynes + diff comportemental, multi-duration, composed, transitions | qlnes/emu/discover.py |
 | Recompilation + verify | py65 backend + sha256 fast-path | qlnes/recompile.py |
+| Audio in-process | init/play 6502, APU software, rendu WAV/MP3 | qlnes/audio/ |
+| Export NSF | header NSF, INIT/PLAY, bankswitch NSF | qlnes/nsf.py |
+| Export SMB custom | wrapper $8000, queues $FB/$FC, timings sans loop | qlnes/smb_nsf.py |
 
 ## Architecture
 
 ```
 qlnes/
+├── audio/          moteur audio in-process + rendu WAV/MP3
+├── apu/            émulation logicielle des canaux APU NES
 ├── annotate.py     pipeline annotation principale
 ├── asm_text.py     conversion DB → .byte "string"
 ├── assets.py       extraction CHR (.chr/.asm/.png)
-├── cli.py          Typer subcommands (analyze/recompile/verify)
+├── cli.py          Typer subcommands (analyze/recompile/verify/audio/nsf/smb-nsf)
 ├── cross_ref.py    propage noms dynamiques aux routines
 ├── dataflow.py     5+ détecteurs statiques + classifier subroutines
 ├── engines.py      30+ mapper publishers + scan strings
+├── gme_play.py     pont libgme → WAV pour NSF
 ├── ines.py         parse iNES + mappers 0/1/2/3
 ├── lang_detect.py  classifier toolchain
 ├── nes_hw.py       table NES hardware registers
+├── nsf.py          constructeur NSF générique
 ├── parser.py       Disasm + Line typés
 ├── profile.py      RomProfile (orchestre tout) + write_markdown
 ├── ql6502.py       wrapper subprocess QL6502
 ├── recompile.py    py65 + RomDiff + sha256
 ├── rom.py          Rom + Bank
+├── smb_nsf.py      export NSF/MP3 spécifique Super Mario Bros.
 └── emu/
     ├── runner.py   wrapper cynes (Runner, Scenario, Snapshot)
     └── discover.py classify_durations, InteractionResult, Transition
@@ -163,6 +216,11 @@ qlnes/
 - **Discovery dynamique** : nécessite `cynes`, supporté seulement pour mapper 0 (limitation runner actuelle)
 - **Détection éditeur** : pas de signature pour les moteurs sonores propriétaires sans string identifiable
 - **PPU stub** : pas implémenté nous-mêmes, on délègue à cynes (qui fait le full-NES)
+- **NSF générique** : fiable surtout pour NROM avec adresses INIT/PLAY simples.
+  Les moteurs propriétaires intégrés au jeu demandent souvent un wrapper.
+- **Super Mario Bros.** : le rip SMB cible le moteur custom du jeu original.
+  Il utilise une ROM locale fournie par l'utilisateur et ne doit pas servir à
+  redistribuer ROMs, NSF ou MP3 commerciaux.
 
 ## Crédits
 

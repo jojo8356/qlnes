@@ -21,11 +21,11 @@ Caller is expected to wrap the call in a try/except QlnesError → emit() block
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from ..det import deterministic_track_filename
+from ..det import deterministic_track_filename, sha256_bytes, sha256_file
 from ..io.atomic import atomic_write_bytes
 from ..io.errors import QlnesError, warn
 from ..oracle import FceuxOracle
@@ -42,14 +42,30 @@ from .engine import (
 EngineMode = Literal["auto", "in-process", "oracle"]
 ENGINE_MODE_VALUES: tuple[str, ...] = ("auto", "in-process", "oracle")
 
-# Force FT engine registration at import time. New engines (Capcom in A.4,
-# generic in A.5) add their own import here.
+# Force engine registration at import time.
 from .engines import famitracker  # noqa: F401
+from .engines import generic  # noqa: F401
 from .mp3 import EXPECTED_VERSION as _LAMEENC_EXPECTED
 from .mp3 import INSTALLED_VERSION as _LAMEENC_INSTALLED
 from .mp3 import Mp3Encoder
 from .mp3 import is_pinned_version as _lameenc_is_pinned
 from .wav import write_wav
+
+
+@dataclass
+class TrackResult:
+    output_path: Path
+    song_index: int
+    label: str | None
+    referenced: bool
+    status: str
+    sample_rate: int
+    duration_seconds: float
+    pcm_sha256: str
+    output_sha256: str
+    loop_start_sample: int | None = None
+    loop_end_sample: int | None = None
+    song_metadata: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass
@@ -62,6 +78,11 @@ class RenderResult:
     # `"in-process"` for the v0.6 in-process pipeline, `"oracle"` for
     # the v0.5 FCEUX path (kept for compat). Read by F.6 bilan v2.
     engine_mode_used: Literal["in-process", "oracle"] = "in-process"
+    rom_sha256: str = ""
+    mapper: int | None = None
+    detection_evidence: list[str] | None = None
+    detection_metadata: dict[str, object] | None = None
+    tracks: list[TrackResult] = field(default_factory=list)
 
 
 def render_rom_audio_v2(
@@ -157,7 +178,7 @@ def render_rom_audio_v2(
         )
 
     rom = Rom.from_file(rom_path)
-    engine, _detection = SoundEngineRegistry.detect(rom)
+    engine, detection = SoundEngineRegistry.detect(rom)
     songs = engine.walk_song_table(rom)
     if not songs:
         raise QlnesError(
@@ -200,6 +221,7 @@ def render_rom_audio_v2(
     # bilan v2 records per-(rom, song) labels for fine grain.
     used_mode: Literal["in-process", "oracle"] = "in-process"
     written: list[Path] = []
+    track_results: list[TrackResult] = []
     try:
         for song, target in zip(songs, targets, strict=True):
             stream, song_mode, oracle = _render_one(
@@ -219,6 +241,26 @@ def render_rom_audio_v2(
                 mp3_bytes = Mp3Encoder().encode(stream.samples)
                 atomic_write_bytes(target, mp3_bytes)
             written.append(target)
+            track_results.append(
+                TrackResult(
+                    output_path=target,
+                    song_index=song.index,
+                    label=song.label,
+                    referenced=song.referenced,
+                    status=(
+                        str(song.metadata["status"])
+                        if isinstance(song.metadata.get("status"), str)
+                        else ("unverified" if engine.tier == 2 else "rendered")
+                    ),
+                    sample_rate=stream.sample_rate,
+                    duration_seconds=stream.duration_seconds,
+                    pcm_sha256=sha256_bytes(stream.samples),
+                    output_sha256=sha256_file(target),
+                    loop_start_sample=loop.start_sample if loop is not None else None,
+                    loop_end_sample=loop.end_sample if loop is not None else None,
+                    song_metadata=dict(song.metadata),
+                )
+            )
     except BaseException:
         # Dir-level rollback (D.1): if anything goes wrong mid-render, delete
         # the per-song files we wrote in this invocation. Pre-existing files
@@ -239,6 +281,11 @@ def render_rom_audio_v2(
         tier=engine.tier,
         rom_stem=rom_path.stem,
         engine_mode_used=used_mode,
+        rom_sha256=sha256_file(rom_path),
+        mapper=rom.mapper,
+        detection_evidence=list(detection.evidence),
+        detection_metadata=dict(detection.metadata),
+        tracks=track_results,
     )
 
 

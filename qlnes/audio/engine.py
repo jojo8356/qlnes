@@ -279,6 +279,13 @@ class SoundEngineRegistry:
             if r.confidence >= threshold:
                 candidates.append((inst, r))
         if not candidates:
+            for engine_cls in cls._engines:
+                if engine_cls.name != "unknown":
+                    continue
+                if engine_cls.target_mappers and rom.mapper not in engine_cls.target_mappers:
+                    continue
+                inst = engine_cls()
+                return inst, inst.detect(rom)
             raise QlnesError(
                 "unsupported_mapper",
                 f"no recognized audio engine for mapper {rom.mapper}",

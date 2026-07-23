@@ -64,9 +64,14 @@ def setup_logging(
 
     db_path = Path(log_db) if log_db is not None else _default_log_db_path()
     if enable_db:
-        # Make sure the parent dir exists before SQLAlchemy tries to
-        # open the DB; `Path.mkdir(exist_ok=True)` is idempotent.
-        db_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            # Make sure the parent dir exists before SQLAlchemy tries to
+            # open the DB; `Path.mkdir(exist_ok=True)` is idempotent.
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            # Logging persistence must never prevent the CLI from reporting
+            # the real command outcome, especially on read-only homes.
+            handlers = ["stream"]
 
     ulog.setup(
         level=level,

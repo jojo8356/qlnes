@@ -86,6 +86,7 @@ class InProcessRunner:
         play_addr: int,
         *,
         frames: int = 600,
+        init_a: int | None = None,
     ) -> Iterator[ApuWriteEvent]:
         """NSF-shaped run: jump to init, then NMI=play 60×/s for `frames`.
 
@@ -112,10 +113,13 @@ class InProcessRunner:
         mpu.reset()
         mem.reset_state()
 
-        # Run init: set PC to init_addr, push a sentinel return address.
+        # Run init: set PC to init_addr, optionally seed A with the song
+        # selector (NSF-shaped drivers), and push a sentinel return address.
         # We push (sentinel - 1) on the stack; an RTS at the end of init
         # pops + 1 = sentinel, so PC lands at $FFFF and we exit phase 1.
         mpu.pc = init_addr
+        if init_a is not None:
+            mpu.a = init_a & 0xFF
         # Push high byte then low byte of (sentinel - 1) per RTS semantics
         sentinel = 0xFFFF
         ret = sentinel - 1

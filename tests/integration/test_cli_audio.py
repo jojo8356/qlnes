@@ -12,6 +12,7 @@ pre-flight. The fceux-required path lives in test_audio_pipeline_e2e.py
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -51,6 +52,19 @@ def _make_minimal_ines_rom_with_signature(prg_size: int = 0x4000) -> bytes:
     header = b"NES\x1a" + bytes([1, 0, 0, 0]) + bytes(8)
     prg = bytearray(prg_size)
     prg[0x100 : 0x100 + len(b"FamiTracker")] = b"FamiTracker"
+    return header + bytes(prg)
+
+
+def _make_unknown_mapper0_rom() -> bytes:
+    header = b"NES\x1a" + bytes([1, 0, 0, 0]) + bytes(8)
+    prg = bytearray(0x4000)
+    prg[0:3] = bytes([0x4C, 0x00, 0x80])  # JMP $8000
+    prg[0x3FFA] = 0x00
+    prg[0x3FFB] = 0x80
+    prg[0x3FFC] = 0x00
+    prg[0x3FFD] = 0x80
+    prg[0x3FFE] = 0x00
+    prg[0x3FFF] = 0x80
     return header + bytes(prg)
 
 
@@ -101,22 +115,37 @@ def test_audio_bad_format_exits_64(tmp_path):
     assert payload["format"] == "ogg"
 
 
-def test_audio_unsupported_mapper_exits_100(tmp_path):
-    """ROM without FT signature → SoundEngineRegistry has no match → exit 100."""
+def test_audio_unknown_mapper0_uses_unverified_fallback(tmp_path):
+    """ROM without FT signature on mapper 0 renders as tier-2 unknown."""
     rom = tmp_path / "rom.nes"
-    # Valid iNES header, no FT signature in PRG → no engine matches.
-    header = b"NES\x1a" + bytes([1, 0, 0, 0]) + bytes(8)
-    rom.write_bytes(header + bytes(0x4000))
-    # Skip pre-flight fceux check by passing PATH that has fceux if available.
-    # If fceux isn't installed, we land in internal_error (70) before mapper
-    # detection — which means this test depends on the environment.
-    if not _has_fceux():
-        pytest.skip("fceux not installed; mapper check happens after fceux check")
+    rom.write_bytes(_make_unknown_mapper0_rom())
+    out = tmp_path / "out"
+    bilan = tmp_path / "bilan.json"
+    res = _run_qlnes("audio", str(rom), "-o", str(tmp_path / "out"), "--bilan", str(bilan))
+    assert res.returncode == 0
+    assert (out / "rom.00.unknown.wav").exists()
+    assert "moteur=unknown" in res.stderr
+    assert "tier=2" in res.stderr
+    assert "statut=unverified" in res.stderr
+    assert hashlib.sha256(rom.read_bytes()).hexdigest() in res.stderr
+    payload = json.loads(bilan.read_text(encoding="utf-8"))
+    assert payload["engine"]["name"] == "unknown"
+    assert payload["engine"]["tier"] == 2
+    assert payload["rom"]["sha256"] == hashlib.sha256(rom.read_bytes()).hexdigest()
+    assert payload["tracks"][0]["status"] == "unverified"
+    assert payload["tracks"][0]["status"] != "pass"
+
+
+def test_audio_unsupported_mapper_exits_100(tmp_path):
+    """Unsupported non-fallback mapper still exits 100."""
+    rom = tmp_path / "rom.nes"
+    header = b"NES\x1a" + bytes([2, 0, 0x20, 0]) + bytes(8)
+    rom.write_bytes(header + bytes(0x8000))
     res = _run_qlnes("audio", str(rom), "-o", str(tmp_path / "out"))
     assert res.returncode == 100
     payload = _parse_trailing_json(res.stderr)
     assert payload["class"] == "unsupported_mapper"
-    assert payload["mapper"] == 0
+    assert payload["mapper"] == 2
     assert payload["artifact"] == "audio"
 
 

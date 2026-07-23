@@ -25,10 +25,24 @@ build/
 *.o
 
 # Local test ROMs and analysis outputs (not redistributable)
+.cache/
 roms/
 out/
 *.nes
+*.fds
+*.unf
+*.unif
 *.zip
+
+# ROM-derived music/audio exports (regenerate locally; do not redistribute)
+*.nsf
+*.nsfe
+*.nfs
+*.mp3
+*.wav
+*.flac
+_bmad-output/external-fixtures/
+_bmad-output/external-tools/
 
 # Test corpus — hashes-only manifest is committed; ROM bytes + FCEUX
 # reference WAVs are user-supplied and must NEVER be redistributed.

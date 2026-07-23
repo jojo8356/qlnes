@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Python: module qlnes.smb_nsf</title>
+</head><body>
+
+<table class="heading">
+<tr class="heading-text decor">
+<td class="title">&nbsp;<br><strong class="title"><a href="qlnes.html" class="white">qlnes</a>.smb_nsf</strong></td>
+<td class="extra"><a href=".">index</a><br><a href="file:/home/jojokes/Documents/programmation/projets/autres/qlnes/qlnes/smb_nsf.py">/home/jojokes/Documents/programmation/projets/autres/qlnes/qlnes/smb_nsf.py</a></td></tr></table>
+    <p><span class="code">Super&nbsp;Mario&nbsp;Bros.&nbsp;custom&nbsp;NSF&nbsp;and&nbsp;MP3&nbsp;exporter.<br>
+&nbsp;<br>
+This&nbsp;is&nbsp;intentionally&nbsp;separate&nbsp;from&nbsp;the&nbsp;generic&nbsp;NSF&nbsp;writer.&nbsp;SMB's&nbsp;soundtrack&nbsp;is<br>
+driven&nbsp;by&nbsp;game-state&nbsp;queues,&nbsp;not&nbsp;a&nbsp;clean&nbsp;standalone&nbsp;INIT/PLAY&nbsp;API.&nbsp;The&nbsp;builder<br>
+adds&nbsp;a&nbsp;small&nbsp;NSF&nbsp;wrapper&nbsp;bank&nbsp;at&nbsp;$8000&nbsp;that&nbsp;writes&nbsp;those&nbsp;queues&nbsp;and&nbsp;calls&nbsp;the<br>
+original&nbsp;sound&nbsp;engine&nbsp;at&nbsp;$F2D0&nbsp;once&nbsp;per&nbsp;PLAY&nbsp;tick.<br>
+&nbsp;<br>
+Typical&nbsp;use:<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&gt;&gt;&gt;&nbsp;from&nbsp;pathlib&nbsp;import&nbsp;Path<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&gt;&gt;&gt;&nbsp;from&nbsp;qlnes.smb_nsf&nbsp;import&nbsp;write_smb_nsf<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&gt;&gt;&gt;&nbsp;<a href="#-write_smb_nsf">write_smb_nsf</a>(Path("roms/smb.nes"),&nbsp;Path("out/smb.nsf"))<br>
+&nbsp;<br>
+The&nbsp;generated&nbsp;NSF&nbsp;is&nbsp;meant&nbsp;for&nbsp;private&nbsp;local&nbsp;validation&nbsp;from&nbsp;a&nbsp;user-supplied<br>
+ROM.&nbsp;Do&nbsp;not&nbsp;redistribute&nbsp;commercial&nbsp;ROM&nbsp;bytes&nbsp;or&nbsp;audio&nbsp;exports.</span></p>
+<p>
+<table class="section">
+<tr class="decor pkg-content-decor heading-text">
+<td class="section-title" colspan=3>&nbsp;<br><strong class="bigsection">Modules</strong></td></tr>
+    
+<tr><td class="decor pkg-content-decor"><span class="code">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></td><td>&nbsp;</td>
+<td class="singlecolumn"><table><tr><td class="multicolumn"><a href="subprocess.html">subprocess</a><br>
+</td><td class="multicolumn"><a href="tempfile.html">tempfile</a><br>
+</td><td class="multicolumn"></td><td class="multicolumn"></td></tr></table></td></tr></table><p>
+<table class="section">
+<tr class="decor index-decor heading-text">
+<td class="section-title" colspan=3>&nbsp;<br><strong class="bigsection">Classes</strong></td></tr>
+    
+<tr><td class="decor index-decor"><span class="code">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></td><td>&nbsp;</td>
+<td class="singlecolumn"><dl>
+<dt class="heading-text"><a href="builtins.html#object">builtins.object</a>
+</dt><dd>
+<dl>
+<dt class="heading-text"><a href="qlnes.smb_nsf.html#SmbTrack">SmbTrack</a>
+</dt><dt class="heading-text"><a href="qlnes.smb_nsf.html#SmbTrackTiming">SmbTrackTiming</a>
+</dt></dl>
+</dd>
+</dl>
+ <p>
+<table class="section">
+<tr class="decor title-decor heading-text">
+<td class="section-title" colspan=3>&nbsp;<br><a name="SmbTrack">class <strong>SmbTrack</strong></a>(<a href="builtins.html#object">builtins.object</a>)</td></tr>
+    
+<tr><td class="decor title-decor" rowspan=2><span class="code">&nbsp;&nbsp;&nbsp;</span></td>
+<td class="decor title-decor" colspan=2><span class="code"><a href="#SmbTrack">SmbTrack</a>(index:&nbsp;'int',&nbsp;label:&nbsp;'str',&nbsp;queue_addr:&nbsp;'int',&nbsp;queue_value:&nbsp;'int',&nbsp;kind:&nbsp;'str')&nbsp;-&amp;gt;&nbsp;None<br>
+&nbsp;<br>
+One&nbsp;playable&nbsp;SMB&nbsp;music&nbsp;queue&nbsp;exposed&nbsp;as&nbsp;an&nbsp;NSF&nbsp;track.<br>
+&nbsp;<br>
+SMB&nbsp;does&nbsp;not&nbsp;store&nbsp;a&nbsp;flat&nbsp;"track&nbsp;table"&nbsp;for&nbsp;external&nbsp;players.&nbsp;Music&nbsp;starts<br>
+when&nbsp;game&nbsp;code&nbsp;writes&nbsp;a&nbsp;bitmask&nbsp;into&nbsp;one&nbsp;of&nbsp;two&nbsp;zero-page&nbsp;queues:<br>
+``$FB``&nbsp;for&nbsp;area&nbsp;music&nbsp;and&nbsp;``$FC``&nbsp;for&nbsp;event&nbsp;music.&nbsp;The&nbsp;NSF&nbsp;wrapper&nbsp;maps&nbsp;a<br>
+normal&nbsp;NSF&nbsp;song&nbsp;index&nbsp;to&nbsp;exactly&nbsp;one&nbsp;of&nbsp;those&nbsp;queue&nbsp;writes.<br>
+&nbsp;<br>
+Attributes:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;index:&nbsp;Zero-based&nbsp;NSF&nbsp;track&nbsp;index.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;label:&nbsp;Stable&nbsp;file-friendly&nbsp;track&nbsp;name.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;queue_addr:&nbsp;Zero-page&nbsp;address&nbsp;written&nbsp;by&nbsp;the&nbsp;wrapper,&nbsp;usually&nbsp;``$FB``<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;or&nbsp;``$FC``.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;queue_value:&nbsp;SMB&nbsp;music/event&nbsp;bitmask&nbsp;written&nbsp;to&nbsp;``queue_addr``.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;kind:&nbsp;Human&nbsp;category&nbsp;used&nbsp;by&nbsp;the&nbsp;timing&nbsp;reader:&nbsp;``"area"``&nbsp;or<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;``"event"``.<br>&nbsp;</span></td></tr>
+<tr><td>&nbsp;</td>
+<td class="singlecolumn">Methods defined here:<br>
+<dl><dt><a name="SmbTrack-__delattr__"><strong>__delattr__</strong></a>(self, name)</dt><dd><span class="code">Implement&nbsp;delattr(self,&nbsp;name).</span></dd></dl>
+
+<dl><dt><a name="SmbTrack-__eq__"><strong>__eq__</strong></a>(self, other)</dt><dd><span class="code">Return&nbsp;self==value.</span></dd></dl>
+
+<dl><dt><a name="SmbTrack-__hash__"><strong>__hash__</strong></a>(self)</dt><dd><span class="code">Return&nbsp;hash(self).</span></dd></dl>
+
+<dl><dt><a name="SmbTrack-__init__"><strong>__init__</strong></a>(self, index: 'int', label: 'str', queue_addr: 'int', queue_value: 'int', kind: 'str') -&gt; None</dt><dd><span class="code">Initialize&nbsp;self.&nbsp;&nbsp;See&nbsp;help(type(self))&nbsp;for&nbsp;accurate&nbsp;signature.</span></dd></dl>
+
+<dl><dt><a name="SmbTrack-__repr__"><strong>__repr__</strong></a>(self)</dt><dd><span class="code">Return&nbsp;repr(self).</span></dd></dl>
+
+<dl><dt><a name="SmbTrack-__setattr__"><strong>__setattr__</strong></a>(self, name, value)</dt><dd><span class="code">Implement&nbsp;setattr(self,&nbsp;name,&nbsp;value).</span></dd></dl>
+
+<hr>
+Data descriptors defined here:<br>
+<dl><dt><strong>__dict__</strong></dt>
+<dd><span class="code">dictionary&nbsp;for&nbsp;instance&nbsp;variables</span></dd>
+</dl>
+<dl><dt><strong>__weakref__</strong></dt>
+<dd><span class="code">list&nbsp;of&nbsp;weak&nbsp;references&nbsp;to&nbsp;the&nbsp;object</span></dd>
+</dl>
+<hr>
+Data and other attributes defined here:<br>
+<dl><dt><strong>__annotations__</strong> = {'index': 'int', 'kind': 'str', 'label': 'str', 'queue_addr': 'int', 'queue_value': 'int'}</dl>
+
+<dl><dt><strong>__dataclass_fields__</strong> = {'index': Field(name='index',type='int',default=&lt;dataclass...appingproxy({}),kw_only=False,_field_type=_FIELD), 'kind': Field(name='kind',type='str',default=&lt;dataclasse...appingproxy({}),kw_only=False,_field_type=_FIELD), 'label': Field(name='label',type='str',default=&lt;dataclass...appingproxy({}),kw_only=False,_field_type=_FIELD), 'queue_addr': Field(name='queue_addr',type='int',default=&lt;data...appingproxy({}),kw_only=False,_field_type=_FIELD), 'queue_value': Field(name='queue_value',type='int',default=&lt;dat...appingproxy({}),kw_only=False,_field_type=_FIELD)}</dl>
+
+<dl><dt><strong>__dataclass_params__</strong> = _DataclassParams(init=True,repr=True,eq=True,ord...rue,kw_only=False,slots=False,weakref_slot=False)</dl>
+
+<dl><dt><strong>__match_args__</strong> = ('index', 'label', 'queue_addr', 'queue_value', 'kind')</dl>
+
+</td></tr></table> <p>
+<table class="section">
+<tr class="decor title-decor heading-text">
+<td class="section-title" colspan=3>&nbsp;<br><a name="SmbTrackTiming">class <strong>SmbTrackTiming</strong></a>(<a href="builtins.html#object">builtins.object</a>)</td></tr>
+    
+<tr><td class="decor title-decor" rowspan=2><span class="code">&nbsp;&nbsp;&nbsp;</span></td>
+<td class="decor title-decor" colspan=2><span class="code"><a href="#SmbTrackTiming">SmbTrackTiming</a>(track:&nbsp;'<a href="#SmbTrack">SmbTrack</a>',&nbsp;frames:&nbsp;'int',&nbsp;seconds:&nbsp;'float',&nbsp;reason:&nbsp;'str',&nbsp;header_ys:&nbsp;'tuple[int,&nbsp;...]')&nbsp;-&amp;gt;&nbsp;None<br>
+&nbsp;<br>
+No-repeat&nbsp;duration&nbsp;estimate&nbsp;for&nbsp;one&nbsp;SMB&nbsp;track.<br>
+&nbsp;<br>
+The&nbsp;duration&nbsp;is&nbsp;read&nbsp;from&nbsp;the&nbsp;original&nbsp;SMB&nbsp;music&nbsp;bytecode,&nbsp;not&nbsp;guessed&nbsp;from<br>
+a&nbsp;fixed&nbsp;wall-clock&nbsp;length.&nbsp;Area/event&nbsp;streams&nbsp;terminate&nbsp;at&nbsp;the&nbsp;Square&nbsp;2<br>
+end&nbsp;marker.&nbsp;The&nbsp;ground&nbsp;theme&nbsp;is&nbsp;special&nbsp;because&nbsp;it&nbsp;is&nbsp;a&nbsp;chain&nbsp;of&nbsp;headers<br>
+that&nbsp;loops&nbsp;back;&nbsp;qlnes&nbsp;sums&nbsp;headers&nbsp;before&nbsp;the&nbsp;loopback&nbsp;marker.<br>
+&nbsp;<br>
+Attributes:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;track:&nbsp;The&nbsp;logical&nbsp;SMB&nbsp;track&nbsp;being&nbsp;measured.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;frames:&nbsp;NTSC&nbsp;frame&nbsp;count&nbsp;before&nbsp;the&nbsp;first&nbsp;repeat&nbsp;or&nbsp;end&nbsp;marker.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;seconds:&nbsp;``frames``&nbsp;converted&nbsp;with&nbsp;the&nbsp;NSF&nbsp;NTSC&nbsp;frame&nbsp;period.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;reason:&nbsp;Short&nbsp;machine-readable&nbsp;explanation&nbsp;of&nbsp;the&nbsp;stop&nbsp;condition.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;header_ys:&nbsp;SMB&nbsp;music&nbsp;header&nbsp;indexes&nbsp;inspected&nbsp;to&nbsp;compute&nbsp;the&nbsp;timing.<br>&nbsp;</span></td></tr>
+<tr><td>&nbsp;</td>
+<td class="singlecolumn">Methods defined here:<br>
+<dl><dt><a name="SmbTrackTiming-__delattr__"><strong>__delattr__</strong></a>(self, name)</dt><dd><span class="code">Implement&nbsp;delattr(self,&nbsp;name).</span></dd></dl>
+
+<dl><dt><a name="SmbTrackTiming-__eq__"><strong>__eq__</strong></a>(self, other)</dt><dd><span class="code">Return&nbsp;self==value.</span></dd></dl>
+
+<dl><dt><a name="SmbTrackTiming-__hash__"><strong>__hash__</strong></a>(self)</dt><dd><span class="code">Return&nbsp;hash(self).</span></dd></dl>
+
+<dl><dt><a name="SmbTrackTiming-__init__"><strong>__init__</strong></a>(self, track: 'SmbTrack', frames: 'int', seconds: 'float', reason: 'str', header_ys: 'tuple[int, ...]') -&gt; None</dt><dd><span class="code">Initialize&nbsp;self.&nbsp;&nbsp;See&nbsp;help(type(self))&nbsp;for&nbsp;accurate&nbsp;signature.</span></dd></dl>
+
+<dl><dt><a name="SmbTrackTiming-__repr__"><strong>__repr__</strong></a>(self)</dt><dd><span class="code">Return&nbsp;repr(self).</span></dd></dl>
+
+<dl><dt><a name="SmbTrackTiming-__setattr__"><strong>__setattr__</strong></a>(self, name, value)</dt><dd><span class="code">Implement&nbsp;setattr(self,&nbsp;name,&nbsp;value).</span></dd></dl>
+
+<hr>
+Data descriptors defined here:<br>
+<dl><dt><strong>__dict__</strong></dt>
+<dd><span class="code">dictionary&nbsp;for&nbsp;instance&nbsp;variables</span></dd>
+</dl>
+<dl><dt><strong>__weakref__</strong></dt>
+<dd><span class="code">list&nbsp;of&nbsp;weak&nbsp;references&nbsp;to&nbsp;the&nbsp;object</span></dd>
+</dl>
+<hr>
+Data and other attributes defined here:<br>
+<dl><dt><strong>__annotations__</strong> = {'frames': 'int', 'header_ys': 'tuple[int, ...]', 'reason': 'str', 'seconds': 'float', 'track': 'SmbTrack'}</dl>
+
+<dl><dt><strong>__dataclass_fields__</strong> = {'frames': Field(name='frames',type='int',default=&lt;dataclas...appingproxy({}),kw_only=False,_field_type=_FIELD), 'header_ys': Field(name='header_ys',type='tuple[int, ...]',de...appingproxy({}),kw_only=False,_field_type=_FIELD), 'reason': Field(name='reason',type='str',default=&lt;dataclas...appingproxy({}),kw_only=False,_field_type=_FIELD), 'seconds': Field(name='seconds',type='float',default=&lt;datac...appingproxy({}),kw_only=False,_field_type=_FIELD), 'track': Field(name='track',type='SmbTrack',default=&lt;data...appingproxy({}),kw_only=False,_field_type=_FIELD)}</dl>
+
+<dl><dt><strong>__dataclass_params__</strong> = _DataclassParams(init=True,repr=True,eq=True,ord...rue,kw_only=False,slots=False,weakref_slot=False)</dl>
+
+<dl><dt><strong>__match_args__</strong> = ('track', 'frames', 'seconds', 'reason', 'header_ys')</dl>
+
+</td></tr></table></td></tr></table><p>
+<table class="section">
+<tr class="decor functions-decor heading-text">
+<td class="section-title" colspan=3>&nbsp;<br><strong class="bigsection">Functions</strong></td></tr>
+    
+<tr><td class="decor functions-decor"><span class="code">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></td><td>&nbsp;</td>
+<td class="singlecolumn"><dl><dt><a name="-build_smb_nsf_from_rom"><strong>build_smb_nsf_from_rom</strong></a>(rom_bytes: 'bytes', *, title: 'str' = 'Super Mario Bros. SMB custom soundtrack', artist: 'str' = 'Koji Kondo', copyright_: 'str' = 'Local private rip; do not distribute commercial ROM audio', tracks: 'tuple[SmbTrack, ...]' = (SmbTrack(index=0, label='ground', queue_addr=251, queue_value=1, kind='area'), SmbTrack(index=1, label='water', queue_addr=251, queue_value=2, kind='area'), SmbTrack(index=2, label='underground', queue_addr=251, queue_value=4, kind='area'), SmbTrack(index=3, label='castle', queue_addr=251, queue_value=8, kind='area'), SmbTrack(index=4, label='cloud', queue_addr=251, queue_value=16, kind='area'), SmbTrack(index=5, label='pipe-intro', queue_addr=251, queue_value=32, kind='area'), SmbTrack(index=6, label='star-power', queue_addr=251, queue_value=64, kind='area'), SmbTrack(index=7, label='death', queue_addr=252, queue_value=1, kind='event'), SmbTrack(index=8, label='game-over', queue_addr=252, queue_value=2, kind='event'), SmbTrack(index=9, label='victory', queue_addr=252, queue_value=4, kind='event'), SmbTrack(index=10, label='end-of-castle', queue_addr=252, queue_value=8, kind='event'), SmbTrack(index=11, label='end-of-level', queue_addr=252, queue_value=32, kind='event'), SmbTrack(index=12, label='time-running-out', queue_addr=252, queue_value=64, kind='event'), SmbTrack(index=13, label='silence', queue_addr=252, queue_value=128, kind='event'))) -&gt; 'NSFBuild'</dt><dd><span class="code">Build&nbsp;a&nbsp;banked&nbsp;NSF&nbsp;image&nbsp;from&nbsp;a&nbsp;Super&nbsp;Mario&nbsp;Bros.&nbsp;iNES&nbsp;ROM.<br>
+&nbsp;<br>
+The&nbsp;source&nbsp;ROM&nbsp;must&nbsp;be&nbsp;the&nbsp;standard&nbsp;mapper-0/NROM&nbsp;shape&nbsp;used&nbsp;by&nbsp;SMB:<br>
+32&nbsp;KiB&nbsp;PRG.&nbsp;qlnes&nbsp;replaces&nbsp;the&nbsp;first&nbsp;4&nbsp;KiB&nbsp;NSF&nbsp;bank&nbsp;with&nbsp;a&nbsp;tiny&nbsp;wrapper&nbsp;at<br>
+``$8000``&nbsp;and&nbsp;keeps&nbsp;the&nbsp;original&nbsp;PRG&nbsp;banks&nbsp;mapped&nbsp;from&nbsp;``$9000``&nbsp;through<br>
+``$FFFF``.&nbsp;That&nbsp;preserves&nbsp;the&nbsp;original&nbsp;sound&nbsp;engine&nbsp;at&nbsp;``$F2D0``.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;rom_bytes:&nbsp;Complete&nbsp;iNES&nbsp;file&nbsp;bytes,&nbsp;including&nbsp;the&nbsp;16-byte&nbsp;iNES&nbsp;header.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;title:&nbsp;NSF&nbsp;title&nbsp;metadata.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;artist:&nbsp;NSF&nbsp;artist&nbsp;metadata.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;copyright_:&nbsp;NSF&nbsp;copyright&nbsp;field.&nbsp;Keep&nbsp;this&nbsp;private&nbsp;for&nbsp;commercial&nbsp;ROMs.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;tracks:&nbsp;Track&nbsp;queue&nbsp;definitions&nbsp;to&nbsp;expose.&nbsp;Passing&nbsp;a&nbsp;single&nbsp;track&nbsp;is<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;how&nbsp;``write_smb_split_nsfs``&nbsp;creates&nbsp;one-file-per-track&nbsp;exports.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;NSFBuild&nbsp;containing&nbsp;the&nbsp;bytes&nbsp;and&nbsp;the&nbsp;load/init/play&nbsp;addresses.<br>
+&nbsp;<br>
+Raises:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;ValueError:&nbsp;If&nbsp;the&nbsp;input&nbsp;is&nbsp;not&nbsp;iNES,&nbsp;not&nbsp;mapper&nbsp;0,&nbsp;or&nbsp;not&nbsp;32&nbsp;KiB&nbsp;PRG.</span></dd></dl>
+ <dl><dt><a name="-read_smb_track_timings"><strong>read_smb_track_timings</strong></a>(rom_bytes: 'bytes') -&gt; 'list[SmbTrackTiming]'</dt><dd><span class="code">Read&nbsp;SMB&nbsp;music&nbsp;bytecode&nbsp;and&nbsp;return&nbsp;no-repeat&nbsp;durations&nbsp;for&nbsp;every&nbsp;track.<br>
+&nbsp;<br>
+This&nbsp;function&nbsp;intentionally&nbsp;inspects&nbsp;the&nbsp;PRG&nbsp;music&nbsp;tables&nbsp;instead&nbsp;of<br>
+rendering&nbsp;a&nbsp;long&nbsp;fixed&nbsp;duration.&nbsp;It&nbsp;prevents&nbsp;the&nbsp;common&nbsp;"180&nbsp;seconds&nbsp;per<br>
+track"&nbsp;export&nbsp;mistake&nbsp;where&nbsp;looped&nbsp;themes&nbsp;are&nbsp;captured&nbsp;multiple&nbsp;times.</span></dd></dl>
+ <dl><dt><a name="-write_smb_nsf"><strong>write_smb_nsf</strong></a>(rom_path: 'Path', out_path: 'Path', *, title: 'str' = 'Super Mario Bros. SMB custom soundtrack', artist: 'str' = 'Koji Kondo', copyright_: 'str' = 'Local private rip; do not distribute commercial ROM audio') -&gt; 'NSFBuild'</dt><dd><span class="code">Write&nbsp;the&nbsp;multi-track&nbsp;SMB&nbsp;NSF&nbsp;to&nbsp;disk&nbsp;and&nbsp;return&nbsp;its&nbsp;build&nbsp;metadata.</span></dd></dl>
+ <dl><dt><a name="-write_smb_split_nsfs"><strong>write_smb_split_nsfs</strong></a>(rom_path: 'Path', out_dir: 'Path', *, artist: 'str' = 'Koji Kondo', copyright_: 'str' = 'Local private rip; do not distribute commercial ROM audio') -&gt; 'list[Path]'</dt><dd><span class="code">Write&nbsp;one&nbsp;single-track&nbsp;NSF&nbsp;per&nbsp;SMB&nbsp;queue.<br>
+&nbsp;<br>
+Single-track&nbsp;files&nbsp;are&nbsp;convenient&nbsp;for&nbsp;players&nbsp;and&nbsp;for&nbsp;deterministic&nbsp;MP3<br>
+rendering&nbsp;because&nbsp;every&nbsp;file&nbsp;starts&nbsp;at&nbsp;track&nbsp;``0``.</span></dd></dl>
+ <dl><dt><a name="-write_smb_trimmed_mp3s"><strong>write_smb_trimmed_mp3s</strong></a>(rom_path: 'Path', nsf_dir: 'Path', out_dir: 'Path', *, fade_s: 'float' = 2.0, bitrate: 'str' = '192k') -&gt; 'list[Path]'</dt><dd><span class="code">Render&nbsp;split&nbsp;SMB&nbsp;NSFs&nbsp;to&nbsp;MP3&nbsp;files&nbsp;trimmed&nbsp;before&nbsp;the&nbsp;first&nbsp;loop.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;rom_path:&nbsp;User-supplied&nbsp;SMB&nbsp;ROM&nbsp;used&nbsp;only&nbsp;to&nbsp;compute&nbsp;exact&nbsp;timings.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;nsf_dir:&nbsp;Directory&nbsp;containing&nbsp;files&nbsp;created&nbsp;by&nbsp;``write_smb_split_nsfs``.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;out_dir:&nbsp;Destination&nbsp;directory&nbsp;for&nbsp;MP3&nbsp;files.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;fade_s:&nbsp;Fade-out&nbsp;duration&nbsp;at&nbsp;the&nbsp;end&nbsp;of&nbsp;each&nbsp;computed&nbsp;track&nbsp;window.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;bitrate:&nbsp;ffmpeg/libmp3lame&nbsp;bitrate,&nbsp;for&nbsp;example&nbsp;``"192k"``.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Paths&nbsp;of&nbsp;the&nbsp;MP3&nbsp;files&nbsp;written.<br>
+&nbsp;<br>
+Raises:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;FileNotFoundError:&nbsp;If&nbsp;a&nbsp;required&nbsp;split&nbsp;NSF&nbsp;is&nbsp;missing.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;RuntimeError:&nbsp;If&nbsp;libgme/ffmpeg&nbsp;decoding&nbsp;fails&nbsp;through&nbsp;lower&nbsp;layers.</span></dd></dl>
+</td></tr></table><p>
+<table class="section">
+<tr class="decor data-decor heading-text">
+<td class="section-title" colspan=3>&nbsp;<br><strong class="bigsection">Data</strong></td></tr>
+    
+<tr><td class="decor data-decor"><span class="code">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></td><td>&nbsp;</td>
+<td class="singlecolumn"><strong>SMB_NTSC_FPS</strong> = 60.09976561091412<br>
+<strong>SMB_TRACKS</strong> = (SmbTrack(index=0, label='ground', queue_addr=251, queue_value=1, kind='area'), SmbTrack(index=1, label='water', queue_addr=251, queue_value=2, kind='area'), SmbTrack(index=2, label='underground', queue_addr=251, queue_value=4, kind='area'), SmbTrack(index=3, label='castle', queue_addr=251, queue_value=8, kind='area'), SmbTrack(index=4, label='cloud', queue_addr=251, queue_value=16, kind='area'), SmbTrack(index=5, label='pipe-intro', queue_addr=251, queue_value=32, kind='area'), SmbTrack(index=6, label='star-power', queue_addr=251, queue_value=64, kind='area'), SmbTrack(index=7, label='death', queue_addr=252, queue_value=1, kind='event'), SmbTrack(index=8, label='game-over', queue_addr=252, queue_value=2, kind='event'), SmbTrack(index=9, label='victory', queue_addr=252, queue_value=4, kind='event'), SmbTrack(index=10, label='end-of-castle', queue_addr=252, queue_value=8, kind='event'), SmbTrack(index=11, label='end-of-level', queue_addr=252, queue_value=32, kind='event'), SmbTrack(index=12, label='time-running-out', queue_addr=252, queue_value=64, kind='event'), SmbTrack(index=13, label='silence', queue_addr=252, queue_value=128, kind='event'))<br>
+<strong>__all__</strong> = ['SMB_TRACKS', 'SMB_NTSC_FPS', 'SmbTrack', 'SmbTrackTiming', 'build_smb_nsf_from_rom', 'read_smb_track_timings', 'write_smb_nsf', 'write_smb_split_nsfs', 'write_smb_trimmed_mp3s']<br>
+<strong>__annotations__</strong> = {'SMB_TRACKS': 'tuple[SmbTrack, ...]'}</td></tr></table>
+</body></html>

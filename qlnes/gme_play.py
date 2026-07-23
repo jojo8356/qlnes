@@ -15,6 +15,7 @@ API utilisée (déclarations C de gme.h) :
 
 from __future__ import annotations
 
+import array
 import ctypes
 import wave
 from ctypes.util import find_library
@@ -122,7 +123,8 @@ def render_nsf(
                 want = min(chunk_frames, total_frames - written)
                 err = lib.gme_play(emu, want * 2, buf)
                 _check(err, "play")
-                w.writeframes(bytes(buf[: want * 2]))
+                pcm = array.array("h", buf[: want * 2])
+                w.writeframes(pcm.tobytes())
                 written += want
         return wav_path
     finally:

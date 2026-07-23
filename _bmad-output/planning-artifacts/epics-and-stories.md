@@ -16,12 +16,14 @@ inputDocuments:
   - _bmad-output/planning-artifacts/ux-design.md
   - _bmad-output/planning-artifacts/architecture.md
   - _bmad-output/planning-artifacts/implementation-readiness-report-2026-05-03.md
+  - _bmad-output/planning-artifacts/implementation-readiness-report-2026-07-22.md
+  - _bmad-output/planning-artifacts/research/technical-audio-nes-vers-mp3-et-extraction-des-musiques-de-roms-research-2026-07-22.md
   - _bmad-output/project-context.md
 documentCounts:
   prd: 1
   ux: 1
   architecture: 1
-  research: 0
+  research: 1
   projectDocs: 1
   readinessReport: 1
 projectMemoriesReferenced:
@@ -30,10 +32,15 @@ projectMemoriesReferenced:
 workflowType: 'epics-and-stories'
 project_name: 'qlnes'
 user_name: 'Johan'
-date: '2026-05-03'
-mvp_fr_count: 28
-epic_count: 5
-story_count: 23
+date: '2026-07-22'
+active_plan: 'addendum-2026-07-22-audio-nes-to-mp3'
+active_scope: 'audio NES -> PCM/WAV/MP3/NSF extraction'
+fr_count: 40
+epic_count: 8
+story_count: 35
+historical_plan: 'music-mvp-2026-05-03'
+historical_epic_count: 5
+historical_story_count: 23
 ---
 
 # Epics & Stories — qlnes (Music-MVP)
@@ -1139,3 +1146,621 @@ If `IR` returns ✓, proceed to **`bmad-sprint-planning` (SP)** to generate the 
 ---
 
 *End of Epics & Stories Document — qlnes Music-MVP (v1, 2026-05-03)*
+
+---
+
+# Addendum 2026-07-22 — Audio NES vers MP3 et extraction complete des musiques
+
+Cet addendum integre la recherche technique `technical-audio-nes-vers-mp3-et-extraction-des-musiques-de-roms-research-2026-07-22.md`. Le premier chemin recommande reste FamiTracker / mapper 0, parce qu'il maximise la preuve de bout en bout avec le plus petit risque: ROM -> engine reconnu -> APU events -> PCM -> WAV, puis MP3 et NSF.
+
+## Epic List
+
+### Epic 1: Extraire des pistes WAV/MP3 verifiees depuis une ROM
+L'utilisateur peut lancer `qlnes audio <rom> --format wav|mp3 --output tracks/` sur un premier couple mapper/engine supporte et obtenir des pistes par fichier, deterministes, bouclees et rattachees a un PCM canonique verifiable.
+**FRs covered:** FR6, FR7, FR8, FR9, FR10, FR11.
+
+### Epic 2: Savoir ce qui est vraiment couvert
+L'utilisateur peut verifier une ROM ou auditer un corpus, puis lire une matrice de couverture fiable qui distingue `pass`, `fail`, `unsupported` et `unverified` par mapper et engine audio.
+**FRs covered:** FR18, FR19, FR20, FR21, FR22, FR23, FR24, FR25, FR26, FR36, FR38.
+
+### Epic 3: Produire un NSF2/NSFe exploitable par les lecteurs chiptune
+L'utilisateur peut lancer `qlnes nsf <rom> --output ost.nsf` et obtenir un NSF valide avec metadata pistes, compatible avec les lecteurs cibles et coherent avec la detection de songs.
+**FRs covered:** FR5, FR8, FR10.
+
+### Epic 4: Rendre la CLI robuste pour scripts et pipelines
+L'utilisateur pipeline peut invoquer `qlnes` en subprocess avec exit codes stables, stderr JSON, preflight, atomic writes, config layers, flags batch et completions sans inspecter les modules Python internes.
+**FRs covered:** FR9, FR27, FR28, FR29, FR30, FR33, FR34, FR35, FR36, FR37, FR38, FR39, FR40.
+
+### Epic 5: Garder l'analyse, le round-trip et les assets existants verts
+L'utilisateur conserve les capacites existantes `analyze`, `recompile`, `verify` et assets pendant l'arrivee du pipeline musique, avec regression tests et contrats CLI inchanges.
+**FRs covered:** FR1, FR2, FR3, FR4, FR13, FR14, FR17.
+
+### Epic 6: Etendre vers la couverture universelle post-MVP
+L'utilisateur voit la couverture progresser vers plus de mappers, engines, CHR round-trip, packaging et exploration interactive sans casser le MVP.
+**FRs covered:** FR12, FR15, FR16, FR31, FR32.
+
+## Epic 1: Extraire des pistes WAV/MP3 verifiees depuis une ROM
+
+L'utilisateur peut lancer `qlnes audio <rom> --format wav|mp3 --output tracks/` sur un premier couple mapper/engine supporte et obtenir des pistes par fichier, deterministes, bouclees et rattachees a un PCM canonique verifiable.
+
+### Story 1.1: Premier WAV verifie depuis une ROM mapper 0
+
+As a ROM hacker,
+I want `qlnes audio <rom> --format wav --output tracks/` to render a supported mapper-0 soundtrack,
+So that I can obtain a usable lossless track without manual audio capture.
+
+**Acceptance Criteria:**
+
+**Given** a valid mapper-0 ROM in the local audio corpus with a recognized engine fixture
+**When** I run `python -m qlnes audio rom.nes --format wav --output tracks/`
+**Then** `qlnes` writes one WAV file per detected song using deterministic filenames
+**And** each WAV is generated from the direct ROM/engine -> APU events -> PCM path
+**And** the command exits `0` without requiring FCEUX unless verification is requested
+**And** pulse 1, pulse 2, triangle and noise channels are represented in the PCM renderer
+**And** DMC usage is either absent in the fixture or explicitly reported as unsupported/unverified before pass status is claimed.
+
+### Story 1.2: Exhaustive song table enumeration
+
+As a soundtrack extractor,
+I want `qlnes` to walk every entry in a recognized song table,
+So that unused and composer-demo tracks are not missed.
+
+**Acceptance Criteria:**
+
+**Given** a recognized engine fixture with referenced and unreferenced song table entries
+**When** I run `qlnes audio` on the ROM
+**Then** every valid song table entry is planned as a track
+**And** invalid/sentinel entries are skipped only with recorded evidence
+**And** output filenames use zero-padded song-table indexes
+**And** the generated provenance records engine id, mapper, song index and detection evidence.
+
+### Story 1.3: Loop-aware WAV output
+
+As a porter,
+I want loop boundaries preserved in WAV output,
+So that I can drop tracks into a modern game audio engine without manual editing.
+
+**Acceptance Criteria:**
+
+**Given** a recognized engine track with bytecode-level loop metadata
+**When** the track is rendered as WAV
+**Then** the WAV contains PCM audio and loop metadata using the project's selected WAV loop representation
+**And** the loop start/end values are derived from engine semantics, not PCM autocorrelation
+**And** a test verifies the loop points for at least one fixture track
+**And** if loop detection is unavailable, the track is emitted with explicit `unverified` loop provenance, not silent guesses.
+
+### Story 1.4: MP3 output from canonical PCM
+
+As a content creator,
+I want MP3 files generated from the same canonical PCM as WAV,
+So that I can use compact audio files while preserving a trustworthy source.
+
+**Acceptance Criteria:**
+
+**Given** `lameenc` is installed at the supported pinned version
+**When** I run `python -m qlnes audio rom.nes --format mp3 --output tracks/`
+**Then** `qlnes` renders PCM through the same path as WAV and encodes MP3 from that PCM
+**And** output filenames match the WAV naming convention with `.mp3`
+**And** provenance records encoder name/version, bitrate, sample rate and PCM hash
+**And** tests compare PCM hash as canonical and treat MP3 byte hash as version-bound.
+
+### Story 1.5: Unknown engine fallback tagged unverified
+
+As a user with an unsupported ROM,
+I want `qlnes` to avoid false pass claims,
+So that I know whether the extracted audio is verified or only best-effort.
+
+**Acceptance Criteria:**
+
+**Given** a valid ROM whose audio engine is not recognized
+**When** I run `qlnes audio`
+**Then** `qlnes` either produces frame-accurate fallback artifacts tagged `unverified` or fails preflight if fallback is unavailable
+**And** `bilan.json` never records unknown-engine audio as `pass`
+**And** stderr explains the unsupported engine condition with mapper and ROM SHA-256
+**And** no corrupted or partially verified output is presented as tier-1.
+
+## Epic 2: Savoir ce qui est vraiment couvert
+
+L'utilisateur peut verifier une ROM ou auditer un corpus, puis lire une matrice de couverture fiable qui distingue `pass`, `fail`, `unsupported` et `unverified` par mapper et engine audio.
+
+### Story 2.1: Verification audio d'une ROM contre FCEUX
+
+As a developer validating fidelity,
+I want `qlnes verify --audio <rom>` to compare qlnes PCM against FCEUX reference PCM,
+So that I can prove a supported ROM is audio-equivalent.
+
+**Acceptance Criteria:**
+
+**Given** FCEUX is installed and a supported ROM has local reference generation available
+**When** I run `python -m qlnes verify --audio rom.nes`
+**Then** `qlnes` obtains or reads the FCEUX reference PCM
+**And** compares it to qlnes PCM at the configured sample rate
+**And** exits `0` only when the PCM streams match
+**And** exits `101` with structured JSON when equivalence fails.
+
+### Story 2.2: Corpus manifest and reference generation
+
+As a maintainer,
+I want a hash-only corpus manifest and reference generator,
+So that tests can validate real ROM behavior without committing ROMs or audio derivatives.
+
+**Acceptance Criteria:**
+
+**Given** a `corpus/manifest.toml` entry containing ROM SHA-256, mapper, engine and expected reference metadata
+**When** I run the reference generation script locally
+**Then** references are produced only for ROM files present locally
+**And** missing ROMs are reported without failing unrelated entries
+**And** generated reference provenance includes FCEUX version and Lua script hash
+**And** no ROM bytes or reference WAV/MP3 files are added to tracked output paths.
+
+### Story 2.3: `qlnes audit` writes `bilan.json`
+
+As a project owner,
+I want `qlnes audit` to run invariants across the corpus,
+So that release readiness is based on actual coverage evidence.
+
+**Acceptance Criteria:**
+
+**Given** corpus ROMs and references are available locally
+**When** I run `python -m qlnes audit`
+**Then** every applicable invariant is run for supported mapper/engine/artifact combinations
+**And** `bilan.json` records status, ROM count, fail count and failing SHA-256s
+**And** missing references cause exit `102` before writing a new `bilan.json`
+**And** the write is atomic.
+
+### Story 2.4: `qlnes coverage` table and JSON
+
+As a user checking support,
+I want `qlnes coverage` to show a clear support matrix,
+So that I know whether a ROM class is supported before relying on extraction.
+
+**Acceptance Criteria:**
+
+**Given** a valid `bilan.json`
+**When** I run `python -m qlnes coverage`
+**Then** the default output is a human-readable table
+**And** audio rows are grouped by mapper and engine
+**And** `--format json` emits schema-stable JSON
+**And** missing or invalid `bilan.json` triggers an audit according to FR22.
+
+### Story 2.5: Stale coverage and refresh
+
+As a CI user,
+I want stale coverage to be detected and refreshable,
+So that old `bilan.json` results do not mask regressions.
+
+**Acceptance Criteria:**
+
+**Given** `bilan.json.generated_at` predates files in `qlnes/`
+**When** I run `qlnes coverage`
+**Then** `qlnes` warns that coverage may be stale
+**And** suggests `--refresh`
+**And** `qlnes coverage --refresh` bypasses the cache and runs audit
+**And** `--strict` turns the stale warning into a fatal error.
+
+## Epic 3: Produire un NSF2/NSFe exploitable par les lecteurs chiptune
+
+L'utilisateur peut lancer `qlnes nsf <rom> --output ost.nsf` et obtenir un NSF valide avec metadata pistes, compatible avec les lecteurs cibles et coherent avec la detection de songs.
+
+### Story 3.1: NSF2 header et payload mapper 0
+
+As a chiptune user,
+I want `qlnes nsf <rom> --output ost.nsf` to emit a basic NSF2 file,
+So that I can play a supported ROM soundtrack in NSF players.
+
+**Acceptance Criteria:**
+
+**Given** a supported mapper-0 ROM with recognized init/play addresses
+**When** I run `python -m qlnes nsf rom.nes --output ost.nsf`
+**Then** `ost.nsf` has a valid NSF2 header
+**And** load/init/play addresses and song count match the detected engine plan
+**And** bankswitch fields are valid for the payload
+**And** at least one target NSF decoder/player can load the file in tests.
+
+### Story 3.2: NSFe metadata chunks
+
+As a content creator,
+I want NSF tracks to include labels, durations, fade and playlist metadata,
+So that players show an organized soundtrack instead of anonymous tracks.
+
+**Acceptance Criteria:**
+
+**Given** song labels or generated track names are available
+**When** `qlnes nsf` emits NSF2/NSFe metadata
+**Then** `tlbl`, `time`, `fade`, `auth` and `plst` chunks are encoded according to the selected spec
+**And** missing metadata falls back to deterministic defaults
+**And** tests validate chunk order, lengths and little-endian fields
+**And** unknown optional metadata never prevents playback.
+
+### Story 3.3: NSF output shares song enumeration with audio output
+
+As a user,
+I want NSF and WAV/MP3 extraction to include the same tracks,
+So that one command does not silently miss songs found by another.
+
+**Acceptance Criteria:**
+
+**Given** a recognized ROM with N detected songs
+**When** I run both `qlnes audio --format wav` and `qlnes nsf`
+**Then** both commands use the same `SongPlan` source
+**And** the NSF song count equals the audio track count
+**And** unreferenced but valid song table entries appear in both outputs
+**And** a regression test asserts consistency.
+
+### Story 3.4: NSF unsupported mapper/expansion failure
+
+As a user with a complex ROM,
+I want `qlnes nsf` to fail clearly when mapper or expansion audio is not covered,
+So that I do not receive a broken NSF.
+
+**Acceptance Criteria:**
+
+**Given** a ROM with unsupported mapper or expansion audio
+**When** I run `qlnes nsf`
+**Then** preflight exits before writing `ost.nsf`
+**And** stderr includes `qlnes: error:` and JSON details
+**And** the error code distinguishes unsupported mapper from malformed input
+**And** `--force` does not bypass unsupported capability checks.
+
+## Epic 4: Rendre la CLI robuste pour scripts et pipelines
+
+L'utilisateur pipeline peut invoquer `qlnes` en subprocess avec exit codes stables, stderr JSON, preflight, atomic writes, config layers, flags batch et completions sans inspecter les modules Python internes.
+
+### Story 4.1: Erreurs structurees et exit codes
+
+As a pipeline integrator,
+I want all failures to have stable exit codes and parseable stderr JSON,
+So that automation can handle errors without scraping prose.
+
+**Acceptance Criteria:**
+
+**Given** any command encounters a usage, ROM, unsupported, IO, equivalence or internal error
+**When** the command exits non-zero
+**Then** stderr begins with `qlnes: error:`
+**And** the next line is single-line JSON containing `code` and `class`
+**And** exit code matches the documented table
+**And** stack traces are hidden unless `--debug` is passed.
+
+### Story 4.2: Atomic output and overwrite protection
+
+As a user rerunning extraction,
+I want outputs protected from partial writes and accidental overwrite,
+So that failed runs do not corrupt previous artifacts.
+
+**Acceptance Criteria:**
+
+**Given** an output target already exists
+**When** I run a writer command without `--force`
+**Then** `qlnes` exits `73` before writing
+**And** with `--force`, writes occur through sibling temp files and atomic rename
+**And** a kill/crash test leaves either the previous complete output or no output
+**And** no half-written target remains.
+
+### Story 4.3: Layered configuration for audio commands
+
+As a CI maintainer,
+I want defaults from config, env and CLI flags to resolve predictably,
+So that local and CI runs behave the same way.
+
+**Acceptance Criteria:**
+
+**Given** built-in defaults, `qlnes.toml`, `QLNES_*` env vars and CLI flags define the same option
+**When** `qlnes audio`, `verify`, `audit` or `coverage` resolves config
+**Then** precedence is defaults < TOML < env < CLI
+**And** every TOML/env option has a corresponding CLI flag
+**And** command-specific sections override `[default]` only for that command
+**And** invalid config fails preflight with structured error.
+
+### Story 4.4: Batch-mode flags and non-TTY behavior
+
+As a script author,
+I want explicit quiet, strict, progress, hints and color controls,
+So that `qlnes` behaves predictably in logs and pipes.
+
+**Acceptance Criteria:**
+
+**Given** stdout or stderr is non-TTY
+**When** I run a long command
+**Then** no progress bars or prompts are emitted
+**And** `--strict` makes warnings fatal
+**And** `--no-hints` suppresses hint lines but not JSON
+**And** `--color never` disables ANSI color
+**And** `--quiet` suppresses informational output while preserving errors.
+
+### Story 4.5: Shell completion and help contract
+
+As a CLI user,
+I want completion and help to reflect the MVP command surface,
+So that I can discover flags without external docs.
+
+**Acceptance Criteria:**
+
+**Given** Typer completion is available
+**When** I run `--install-completion` for bash, zsh, fish or PowerShell
+**Then** completion installation follows Typer's mechanism
+**And** help lists audio, nsf, audit and coverage flags with valid enum values
+**And** noun command exceptions `audio` and `nsf` remain documented as backwards-compatible
+**And** help text does not advertise Growth/Vision features as MVP.
+
+## Epic 5: Garder l'analyse, le round-trip et les assets existants verts
+
+L'utilisateur conserve les capacites existantes `analyze`, `recompile`, `verify` et assets pendant l'arrivee du pipeline musique, avec regression tests et contrats CLI inchanges.
+
+### Story 5.1: Regression tests pour ingestion et analyse ROM
+
+As an existing user,
+I want `analyze` and ROM header validation to keep working,
+So that music work does not break current analysis workflows.
+
+**Acceptance Criteria:**
+
+**Given** existing fixture ROMs
+**When** the test suite runs
+**Then** header validation, `STACK.md` generation and annotated ASM generation pass
+**And** existing output structure remains compatible
+**And** unsupported dynamic discovery still degrades clearly when `cynes` is absent.
+
+### Story 5.2: Regression tests pour recompile et verify
+
+As a ROM hacker,
+I want byte-identical round-trip verification to remain green,
+So that audio extraction does not weaken the original equivalence promise.
+
+**Acceptance Criteria:**
+
+**Given** existing round-trip fixtures
+**When** I run `qlnes recompile` and `qlnes verify`
+**Then** recompiled ROM bytes match the source
+**And** failures use the new structured error contract
+**And** tests cover both success and mismatch cases
+**And** audio verification does not change the default non-audio verify behavior.
+
+### Story 5.3: Regression tests pour assets PNG
+
+As a user extracting sprites,
+I want CHR-ROM PNG extraction to keep working,
+So that the music MVP does not regress asset workflows.
+
+**Acceptance Criteria:**
+
+**Given** ROMs with CHR-ROM banks
+**When** I run `qlnes analyze --assets`
+**Then** PNG sheets are emitted as before
+**And** outputs are protected by the same atomic/overwrite contract where applicable
+**And** deterministic-output tests reject timestamps or host-specific metadata
+**And** asset failures do not mask unrelated audio tests.
+
+## Epic 6: Etendre vers la couverture universelle post-MVP
+
+L'utilisateur voit la couverture progresser vers plus de mappers, engines, CHR round-trip, packaging et exploration interactive sans casser le MVP.
+
+### Story 6.1: Ajouter un nouveau mapper/engine audio a la matrice
+
+As a maintainer,
+I want a repeatable contributor flow for adding one mapper/engine pair,
+So that coverage can grow without redesigning the pipeline.
+
+**Acceptance Criteria:**
+
+**Given** a new legal local corpus ROM and engine research notes
+**When** a contributor adds a handler and manifest entry
+**Then** the new pair appears in `bilan.json`
+**And** tier-1 requires PCM equivalence against FCEUX
+**And** unsupported expansion audio remains explicit
+**And** docs explain the required evidence.
+
+### Story 6.2: CHR PNG round-trip growth story
+
+As an asset modder,
+I want PNG sheets to round-trip back to byte-identical CHR-ROM,
+So that visual assets become as verifiable as code and audio.
+
+**Acceptance Criteria:**
+
+**Given** extracted PNG sheets from a CHR-ROM fixture
+**When** I run the future PNG -> CHR round-trip command
+**Then** produced CHR bytes match the original bank
+**And** failures record source bank and pixel/tile mismatch evidence
+**And** coverage records the asset invariant separately from audio.
+
+### Story 6.3: Packaging growth story
+
+As a new user,
+I want to install `qlnes` with `pip install qlnes`,
+So that I can invoke `qlnes <command>` without cloning the repo.
+
+**Acceptance Criteria:**
+
+**Given** packaging is promoted to Growth
+**When** the package is built
+**Then** console script `qlnes` invokes the same CLI as `python -m qlnes`
+**And** package data includes Lua scripts and manifests but no ROM/audio bytes
+**And** dependency pins preserve MVP behavior
+**And** install docs state FCEUX requirements for verify/audit.
+
+### Story 6.4: Interactive ROM shell vision story
+
+As a researcher,
+I want `qlnes shell <rom>` to inspect routines and audition tracks interactively,
+So that exploratory reverse-engineering is faster than repeated CLI calls.
+
+**Acceptance Criteria:**
+
+**Given** the Vision shell is enabled
+**When** I open a ROM
+**Then** I can list detected routines, songs and coverage status
+**And** audition commands reuse the same audio renderer and provenance model
+**And** no shell-only behavior bypasses batch CLI invariants
+**And** the feature remains out of MVP docs until explicitly promoted.
+
+## Final Validation
+
+- FR coverage: complete. FR1-FR40 are mapped to epics.
+- UX-DR coverage: complete. UX-DR1-UX-DR12 are covered by Epic 1, Epic 2, Epic 3 and Epic 4 stories.
+- Architecture alignment: complete. No greenfield starter is required; stories extend the brownfield CLI.
+- Story count: 26 stories across 6 epics.
+- Dependency flow: Epic 1 creates the first vertical audio value; Epic 2 and Epic 3 build on the audio planning/provenance seams; Epic 4 hardens the public CLI contract; Epic 5 protects existing value; Epic 6 is explicitly post-MVP.
+- Forward dependency check: no story requires a later story in the same epic to be useful.
+- Planning authority: for subsequent BMAD passes, this addendum 2026-07-22 is the authoritative ordering and scope for the audio NES -> MP3 work; the historical A-E plan remains a detailed reference for acceptance criteria and dev notes.
+- File churn check: overlap on CLI/audio/audit modules is intentional and grouped by user-visible workflow, with Epic 4 reserved for public contract hardening.
+
+---
+
+# Addendum 2026-07-22 — NSF Toolchain et extraction assistee
+
+Cet addendum ajoute les epics issus de la recherche complementaire sur les outils externes: les emulateurs et players savent lire ou rendre des `.nsf/.nsfe`, Winamp dispose de plugins historiques comme NSFPlug, et `libgme`/NSFPlay donnent une voie automatisable pour convertir ces fichiers vers PCM/WAV puis MP3. Le rip direct `.nes -> .nsf` reste opportuniste: certains outils existent ou ont existe, mais aucun ne doit etre traite comme extracteur universel sans provenance et verification.
+
+## Epic 7: Importer les NSF/NSFe et convertir toutes les pistes
+
+L'utilisateur qui possede deja un `.nsf` ou `.nsfe` extrait par un emulateur, un ripper historique ou une archive personnelle peut obtenir toutes les pistes en WAV/MP3 avec les memes garanties de nommage, metadata et bilan que pour une ROM.
+
+### Story 7.1: Accepter NSF/NSFe comme entree officielle
+
+As a music extractor,
+I want `qlnes audio input.nsf` and `qlnes audio input.nsfe`,
+So that I can convert already-ripped NES music without first finding the original ROM.
+
+**Acceptance Criteria:**
+
+**Given** a valid `.nsf` or `.nsfe`
+**When** I run `qlnes audio file.nsf --format wav`
+**Then** `qlnes` enumerates every track exposed by the header/metadata
+**And** starting song, region, init/play addresses, speed, bankswitch data and expansion flags are recorded in `bilan.json`
+**And** malformed headers fail with a structured `invalid_nsf` error
+**And** `.nes` behavior remains unchanged.
+
+### Story 7.2: Rendre NSF/NSFe via player backend automatisable
+
+As a batch user,
+I want `qlnes` to use an NSF player backend,
+So that every NSF track can become canonical PCM/WAV and derived MP3.
+
+**Acceptance Criteria:**
+
+**Given** `libgme` or an approved NSFPlay CLI/contrib renderer is available
+**When** I render a multi-track NSF
+**Then** one WAV/MP3 is produced per track using deterministic filenames
+**And** PCM render settings, player name, player version and track index are written to provenance
+**And** MP3 output is derived from PCM using the existing encoder path
+**And** renderer adapters may include direct `libgme`, NSFPlay contrib tools or `asanoic/nsf-ripper` when installed
+**And** missing player backends fail preflight with install hints.
+
+### Story 7.3: Preserver metadata NSFe et UX d'ecoute
+
+As a curator,
+I want titles, times, fades and playlists preserved,
+So that exported tracks are usable in normal music players.
+
+**Acceptance Criteria:**
+
+**Given** an NSFe with `tlbl`, `time`, `fade`, `auth` or `plst` chunks
+**When** `qlnes` renders or audits it
+**Then** metadata appears in `bilan.json`
+**And** track filenames use stable numeric prefixes even when titles are absent
+**And** optional titles are sanitized without losing the original metadata value
+**And** playlist order is represented separately from raw track index order.
+
+### Story 7.4: Documenter les players et plugins pour validation manuelle
+
+As a user validating output by ear,
+I want clear supported-player guidance,
+So that I can listen to NSF/NSFe files outside `qlnes`.
+
+**Acceptance Criteria:**
+
+**Given** the user opens `qlnes` docs for NSF playback
+**When** they need a manual player
+**Then** docs list NSFPlay/NSFPlug, Audio Overload, foobar Game Emu Player, Mesen and VLC as external listening options
+**And** docs distinguish GUI listening tools from deterministic CLI render backends
+**And** Winamp plugins are documented as optional/manual, not required for Linux batch operation
+**And** source links are included.
+
+## Epic 8: Extraire depuis ROM avec adapters et reverse-engineering assiste
+
+L'utilisateur qui part d'une ROM `.nes` peut combiner les detectors `qlnes`, les rippers historiques, les traces emulateur et les notes ASM pour produire le meilleur resultat disponible, tout en gardant un statut clair: `pass`, `unverified` ou `unsupported`.
+
+### Story 8.1: Adapter les rippers ROM -> NSF disponibles localement
+
+As a ROM researcher,
+I want `qlnes` to try installed ROM-to-NSF rippers,
+So that legacy tooling can improve coverage without becoming a hard dependency.
+
+**Acceptance Criteria:**
+
+**Given** a configured adapter for NES2NSF, SlickNSF or another local ripper
+**When** `qlnes nsf rom.nes --strategy external`
+**Then** each candidate tool is invoked in an isolated output directory
+**And** produced NSF files are validated before being accepted
+**And** failures record tool name, exit status and stderr excerpt
+**And** successful external rips are marked `source_manual_external` or `source_tool_external` until PCM verification passes
+**And** ROM-ripper adapters may include NES2NSF, SlickNSF or debugger-assisted dump tools, while `.nsf -> audio` tools such as NEZplug/NSF2WAV, `asanoic/nsf-ripper` or user-provided `lando-nsf2wav` are classified separately
+**And** none of those external tools are required for the core CLI.
+
+### Story 8.2: Capturer les indices emulateur/debugger
+
+As a reverse engineer,
+I want emulator traces to identify audio routines and APU writes,
+So that unknown ROM engines can graduate from silent fallback to targeted handlers.
+
+**Acceptance Criteria:**
+
+**Given** FCEUX or Mesen is configured as a trace source
+**When** I run `qlnes research-audio rom.nes`
+**Then** `qlnes` captures frame cadence, writes to `$4000-$4017`, candidate `init/play` routines and mapper state
+**And** the output note links evidence back to CPU addresses and disassembly labels when available
+**And** manual header-stripping is documented as a reverse-engineering hint, not a valid NSF output unless `NESM`, load/init/play addresses, timing and bankswitch metadata are rebuilt
+**And** no commercial ROM bytes are copied into project docs
+**And** the resulting hints can feed a new engine story.
+
+### Story 8.3: Ajouter un DPCM sample ripper interne
+
+As a soundtrack extractor,
+I want DPCM samples found and reported,
+So that drum/sample-heavy ROMs do not appear complete when DMC data is missing.
+
+**Acceptance Criteria:**
+
+**Given** a ROM uses `$4010-$4013`, `$4011` or DPCM sample address/length tables
+**When** `qlnes audit` scans it
+**Then** DPCM usage evidence is recorded per track or per ROM
+**And** detected sample regions can be exported as raw DPCM with metadata
+**And** audio render status remains `unverified` until DMC playback is implemented
+**And** false positives are bounded by tests on ROMs without DPCM writes.
+
+### Story 8.4: Transformer la note SMB ASM en handler candidat
+
+As a maintainer,
+I want the Super Mario Bros. audio-engine note to become an implementation story,
+So that a known custom engine can move from `unknown` to a verified detector/renderer.
+
+**Acceptance Criteria:**
+
+**Given** `_bmad-output/audio-validation/super-mario-bros-audio-engine-note-2026-07-22.md`
+**When** the SMB handler story is implemented
+**Then** detection uses mapper 0 plus the `L_F2D0` dispatcher, `L_F90C` song table and `L_FF00/L_FF01` period tables as evidence
+**And** song enumeration is conservative and records skipped sentinel/ambiguous entries
+**And** rendering initializes the required RAM/song selector before frame updates
+**And** the handler remains `unverified` until compared against a legal local reference render.
+
+### Story 8.5: Construire un NSF depuis une ROM homebrew NROM/NESASM
+
+As a homebrew composer,
+I want `qlnes` to turn my simple mapper-0 NESASM music ROM into an NSF when I provide init/play details,
+So that controllable homebrew programs do not need a brittle external ripper.
+
+**Acceptance Criteria:**
+
+**Given** a mapper-0 16 KiB or 32 KiB `.nes` whose author provides `--load-address`, `--init-address`, `--play-address`, track count and region
+**When** I run `qlnes nsf homebrew.nes --homebrew-nrom ...`
+**Then** `qlnes` strips the iNES header, selects the correct PRG range for `$8000` or `$C000` origin, and prepends a valid NSF/NSF2 header
+**And** the output validates `NESM`, song count, load/init/play addresses, speed and expansion flags before writing
+**And** docs explain that `PLAY` must run one frame and `RTS`, while `INIT` must initialize and `RTS`
+**And** code that depends on NMI/VBlank/PPU polling or never returns is rejected or marked `unverified`
+**And** the story explicitly excludes commercial ROMs like Super Mario Bros. unless a separate engine handler supplies equivalent `INIT`/`PLAY` semantics.
+
+## Addendum Validation
+
+- New coverage: `.nsf/.nsfe` input path, player-backed conversion, external ripper adapters, emulator trace research, DPCM scan, SMB custom-engine follow-up.
+- Revised counts: 8 epics, 35 stories.
+- Product constraint: `qlnes` may combine external tools, but every output must say whether it was internally proven, externally sourced, manually supplied, or still unverified.
+- Implementation priority: Epic 7 should come before Epic 8 because NSF playback/conversion is easier to validate than universal ROM ripping and immediately supports files dumped by other tools.

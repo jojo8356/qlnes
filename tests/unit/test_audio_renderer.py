@@ -7,6 +7,7 @@ tests/integration (phase 7.6).
 
 from __future__ import annotations
 
+import json
 import wave
 
 import pytest
@@ -30,6 +31,31 @@ def _make_minimal_ines_rom_with_signature(prg_size: int = 0x4000) -> bytes:
     prg = bytearray(prg_size)
     sig = b"FamiTracker"
     prg[0x100 : 0x100 + len(sig)] = sig
+    return header + bytes(prg)
+
+
+def _make_minimal_ines_rom_with_metadata(payload: dict) -> bytes:
+    header = b"NES\x1a" + bytes([1, 0, 0, 0]) + bytes(8)
+    prg = bytearray(0x4000)
+    sig = b"FamiTracker"
+    blob = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    metadata = b"QLNESFTMETA1\x00" + len(blob).to_bytes(2, "little") + blob
+    prg[0x100 : 0x100 + len(sig)] = sig
+    prg[0x200 : 0x200 + len(metadata)] = metadata
+    return header + bytes(prg)
+
+
+def _make_unknown_mapper0_rom() -> bytes:
+    """Valid NROM ROM with no engine signature and a stable reset loop."""
+    header = b"NES\x1a" + bytes([1, 0, 0, 0]) + bytes(8)
+    prg = bytearray(0x4000)
+    prg[0:3] = bytes([0x4C, 0x00, 0x80])  # JMP $8000
+    prg[0x3FFA] = 0x00
+    prg[0x3FFB] = 0x80
+    prg[0x3FFC] = 0x00
+    prg[0x3FFD] = 0x80
+    prg[0x3FFE] = 0x00
+    prg[0x3FFF] = 0x80
     return header + bytes(prg)
 
 
@@ -77,12 +103,28 @@ def test_render_unsupported_format_raises_bad_format_arg(tmp_path):
     assert "ogg" in exc.value.reason
 
 
-def test_render_unrecognized_engine_raises_unsupported_mapper(tmp_path, fake_oracle):
-    """A ROM without any FT signature should fail engine detection."""
+def test_render_unrecognized_mapper0_uses_unknown_fallback(tmp_path, fake_oracle):
+    """A valid mapper-0 ROM without an engine signature gets tier-2 fallback."""
     rom = tmp_path / "rom.nes"
-    # ROM with valid header but no FT signature in PRG.
-    header = b"NES\x1a" + bytes([1, 0, 0, 0]) + bytes(8)
-    rom.write_bytes(header + bytes(0x4000))
+    rom.write_bytes(_make_unknown_mapper0_rom())
+    result = render_rom_audio_v2(
+        rom,
+        tmp_path / "out",
+        fmt="wav",
+        frames=2,
+        engine_mode="in-process",
+    )
+    assert result.engine_name == "unknown"
+    assert result.tier == 2
+    assert result.output_paths[0].name == "rom.00.unknown.wav"
+
+
+def test_render_unsupported_mapper_still_raises_unsupported_mapper(tmp_path, fake_oracle):
+    """Fallback is mapper-0 only; unsupported mappers still fail clearly."""
+    rom = tmp_path / "rom.nes"
+    # Mapper 2 in flags6 high nibble, no engine signature.
+    header = b"NES\x1a" + bytes([2, 0, 0x20, 0]) + bytes(8)
+    rom.write_bytes(header + bytes(0x8000))
     with pytest.raises(QlnesError) as exc:
         render_rom_audio_v2(rom, tmp_path / "out", fmt="wav")
     assert exc.value.cls == "unsupported_mapper"
@@ -100,6 +142,38 @@ def test_render_writes_one_wav_per_song_with_deterministic_filenames(tmp_path, f
     p = result.output_paths[0]
     assert p.name == "metalstorm.00.famitracker.wav"
     assert p.exists()
+
+
+def test_render_writes_every_metadata_song_and_loop_smpl(tmp_path, fake_oracle):
+    rom = tmp_path / "ost.nes"
+    rom.write_bytes(
+        _make_minimal_ines_rom_with_metadata(
+            {
+                "songs": [
+                    {
+                        "index": 0,
+                        "label": "main",
+                        "referenced": True,
+                        "loop": {"start_sample": 10, "end_sample": 200},
+                    },
+                    {"index": 1, "label": "unused", "referenced": False},
+                ]
+            }
+        )
+    )
+    result = render_rom_audio_v2(
+        rom,
+        tmp_path / "tracks",
+        fmt="wav",
+        frames=30,
+        engine_mode="oracle",
+    )
+    assert [p.name for p in result.output_paths] == [
+        "ost.00.famitracker.wav",
+        "ost.01.famitracker.wav",
+    ]
+    assert b"smpl" in result.output_paths[0].read_bytes()
+    assert b"smpl" not in result.output_paths[1].read_bytes()
 
 
 def test_render_creates_output_dir_if_missing(tmp_path, fake_oracle):
@@ -165,7 +239,7 @@ def test_render_two_consecutive_runs_byte_identical(tmp_path, fake_oracle):
 def test_render_passes_frames_to_oracle(tmp_path, fake_oracle):
     rom = tmp_path / "rom.nes"
     rom.write_bytes(_make_minimal_ines_rom_with_signature())
-    render_rom_audio_v2(rom, tmp_path / "out", fmt="wav", frames=120)
+    render_rom_audio_v2(rom, tmp_path / "out", fmt="wav", frames=120, engine_mode="oracle")
     assert fake_oracle["traces"][0][1] == 120
 
 
@@ -183,7 +257,14 @@ def test_render_uses_provided_oracle_instance(tmp_path):
             return ApuTrace(events=[], end_cycle=0)
 
     oracle = _MyOracle()
-    render_rom_audio_v2(rom, tmp_path / "out", fmt="wav", frames=30, oracle=oracle)
+    render_rom_audio_v2(
+        rom,
+        tmp_path / "out",
+        fmt="wav",
+        frames=30,
+        oracle=oracle,
+        engine_mode="oracle",
+    )
     assert oracle.calls == 1
 
 
@@ -379,7 +460,7 @@ def test_multi_file_refuse_triggers_pre_flight_no_writes(tmp_path, fake_oracle, 
     second.write_bytes(b"existing")
 
     with pytest.raises(QlnesError) as exc:
-        render_rom_audio_v2(rom, out_dir, fmt="wav", frames=30)
+        render_rom_audio_v2(rom, out_dir, fmt="wav", frames=30, engine_mode="oracle")
     assert exc.value.cls == "cant_create"
     assert "rom.01.famitracker.wav" in exc.value.extra["path"]
     # Dir-level atomicity: NO file should have been written this run.
@@ -420,7 +501,7 @@ def test_dir_level_rollback_on_mid_render_failure(tmp_path, fake_oracle, monkeyp
     (out_dir / "unrelated.txt").write_bytes(b"keep me")
 
     with pytest.raises(RuntimeError, match="simulated"):
-        render_rom_audio_v2(rom, out_dir, fmt="wav", frames=30)
+        render_rom_audio_v2(rom, out_dir, fmt="wav", frames=30, engine_mode="oracle")
 
     # Song 0 was rendered + written, then song 1 failed → song 0's WAV must
     # have been rolled back.
