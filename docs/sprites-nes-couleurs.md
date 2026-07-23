@@ -75,13 +75,13 @@ sprite-only avec fond transparent.
 Les sprites masques hors ecran (`Y >= 0xEF`) sont ignores par defaut. Ajouter
 `--include-hidden` pour les exporter aussi.
 
-## Mode runtime automatique NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/GxROM/FME-7
+## Mode runtime automatique NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/BNROM/GxROM/FME-7/Camerica
 
 Pour les ROMs mapper 0/NROM, mapper 1/MMC1 simple, mapper 2/UxROM, mapper
 3/CNROM, mapper 4/MMC3 simple, mapper 7/AxROM, mapper 11/Color Dreams et
-mapper 66/GxROM, mapper 69/Sunsoft FME-7/5B qui initialisent les palettes et
-OAM par les writes PPU classiques, qlnes peut faire le snapshot
-automatiquement :
+mapper 34/BNROM-NINA, mapper 66/GxROM, mapper 69/Sunsoft FME-7/5B, mapper
+71/Camerica qui initialisent les palettes et OAM par les writes PPU classiques,
+qlnes peut faire le snapshot automatiquement :
 
 ```bash
 python -m qlnes sprites ROM.nes \
@@ -106,11 +106,16 @@ Ce mode boote la ROM en-process avec `py65`, observe :
 - les writes mapper 7/AxROM vers `$8000-$FFFF` pour choisir la PRG bank 32 KiB ;
 - les writes mapper 11/Color Dreams vers `$8000-$FFFF` pour choisir la PRG bank
   32 KiB via bits `0-1` et le CHR bank 8 KiB via bits `4-7` ;
+- les writes mapper 34/BNROM vers `$8000-$FFFF` pour choisir la PRG bank 32 KiB
+  ou, en mode NINA, `$7FFD/$7FFE/$7FFF` pour choisir PRG 32 KiB et deux
+  fenêtres CHR 4 KiB ;
 - les writes mapper 66/GxROM vers `$8000-$FFFF` pour choisir la PRG bank 32 KiB
-  et le CHR bank actif.
+  et le CHR bank actif ;
 - les writes mapper 69/FME-7 vers `$8000-$9FFF` puis `$A000-$BFFF` pour choisir
   les fenêtres PRG 8 KiB `$8000/$A000/$C000` et les fenêtres CHR 1 KiB visibles
-  dans le snapshot.
+  dans le snapshot ;
+- les writes mapper 71/Camerica vers `$C000-$FFFF` pour choisir la PRG bank 16
+  KiB basse, avec la dernière bank fixe en haut.
 
 Ensuite il exporte les sprites OAM comme le mode `--snapshot`, avec
 `palette_source: runtime-snapshot` et `snapshot: in-process` dans le manifeste.
@@ -194,9 +199,9 @@ python -m qlnes sprites ROM.nes \
 ## Limite actuelle
 
 La commande sait capturer automatiquement les cas
-NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/GxROM/FME-7 simples, y compris
-une partie des ROMs CHR-RAM si les tiles sont ecrites via `PPUDATA` pendant la
-fenetre capturee.
+NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/BNROM/GxROM/FME-7/Camerica
+simples, y compris une partie des ROMs CHR-RAM si les tiles sont ecrites via
+`PPUDATA` pendant la fenetre capturee.
 Elle ne couvre pas encore tous les jeux NES :
 
 - variantes mapper complexes : le snapshot doit contenir le CHR bank actif ou

@@ -6,7 +6,7 @@ HEADER_SIZE = 16
 PRG_BANK = 0x4000
 CHR_BANK = 0x2000
 
-SUPPORTED_MAPPERS = (0, 1, 2, 3, 4, 7, 11, 66, 69)
+SUPPORTED_MAPPERS = (0, 1, 2, 3, 4, 7, 11, 34, 66, 69, 71)
 
 
 @dataclass
@@ -126,6 +126,19 @@ def _layout_colordreams(prg: bytes) -> list[tuple[int, bytes]]:
     return out
 
 
+def _layout_bnrom(prg: bytes) -> list[tuple[int, bytes]]:
+    # Mapper 34 BNROM/NINA: switchable 32 KiB PRG bank at $8000-$FFFF.
+    if len(prg) % 0x8000 != 0 or len(prg) == 0:
+        raise ValueError(f"Mapper 34 PRG size {len(prg):#x} not a multiple of 32K")
+    out: list[tuple[int, bytes]] = []
+    for idx in range(len(prg) // 0x8000):
+        bank = prg[idx * 0x8000 : (idx + 1) * 0x8000]
+        image = bytearray(0x10000)
+        image[0x8000:0x10000] = bank
+        out.append((idx, bytes(image)))
+    return out
+
+
 def _layout_mmc3_initial(prg: bytes) -> list[tuple[int, bytes]]:
     # Mapper 4 (MMC3): CPU PRG windows are 8 KiB. At reset, code is expected
     # to live in the fixed last 8 KiB window ($E000-$FFFF) and initialize the
@@ -191,10 +204,14 @@ def rom_to_images(data: bytes) -> list[tuple[int, bytes]]:
         return _layout_axrom(prg)
     if h.mapper == 11:
         return _layout_colordreams(prg)
+    if h.mapper == 34:
+        return _layout_bnrom(prg)
     if h.mapper == 66:
         return _layout_gxrom(prg)
     if h.mapper == 69:
         return _layout_fme7_initial(prg)
+    if h.mapper == 71:
+        return _layout_uxrom(prg)
     raise NotImplementedError(f"mapper {h.mapper} unhandled")
 
 

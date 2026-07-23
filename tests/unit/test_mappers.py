@@ -10,7 +10,7 @@ class TestMapperHeader(unittest.TestCase):
         self.assertIsNone(parse_header(b"NOPE" + bytes(20)))
 
     def test_mapper_extraction(self):
-        for m in (0, 1, 2, 3, 4, 7, 11, 66, 69):
+        for m in (0, 1, 2, 3, 4, 7, 11, 34, 66, 69, 71):
             h = parse_header(ines_header(1, 1, m))
             self.assertEqual(h.mapper, m, f"mapper={m}")
 
@@ -99,6 +99,14 @@ class TestColorDreams(unittest.TestCase):
         self.assertEqual(images[1][1][0x8000], 2)
 
 
+class TestMapper34(unittest.TestCase):
+    def test_mapper34_one_image_per_32k_bank(self):
+        images = rom_to_images(fake_rom(4, 34))
+        self.assertEqual(len(images), 2)
+        self.assertEqual(images[0][1][0x8000], 0)
+        self.assertEqual(images[1][1][0x8000], 2)
+
+
 class TestMMC3InitialLayout(unittest.TestCase):
     def test_mmc3_builds_initial_fixed_bank_view(self):
         images = rom_to_images(fake_rom(2, 4))
@@ -120,6 +128,17 @@ class TestFME7InitialLayout(unittest.TestCase):
         self.assertEqual(image[0xA000], 1)
         self.assertEqual(image[0xC000], 2)
         self.assertEqual(image[0xE000], 3)
+
+
+class TestCamerica(unittest.TestCase):
+    def test_mapper71_layout_like_uxrom(self):
+        images = rom_to_images(fake_rom(4, 71))
+        self.assertEqual(len(images), 4)
+        for _, image in images:
+            self.assertEqual(image[0xC000], 3)
+        self.assertEqual(images[0][1][0x8000], 0)
+        self.assertEqual(images[1][1][0x8000], 1)
+        self.assertEqual(images[2][1][0x8000], 2)
 
 
 class TestRom(unittest.TestCase):

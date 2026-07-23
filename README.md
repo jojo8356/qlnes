@@ -102,7 +102,7 @@ python -m qlnes sprites ROM.nes -o out/sprites --palette 0F,30,16,27
 # Extraire les sprites OAM avec couleurs originales depuis un snapshot PPU/OAM
 python -m qlnes sprites ROM.nes -o out/oam-sprites --snapshot snapshot-ppu-oam.json
 
-# Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/GxROM/FME-7 : capture palette/OAM automatiquement
+# Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/BNROM/GxROM/FME-7/Camerica : capture palette/OAM automatiquement
 python -m qlnes sprites ROM.nes -o out/oam-sprites --runtime-frames 120
 
 # Capturer plusieurs frames runtime pour récupérer plus d'états OAM/palettes
@@ -233,15 +233,15 @@ qlnes/
 ## Limites connues
 
 - **Mappers supportés** : 0 (NROM), 1 (MMC1 mode 3), 2 (UxROM), 3 (CNROM),
-  4 (MMC3 initial), 7 (AxROM), 11 (Color Dreams), 66 (GxROM/GNROM),
-  69 (Sunsoft FME-7/5B initial)
+  4 (MMC3 initial), 7 (AxROM), 11 (Color Dreams), 34 (BNROM/NINA),
+  66 (GxROM/GNROM), 69 (Sunsoft FME-7/5B initial), 71 (Camerica)
 - **Discovery dynamique** : nécessite `cynes`, supporté seulement pour mapper 0 (limitation runner actuelle)
 - **Capture sprites runtime** : couvre les cas simples NROM, MMC1/SxROM,
-  UxROM, CNROM, MMC3, AxROM, Color Dreams, GxROM/GNROM et Sunsoft FME-7/5B.
-  MMC1 couvre aussi les fenêtres CHR 4 KiB split simples, et FME-7 couvre les
-  fenêtres CHR 1 KiB simples. Les variantes mapper complexes, les IRQ/raster
-  effects et les changements mid-frame demandent encore un snapshot externe ou
-  un observateur PPU plus complet.
+  UxROM, CNROM, MMC3, AxROM, Color Dreams, BNROM/NINA, GxROM/GNROM,
+  Sunsoft FME-7/5B et Camerica. MMC1 et NINA couvrent les fenêtres CHR 4 KiB
+  split simples, FME-7 couvre les fenêtres CHR 1 KiB simples. Les variantes
+  mapper complexes, les IRQ/raster effects et les changements mid-frame
+  demandent encore un snapshot externe ou un observateur PPU plus complet.
 - **Détection éditeur** : pas de signature pour les moteurs sonores propriétaires sans string identifiable
 - **PPU stub** : pas implémenté nous-mêmes, on délègue à cynes (qui fait le full-NES)
 - **NSF générique** : fiable surtout pour NROM avec adresses INIT/PLAY simples.

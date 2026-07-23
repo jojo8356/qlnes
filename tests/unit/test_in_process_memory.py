@@ -5,6 +5,8 @@ import pytest
 
 from qlnes.audio.in_process.memory import (
     AxROMMemory,
+    BNROMNINAMemory,
+    CamericaMemory,
     CNROMMemory,
     ColorDreamsMemory,
     FME7Memory,
@@ -321,6 +323,58 @@ def test_axrom_reset_state_restores_initial_prg_bank():
     assert m[0x8000] == 1
     m.reset_state()
     assert m[0x8000] == 0
+
+
+def test_mapper34_bnrom_switches_32k_prg_bank():
+    banks = [bytes([bank_id] * 0x8000) for bank_id in range(4)]
+    m = BNROMNINAMemory(b"".join(banks), chr_data=b"")
+    assert m[0x8000] == 0
+    assert m[0xFFFF] == 0
+    m[0x8000] = 0x02
+    assert m[0x8000] == 2
+    assert m[0xFFFF] == 2
+
+
+def test_mapper34_nina_switches_prg_ram_registers_and_chr_4k_windows():
+    banks = [bytes([bank_id] * 0x8000) for bank_id in range(2)]
+    chr_data = b"".join(bytes([bank_id] * 0x1000) for bank_id in range(4))
+    m = BNROMNINAMemory(b"".join(banks), chr_data=chr_data)
+    m[0x7FFD] = 0x01
+    assert m[0x8000] == 1
+    m[0x7FFE] = 0x02
+    m[0x7FFF] = 0x03
+    snap = m.ppu_snapshot()
+    assert snap.pattern_table[0x0000] == 2
+    assert snap.pattern_table[0x0FFF] == 2
+    assert snap.pattern_table[0x1000] == 3
+    assert snap.pattern_table[0x1FFF] == 3
+
+
+def test_mapper34_reset_state_restores_initial_prg_chr_and_prg_ram():
+    banks = [bytes([bank_id] * 0x8000) for bank_id in range(2)]
+    chr_data = b"".join(bytes([bank_id] * 0x1000) for bank_id in range(4))
+    m = BNROMNINAMemory(b"".join(banks), chr_data=chr_data)
+    m[0x7FFD] = 0x01
+    m[0x7FFE] = 0x02
+    m[0x7FFF] = 0x03
+    assert m[0x7FFD] == 0x01
+    assert m[0x8000] == 1
+    m.reset_state()
+    assert m[0x7FFD] == 0x00
+    assert m[0x8000] == 0
+    assert m.ppu_snapshot().pattern_table[0x1000] == 1
+
+
+def test_camerica_mapper71_switches_prg_only_from_c000_ffff():
+    banks = [bytes([bank_id] * 0x4000) for bank_id in range(4)]
+    m = CamericaMemory(b"".join(banks))
+    assert m[0x8000] == 0
+    assert m[0xC000] == 3
+    m[0x8000] = 0x02
+    assert m[0x8000] == 0
+    m[0xC000] = 0x02
+    assert m[0x8000] == 2
+    assert m[0xC000] == 3
 
 
 def _mmc1_write_register(m: MMC1Memory, addr: int, value: int) -> None:

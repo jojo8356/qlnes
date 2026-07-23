@@ -7,7 +7,9 @@ ships NROMMemory (mapper 0), UxROMMemory (mapper 2), CNROMMemory
 and a conservative MMC1Memory (mapper 1). MMC3Memory (mapper 4) supports
 enough PRG/CHR banking for runtime sprite capture on simple boot snapshots.
 AxROMMemory (mapper 7) supports 32 KiB PRG switching with CHR-RAM captures.
+BNROMNINAMemory (mapper 34) supports BNROM PRG switching and NINA split CHR.
 FME7Memory (mapper 69) supports Sunsoft FME-7/5B PRG and 1 KiB CHR windows.
+CamericaMemory (mapper 71) supports the Codemasters/Camerica UNROM variant.
 
 The APU observer lives inside __setitem__: when py65 writes to
 $4000-$4017, we record an ApuWriteEvent. PPU reads/writes go through
@@ -364,6 +366,106 @@ class AxROMMemory(NROMMemory):
     def reset_state(self) -> None:
         super().reset_state()
         self._prg_bank = 0
+
+
+class BNROMNINAMemory(NROMMemory):
+    """Mapper-34 BNROM or NINA-001/NINA-002 memory.
+
+    Mapper 34 is historically ambiguous. When CHR-ROM is 0-8 KiB it behaves as
+    BNROM: a switchable 32 KiB PRG window and fixed CHR-RAM/CHR-ROM. When CHR
+    is larger than 8 KiB, it behaves as NINA: $7FFD switches the 32 KiB PRG
+    window and $7FFE/$7FFF switch two 4 KiB CHR windows.
+    """
+
+    def __init__(self, prg: bytes, chr_data: bytes) -> None:
+        if len(prg) % 0x8000 != 0 or len(prg) == 0:
+            raise ValueError("Mapper 34 PRG must contain at least one 32 KiB bank")
+        super().__init__(prg[:0x8000])
+        self._banks = [prg[i : i + 0x8000] for i in range(0, len(prg), 0x8000)]
+        self._prg_bank = 0
+        self._chr_rom = bytes(chr_data)
+        self._chr_4k_count = max(len(self._chr_rom) // 0x1000, 1)
+        self._chr0 = 0
+        self._chr1 = 1
+        self._prg_ram = bytearray(0x2000)
+
+    def _read_prg(self, addr: int) -> int:
+        return self._banks[self._prg_bank][addr - 0x8000]
+
+    def __getitem__(self, addr: int) -> int:
+        if 0x6000 <= addr < 0x8000:
+            return self._prg_ram[addr - 0x6000]
+        return super().__getitem__(addr)
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        v = value & 0xFF
+        if 0x6000 <= addr < 0x8000:
+            self._prg_ram[addr - 0x6000] = v
+            if addr == 0x7FFD:
+                self._prg_bank = (v & 0x01) % len(self._banks)
+            elif addr == 0x7FFE:
+                self._chr0 = v & 0x0F
+                self.chr_bank = self._dominant_chr_8k_bank()
+            elif addr == 0x7FFF:
+                self._chr1 = v & 0x0F
+                self.chr_bank = self._dominant_chr_8k_bank()
+            return
+        if addr >= 0x8000:
+            self._prg_bank = (v & 0x03) % len(self._banks)
+            return
+        super().__setitem__(addr, v)
+
+    def _mapped_chr_pattern_table(self) -> bytes:
+        if not self._chr_rom:
+            return bytes(self._pattern_table)
+        if len(self._chr_rom) <= 0x2000:
+            return self._chr_rom[:0x2000].ljust(0x2000, b"\x00")
+        out = bytearray(0x2000)
+        bank0 = self._chr0 % self._chr_4k_count
+        bank1 = self._chr1 % self._chr_4k_count
+        out[0x0000:0x1000] = self._chr_rom[bank0 * 0x1000 : (bank0 + 1) * 0x1000]
+        out[0x1000:0x2000] = self._chr_rom[bank1 * 0x1000 : (bank1 + 1) * 0x1000]
+        return bytes(out)
+
+    def _dominant_chr_8k_bank(self) -> int:
+        if len(self._chr_rom) <= 0x2000 or self._chr_4k_count < 2:
+            return 0
+        return (self._chr0 % self._chr_4k_count) // 2
+
+    def ppu_snapshot(self) -> PpuSnapshot:
+        snap = super().ppu_snapshot()
+        return PpuSnapshot(
+            ppuctrl=snap.ppuctrl,
+            ppumask=snap.ppumask,
+            palette_ram=snap.palette_ram,
+            oam=snap.oam,
+            pattern_table=self._mapped_chr_pattern_table(),
+            chr_bank=self._dominant_chr_8k_bank(),
+        )
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        self._prg_bank = 0
+        self._chr0 = 0
+        self._chr1 = 1
+        self._prg_ram[:] = b"\x00" * 0x2000
+
+
+class CamericaMemory(UxROMMemory):
+    """Mapper-71 Camerica/Codemasters memory.
+
+    Mapper 71 is mostly UNROM: $8000-$BFFF is switchable 16 KiB PRG and
+    $C000-$FFFF is fixed to the last bank. Bank select is only on writes to
+    $C000-$FFFF; lower writes are mirroring/CIC details ignored by this path.
+    """
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if 0xC000 <= addr <= 0xFFFF:
+            self._switch_bank = (value & 0x0F) % len(self._banks)
+            return
+        if addr >= 0x8000:
+            return
+        super().__setitem__(addr, value)
 
 
 class MMC1Memory(NROMMemory):

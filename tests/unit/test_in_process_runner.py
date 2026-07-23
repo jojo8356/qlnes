@@ -49,7 +49,7 @@ def test_constructor_rejects_unsupported_mapper():
         raw = b"\x00" * 0x8000
 
     rom = UnsupportedMapperRom()
-    with pytest.raises(ValueError, match="supports mapper 0, 1, 2, 3, 4, 7, 11, 66 and 69 only"):
+    with pytest.raises(ValueError, match="supports mapper 0, 1, 2, 3, 4, 7, 11, 34, 66, 69 and 71 only"):
         InProcessRunner(rom)
 
 
