@@ -96,6 +96,8 @@ class BatchSpriteExportEntry:
 class BatchSpriteExportManifest:
     out_dir: Path
     entries: list[BatchSpriteExportEntry] = field(default_factory=list)
+    all_unique_trimmed: list[Path] = field(default_factory=list)
+    all_unique_trimmed_spritesheet: Path | None = None
     manifest_json: Path | None = None
 
     @property
@@ -105,6 +107,10 @@ class BatchSpriteExportManifest:
     @property
     def failure_count(self) -> int:
         return sum(1 for entry in self.entries if not entry.ok)
+
+    @property
+    def all_unique_trimmed_count(self) -> int:
+        return len(self.all_unique_trimmed)
 
 
 @dataclass(frozen=True)
@@ -1088,6 +1094,7 @@ def export_sprite_batch(
     roms = discover_nes_roms(input_path, recursive=recursive)
     used: set[Path] = set()
     batch = BatchSpriteExportManifest(out_dir=out_dir)
+    all_unique_entries: list[dict[str, object]] = []
 
     for rom in roms:
         rom_out = _batch_out_dir(input_path, rom, out_dir, used)
@@ -1099,6 +1106,19 @@ def export_sprite_batch(
                     sample_frames=runtime_sample_frames,
                     include_hidden=include_hidden,
                 )
+                if sampled.manifest_json is not None:
+                    sampled_data = json.loads(
+                        sampled.manifest_json.read_text(encoding="utf-8")
+                    )
+                    for unique in sampled_data.get("unique_sprites", []):
+                        if isinstance(unique, dict):
+                            all_unique_entries.append(
+                                {
+                                    "rom": str(rom),
+                                    "rom_out_dir": str(rom_out),
+                                    **unique,
+                                }
+                            )
                 batch.entries.append(
                     BatchSpriteExportEntry(
                         rom=rom,
@@ -1149,6 +1169,48 @@ def export_sprite_batch(
                 )
             )
 
+    all_unique_manifest_entries: list[dict[str, object]] = []
+    if runtime_sample_frames is not None and all_unique_entries:
+        global_dir = out_dir / "all-unique-trimmed"
+        seen_global: set[str] = set()
+        for entry in all_unique_entries:
+            trimmed_value = entry.get("trimmed_path")
+            digest_value = entry.get("sha256")
+            if not isinstance(trimmed_value, str) or not isinstance(digest_value, str):
+                continue
+            if digest_value in seen_global:
+                continue
+            src = Path(trimmed_value)
+            if not src.exists():
+                continue
+            global_dir.mkdir(parents=True, exist_ok=True)
+            dst = global_dir / f"sprite-{len(all_unique_manifest_entries):04d}.png"
+            dst.write_bytes(src.read_bytes())
+            seen_global.add(digest_value)
+            batch.all_unique_trimmed.append(dst)
+            all_unique_manifest_entries.append(
+                {
+                    "path": str(dst),
+                    "source_path": str(src),
+                    "rom": entry.get("rom"),
+                    "rom_out_dir": entry.get("rom_out_dir"),
+                    "sha256": digest_value,
+                    "first_seen_frame": entry.get("first_seen_frame"),
+                    "oam_index": entry.get("oam_index"),
+                    "tile_index": entry.get("tile_index"),
+                    "palette_id": entry.get("palette_id"),
+                    "transparent_bbox": entry.get("transparent_bbox"),
+                }
+            )
+        if batch.all_unique_trimmed:
+            batch.all_unique_trimmed_spritesheet = write_png_spritesheet(
+                batch.all_unique_trimmed,
+                out_dir / "all-unique-trimmed-spritesheet.png",
+            )
+            atlas = png_spritesheet_atlas(batch.all_unique_trimmed)
+            for entry, coords in zip(all_unique_manifest_entries, atlas):
+                entry["sheet"] = coords
+
     out_dir.mkdir(parents=True, exist_ok=True)
     manifest_json = out_dir / "sprites-batch-manifest.json"
     manifest_json.write_text(
@@ -1173,7 +1235,19 @@ def export_sprite_batch(
                 "rom_count": len(batch.entries),
                 "success_count": batch.success_count,
                 "failure_count": batch.failure_count,
+                "all_unique_trimmed_count": batch.all_unique_trimmed_count,
+                "all_unique_trimmed_dir": (
+                    str(out_dir / "all-unique-trimmed")
+                    if batch.all_unique_trimmed
+                    else None
+                ),
+                "all_unique_trimmed_spritesheet": (
+                    str(batch.all_unique_trimmed_spritesheet)
+                    if batch.all_unique_trimmed_spritesheet
+                    else None
+                ),
                 "transparent_index": 0,
+                "all_unique_trimmed": all_unique_manifest_entries,
                 "entries": [
                     {
                         "rom": str(entry.rom),

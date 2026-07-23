@@ -839,6 +839,13 @@ class TestSpriteExport(unittest.TestCase):
             self.assertEqual(data["runtime_sample_frames"], [1, 2])
             self.assertEqual(data["success_count"], 1)
             self.assertEqual(data["entries"][0]["n_tiles"], 1)
+            self.assertEqual(data["all_unique_trimmed_count"], 1)
+            self.assertTrue((out_dir / "all-unique-trimmed" / "sprite-0000.png").exists())
+            self.assertTrue((out_dir / "all-unique-trimmed-spritesheet.png").exists())
+            self.assertEqual(
+                data["all_unique_trimmed"][0]["sheet"],
+                {"sheet_x": 0, "sheet_y": 0, "sheet_w": 7, "sheet_h": 8, "cell_w": 7, "cell_h": 8},
+            )
 
     def test_cli_sprites_batch_runtime_sample_range(self):
         with tempfile.TemporaryDirectory() as td:
@@ -865,6 +872,7 @@ class TestSpriteExport(unittest.TestCase):
             data = json.loads((out_dir / "sprites-batch-manifest.json").read_text())
             self.assertEqual(data["runtime_sample_frames"], [1, 3])
             self.assertEqual(data["entries"][0]["n_tiles"], 1)
+            self.assertEqual(data["all_unique_trimmed_count"], 1)
 
     def test_in_process_runtime_export_uses_cnrom_selected_chr_bank(self):
         with tempfile.TemporaryDirectory() as td:
