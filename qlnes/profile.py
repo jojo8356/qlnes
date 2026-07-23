@@ -20,6 +20,7 @@ from .assets import AssetsManifest, extract_chr, extract_music
 from .cross_ref import RoutineNameProposal, cross_reference, merge_proposals
 from .dataflow import Detection
 from .engines import EngineHint, detect_copyright_year, detect_engines
+from .graphics_calls import GraphicsCallReport, analyze_graphics_calls
 from .ines import HEADER_SIZE, INesHeader, strip_ines
 from .lang_detect import LangHypothesis, detect_language
 from .parser import Disasm
@@ -118,6 +119,7 @@ class RomProfile:
     routine_proposals: list[RoutineNameProposal] = field(default_factory=list)
     language_hypotheses: list[LangHypothesis] = field(default_factory=list)
     engine_hints: list[EngineHint] = field(default_factory=list)
+    graphics_calls: GraphicsCallReport = field(default_factory=GraphicsCallReport)
     copyright_string: str | None = None
     assets: AssetsManifest | None = None
     bank_asms: list[str] = field(default_factory=list)
@@ -150,6 +152,10 @@ class RomProfile:
                 self.vectors = self._extract_vectors(image)
                 base_disasm = Disasm(asm)
                 self.hardware = self._detect_hardware(self.annotated_asm, base_disasm)
+                self.graphics_calls = analyze_graphics_calls(
+                    Disasm(self.annotated_asm),
+                    self.header,
+                )
                 self.language_hypotheses = detect_language(base_disasm, self.header)
                 self.engine_hints = detect_engines(self.rom.raw, self.header, base_disasm)
                 cr = detect_copyright_year(self.rom.raw)
@@ -499,6 +505,10 @@ class RomProfile:
             mark = "✅" if present else "❌"
             lines.append(f"| {label} | {mark} | `{hint}` |")
         lines.append("")
+
+        if self.graphics_calls.calls:
+            lines.append(self.graphics_calls.to_markdown().rstrip())
+            lines.append("")
 
         if self.engine_hints or self.copyright_string:
             lines.append("## Éditeur / moteur")

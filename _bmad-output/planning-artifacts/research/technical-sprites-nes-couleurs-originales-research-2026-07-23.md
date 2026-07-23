@@ -538,6 +538,13 @@ effets mid-frame.
    - mapper CHR visible ;
    - exports deterministes.
 
+Addendum implementation : `python -m qlnes graphics-calls ROM.nes` produit
+maintenant un rapport ASM des writes PPU/OAM/mapper qui jouent le role
+"d'appels d'image" sur NES. Le rapport classe `oam_dma`, `oam_buffer_write`,
+`palette_upload`, `chr_ram_upload`, `nametable_upload`, `ppu_ctrl`,
+`ppu_mask` et `mapper_bank_switch`, puis donne les adresses a tracer pour
+remonter les tables de niveaux, palettes et banques CHR avant capture PNG.
+
 ## Risques
 
 | Risque | Impact | Mitigation |

@@ -102,6 +102,9 @@ python -m qlnes sprites ROM.nes -o out/sprites --palette 0F,30,16,27
 # Extraire les sprites OAM avec couleurs originales depuis un snapshot PPU/OAM
 python -m qlnes sprites ROM.nes -o out/oam-sprites --snapshot snapshot-ppu-oam.json
 
+# Trouver dans l'ASM les routines qui pilotent images/sprites/palettes/banks
+python -m qlnes graphics-calls ROM.nes -o out/graphics-calls.md --json-out out/graphics-calls.json
+
 # Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/MMC5/AxROM/MMC2/MMC4/Color Dreams/CPROM/Bandai FCG/Jaleco SS88006/Namco 163/VRC2-VRC4/VRC6/VRC7/Irem G-101/Taito TC0190/BNROM/Mapper 42/RAMBO-1/GxROM/FME-7/Bandai/Camerica/JF-17/VRC1/Holy Diver/NINA-03-06/J87/JF-10/Namco 108 : capture palette/OAM automatiquement
 # Inclut les ROMs CHR-RAM simples quand les patterns sont écrits en VRAM au boot.
 python -m qlnes sprites ROM.nes -o out/oam-sprites --runtime-frames 120
@@ -190,6 +193,7 @@ write_smb_trimmed_mp3s(
 | Export NSF | header NSF, INIT/PLAY, bankswitch NSF | qlnes/nsf.py |
 | Export SMB custom | wrapper $8000, queues $FB/$FC, timings sans loop | qlnes/smb_nsf.py |
 | Sprites couleur | CHR sprite → PNG RGBA, palette PPU, alpha index 0 | qlnes/sprites.py |
+| Appels graphiques ASM | repère PPU/OAM/mapper writes qui chargent images/palettes/banks | qlnes/graphics_calls.py |
 
 ## Architecture
 

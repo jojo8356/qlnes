@@ -289,6 +289,48 @@ def verify(
     raise typer.Exit(1)
 
 
+@app.command("graphics-calls")
+def graphics_calls(
+    rom: Annotated[
+        Path,
+        typer.Argument(
+            help="ROM .nes a analyser",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option("-o", "--output", help="Rapport Markdown des appels graphiques ASM"),
+    ] = None,
+    json_out: Annotated[
+        Path | None,
+        typer.Option("--json-out", help="Rapport JSON machine-readable"),
+    ] = None,
+    quiet: Annotated[bool, typer.Option("-q", "--quiet")] = False,
+) -> None:
+    """Liste les points ASM qui pilotent PPU/OAM/mapper graphique."""
+    import json
+
+    from .io.log import get_logger
+
+    _resolve_log_level(quiet, log_level="INFO", color="auto")
+    logger = get_logger(__name__)
+
+    profile = RomProfile.from_rom(Rom.from_file(rom)).analyze_static()
+    report = profile.graphics_calls
+    if output is None and json_out is None:
+        typer.echo(report.to_markdown().rstrip())
+    if output is not None:
+        output.write_text(report.to_markdown(), encoding="utf-8")
+        logger.info("✓ rapport appels graphiques écrit : %s", output)
+    if json_out is not None:
+        json_out.write_text(json.dumps(report.to_dict(), indent=2), encoding="utf-8")
+        logger.info("✓ rapport appels graphiques JSON écrit : %s", json_out)
+
+
 @app.command()
 def audio(
     rom: Annotated[Path, typer.Argument(help="ROM .nes à rendre")],

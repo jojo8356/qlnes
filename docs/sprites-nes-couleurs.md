@@ -293,6 +293,35 @@ python -m qlnes sprites ROM.nes \
   --palette "0F,30,21,11,0F,16,27,18,0F,09,19,29,0F,06,17,28,0F,30,16,27,0F,30,12,21,0F,30,1A,2A,0F,30,10,20"
 ```
 
+## Trouver les appels graphiques dans l'ASM
+
+Pour suivre l'idee "regarder les appels d'image", utiliser :
+
+```bash
+python -m qlnes graphics-calls ROM.nes \
+  -o out/graphics-calls.md \
+  --json-out out/graphics-calls.json
+```
+
+Ce rapport ne cherche pas une fonction universelle `draw_sprite`. Il liste les
+sites ASM qui touchent le hardware graphique :
+
+- `oam_dma` : writes `$4014`, copie d'une page CPU vers OAM ;
+- `oam_buffer_write` / `oam_data_write` : preparation directe des sprites ;
+- `palette_upload` : writes `PPUDATA` apres `PPUADDR $3Fxx` ;
+- `chr_ram_upload` / `nametable_upload` : uploads VRAM via `$2006/$2007` ;
+- `ppu_ctrl` / `ppu_mask` : pattern table sprite, taille 8x16, rendu on/off ;
+- `mapper_bank_switch` : writes mapper qui peuvent changer les banks CHR/PRG.
+
+Le workflow pratique est ensuite :
+
+1. ouvrir `graphics-calls.md` ;
+2. poser des breakpoints/trace sur ces adresses ;
+3. remonter les tables source des niveaux, palettes, OAM et banks CHR ;
+4. capturer les frames/savestates pertinentes avec `sprites --runtime-*` ou un
+   snapshot externe ;
+5. fusionner les PNG uniques produits par `runtime-sample-*`.
+
 ## Options utiles
 
 - `--pattern-table 0|1` : choisit `$0000` ou `$1000`.
