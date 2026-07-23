@@ -273,7 +273,15 @@ Terminal=false
                 "stage_clear": {
                     "trigger_x": max(level.width - 192, 0),
                     "restart_ms": 2500,
+                    "time_bonus_per_second": 50,
                     "behavior": "native stage-clear state freezes control and restarts the generated level",
+                },
+                "scoring": {
+                    "starting_time": 400,
+                    "coin_points": 200,
+                    "mushroom_points": 1000,
+                    "stomp_points": 100,
+                    "stage_clear_time_bonus_per_second": 50,
                 },
                 "interactive_blocks": {
                     "asset": str(blocks_raw.relative_to(out)),
@@ -348,6 +356,7 @@ Terminal=false
                     "Small and big Mario standing, walking, and jumping sprites are normalized from SMB tables.",
                     "Mario death uses the SMB small-killed metasprite and restarts the native level state.",
                     "Stage clear triggers near the end of the generated level and restarts after a short victory pause.",
+                    "Score and timer are tracked natively in the SDL title bar.",
                     "Question/item blocks are decoded from SMB metatiles and can be hit natively.",
                 ],
             },
@@ -733,9 +742,14 @@ def _main_c_source(
 #define MARIO_START_X 48.0f
 #define MARIO_START_Y 176.0f
 #define STARTING_LIVES 3
+#define STARTING_TIME 400
 #define DEATH_RESTART_MS 1300
 #define STAGE_CLEAR_X {max(level_width - 192, 0)}
 #define STAGE_CLEAR_RESTART_MS 2500
+#define SCORE_COIN 200
+#define SCORE_MUSHROOM 1000
+#define SCORE_STOMP 100
+#define SCORE_TIME_BONUS 50
 
 typedef struct {{
     float x;
@@ -1002,15 +1016,33 @@ static int mario_height(bool mario_big) {{
     return mario_big ? BIG_MARIO_H : SMALL_MARIO_H;
 }}
 
-static void update_window_title(SDL_Window *window, int coins, int lives) {{
+static void update_window_title(SDL_Window *window, int score, int coins, int time_left, int lives) {{
     char title[256];
-    snprintf(title, sizeof(title), "%s  Coins %02d  Lives %d", APP_TITLE, coins, lives);
+    snprintf(
+        title,
+        sizeof(title),
+        "%s  Score %06d  Coins %02d  Time %03d  Lives %d",
+        APP_TITLE,
+        score,
+        coins,
+        time_left,
+        lives
+    );
     SDL_SetWindowTitle(window, title);
 }}
 
-static void update_stage_clear_title(SDL_Window *window, int coins, int lives) {{
+static void update_stage_clear_title(SDL_Window *window, int score, int coins, int time_left, int lives) {{
     char title[256];
-    snprintf(title, sizeof(title), "%s  STAGE CLEAR  Coins %02d  Lives %d", APP_TITLE, coins, lives);
+    snprintf(
+        title,
+        sizeof(title),
+        "%s  STAGE CLEAR  Score %06d  Coins %02d  Time %03d  Lives %d",
+        APP_TITLE,
+        score,
+        coins,
+        time_left,
+        lives
+    );
     SDL_SetWindowTitle(window, title);
 }}
 
@@ -1028,7 +1060,9 @@ static void reset_level_state(
     bool *mario_big,
     bool *on_ground,
     bool *player_dead,
-    bool *stage_clear
+    bool *stage_clear,
+    int *time_left,
+    uint32_t *timer_started_at
 ) {{
     load_blocks(block_data, blocks);
     load_enemies(enemy_data, enemies);
@@ -1043,6 +1077,8 @@ static void reset_level_state(
     *on_ground = false;
     *player_dead = false;
     *stage_clear = false;
+    *time_left = STARTING_TIME;
+    *timer_started_at = SDL_GetTicks();
 }}
 
 static void begin_death(
@@ -1054,7 +1090,9 @@ static void begin_death(
     bool *on_ground,
     uint32_t now,
     SDL_Window *window,
-    int coins
+    int score,
+    int coins,
+    int time_left
 ) {{
     if (*player_dead) return;
     *player_dead = true;
@@ -1063,12 +1101,14 @@ static void begin_death(
     *vy = -210.0f;
     *on_ground = false;
     if (*lives > 0) *lives -= 1;
-    update_window_title(window, coins, *lives);
+    update_window_title(window, score, coins, time_left, *lives);
 }}
 
 static void begin_stage_clear(
     bool *stage_clear,
     uint32_t *stage_clear_started_at,
+    int *score,
+    int *time_left,
     float *vx,
     float *vy,
     bool *on_ground,
@@ -1080,10 +1120,12 @@ static void begin_stage_clear(
     if (*stage_clear) return;
     *stage_clear = true;
     *stage_clear_started_at = now;
+    *score += *time_left * SCORE_TIME_BONUS;
+    *time_left = 0;
     *vx = 0.0f;
     *vy = 0.0f;
     *on_ground = true;
-    update_stage_clear_title(window, coins, lives);
+    update_stage_clear_title(window, *score, coins, *time_left, lives);
 }}
 
 static void draw_sprite(
@@ -1246,12 +1288,15 @@ int main(int argc, char **argv) {{
     bool stage_clear = false;
     uint32_t death_started_at = 0;
     uint32_t stage_clear_started_at = 0;
+    uint32_t timer_started_at = SDL_GetTicks();
+    int score = 0;
     int coins = 0;
+    int time_left = STARTING_TIME;
     int lives = STARTING_LIVES;
     CoinEffect coin_effect = {{false, 0.0f, 0.0f, 0}};
     Powerup powerup = {{false, false, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}};
     uint32_t last = SDL_GetTicks();
-    update_window_title(window, coins, lives);
+    update_window_title(window, score, coins, time_left, lives);
 
     while (running) {{
         SDL_Event e;
@@ -1273,6 +1318,30 @@ int main(int argc, char **argv) {{
         float dt = (float)(now - last) / 1000.0f;
         if (dt > 0.05f) dt = 0.05f;
         last = now;
+        if (!player_dead && !stage_clear) {{
+            int elapsed_seconds = (int)((now - timer_started_at) / 1000);
+            int next_time_left = STARTING_TIME - elapsed_seconds;
+            if (next_time_left < 0) next_time_left = 0;
+            if (next_time_left != time_left) {{
+                time_left = next_time_left;
+                update_window_title(window, score, coins, time_left, lives);
+            }}
+            if (time_left <= 0) {{
+                begin_death(
+                    &player_dead,
+                    &death_started_at,
+                    &lives,
+                    &vx,
+                    &vy,
+                    &on_ground,
+                    now,
+                    window,
+                    score,
+                    coins,
+                    time_left
+                );
+            }}
+        }}
 
         int player_w = mario_width(mario_big);
         int player_h = mario_height(mario_big);
@@ -1282,6 +1351,7 @@ int main(int argc, char **argv) {{
             if (now - death_started_at >= DEATH_RESTART_MS) {{
                 if (lives <= 0) {{
                     lives = STARTING_LIVES;
+                    score = 0;
                     coins = 0;
                 }}
                 reset_level_state(
@@ -1298,9 +1368,11 @@ int main(int argc, char **argv) {{
                     &mario_big,
                     &on_ground,
                     &player_dead,
-                    &stage_clear
+                    &stage_clear,
+                    &time_left,
+                    &timer_started_at
                 );
-                update_window_title(window, coins, lives);
+                update_window_title(window, score, coins, time_left, lives);
             }}
         }} else if (stage_clear) {{
             if (now - stage_clear_started_at >= STAGE_CLEAR_RESTART_MS) {{
@@ -1318,9 +1390,11 @@ int main(int argc, char **argv) {{
                     &mario_big,
                     &on_ground,
                     &player_dead,
-                    &stage_clear
+                    &stage_clear,
+                    &time_left,
+                    &timer_started_at
                 );
-                update_window_title(window, coins, lives);
+                update_window_title(window, score, coins, time_left, lives);
             }}
         }} else {{
         vy += 620.0f * dt;
@@ -1344,12 +1418,13 @@ int main(int argc, char **argv) {{
                 if (hit->metatile == 0x57) {{
                     spawn_mushroom(&powerup, hit);
                 }} else {{
+                    score += SCORE_COIN;
                     coins += 1;
                     coin_effect.active = true;
                     coin_effect.x = (float)hit->x + 4.0f;
                     coin_effect.y = (float)hit->y - 8.0f;
                     coin_effect.started_at = now;
-                    update_window_title(window, coins, lives);
+                    update_window_title(window, score, coins, time_left, lives);
                 }}
             }}
             vy = 0.0f;
@@ -1363,17 +1438,42 @@ int main(int argc, char **argv) {{
                 mario_y -= (float)(BIG_MARIO_H - SMALL_MARIO_H);
                 mario_big = true;
             }}
+            score += SCORE_MUSHROOM;
             coins += 10;
-            update_window_title(window, coins, lives);
+            update_window_title(window, score, coins, time_left, lives);
         }}
         player_w = mario_width(mario_big);
         player_h = mario_height(mario_big);
 
         if (mario_y > LEVEL_H + 32.0f) {{
-            begin_death(&player_dead, &death_started_at, &lives, &vx, &vy, &on_ground, now, window, coins);
+            begin_death(
+                &player_dead,
+                &death_started_at,
+                &lives,
+                &vx,
+                &vy,
+                &on_ground,
+                now,
+                window,
+                score,
+                coins,
+                time_left
+            );
         }}
         if (mario_x >= STAGE_CLEAR_X) {{
-            begin_stage_clear(&stage_clear, &stage_clear_started_at, &vx, &vy, &on_ground, now, window, coins, lives);
+            begin_stage_clear(
+                &stage_clear,
+                &stage_clear_started_at,
+                &score,
+                &time_left,
+                &vx,
+                &vy,
+                &on_ground,
+                now,
+                window,
+                coins,
+                lives
+            );
         }}
 
         for (int i = 0; i < ENEMY_COUNT; i++) {{
@@ -1406,12 +1506,26 @@ int main(int argc, char **argv) {{
             if (rects_overlap(mario_x, mario_y, player_w, player_h, enemy->x, enemy->y, ew, eh)) {{
                 if (vy > 40.0f && mario_y + player_h - 4.0f < enemy->y + 8.0f) {{
                     enemy->alive = false;
+                    score += SCORE_STOMP;
+                    update_window_title(window, score, coins, time_left, lives);
                     vy = -160.0f;
                 }} else if (mario_big) {{
                     mario_big = false;
                     mario_y += (float)(BIG_MARIO_H - SMALL_MARIO_H);
                 }} else {{
-                    begin_death(&player_dead, &death_started_at, &lives, &vx, &vy, &on_ground, now, window, coins);
+                    begin_death(
+                        &player_dead,
+                        &death_started_at,
+                        &lives,
+                        &vx,
+                        &vy,
+                        &on_ground,
+                        now,
+                        window,
+                        score,
+                        coins,
+                        time_left
+                    );
                 }}
             }}
         }}

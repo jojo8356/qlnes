@@ -38,7 +38,15 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert data["level"]["collision_rows"] == data["level"]["height"] // 16
     assert data["stage_clear"]["trigger_x"] == data["level"]["width"] - 192
     assert data["stage_clear"]["restart_ms"] == 2500
+    assert data["stage_clear"]["time_bonus_per_second"] == 50
     assert data["stage_clear"]["behavior"].startswith("native stage-clear")
+    assert data["scoring"] == {
+        "starting_time": 400,
+        "coin_points": 200,
+        "mushroom_points": 1000,
+        "stomp_points": 100,
+        "stage_clear_time_bonus_per_second": 50,
+    }
     assert data["interactive_blocks"]["count"] >= 10
     assert data["interactive_blocks"]["record_bytes"] == 5
     assert data["interactive_blocks"]["used_block_asset"] == "assets/used_empty_block.rgb"
@@ -128,6 +136,11 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "mario_width(mario_big)" in source
     assert "DEAD_MARIO_H" in source
     assert "STARTING_LIVES" in source
+    assert "STARTING_TIME" in source
+    assert "SCORE_COIN" in source
+    assert "SCORE_MUSHROOM" in source
+    assert "SCORE_STOMP" in source
+    assert "SCORE_TIME_BONUS" in source
     assert "bool player_dead" in source
     assert "bool stage_clear" in source
     assert "reset_level_state" in source
@@ -137,6 +150,13 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "STAGE_CLEAR_X" in source
     assert "STAGE_CLEAR_RESTART_MS" in source
     assert "STAGE CLEAR" in source
+    assert "Score %06d" in source
+    assert "Time %03d" in source
+    assert "timer_started_at" in source
+    assert "score += SCORE_COIN" in source
+    assert "score += SCORE_MUSHROOM" in source
+    assert "score += SCORE_STOMP" in source
+    assert "*score += *time_left * SCORE_TIME_BONUS" in source
     assert "Lives %d" in source
     assert "BLOCK_COUNT" in source
     assert "draw_used_blocks" in source
