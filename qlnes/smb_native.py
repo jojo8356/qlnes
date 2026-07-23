@@ -67,13 +67,20 @@ def create_smb_native_port(
     level = render_smb_level(rom, build_dir / "levels", stage=stage, max_columns=256)
     characters = render_smb_characters(rom, build_dir / "characters")
     mario_png = build_dir / "characters" / "players" / "small-stand.png"
+    goomba_png = build_dir / "characters" / "enemies" / "goomba.png"
     if not mario_png.exists():
         raise RuntimeError(f"expected SMB player sprite missing: {mario_png}")
+    if not goomba_png.exists():
+        raise RuntimeError(f"expected SMB enemy sprite missing: {goomba_png}")
 
     level_raw = assets_dir / "level_1_1.rgb"
+    collision_raw = assets_dir / "collision_1_1.bin"
     mario_raw = assets_dir / "mario_small_stand.rgba"
+    goomba_raw = assets_dir / "goomba.rgba"
     _write_rgb(level.png, level_raw)
+    collision_size = _write_collision_map(level.png, collision_raw)
     mario_size = _write_rgba(mario_png, mario_raw)
+    goomba_size = _write_rgba(goomba_png, goomba_raw)
 
     main_c = src_dir / "main.c"
     main_c.write_text(
@@ -81,8 +88,12 @@ def create_smb_native_port(
             app_name=app_name,
             level_width=level.width,
             level_height=level.height,
+            collision_cols=collision_size[0],
+            collision_rows=collision_size[1],
             mario_width=mario_size[0],
             mario_height=mario_size[1],
+            goomba_width=goomba_size[0],
+            goomba_height=goomba_size[1],
         ),
         encoding="utf-8",
     )
@@ -118,7 +129,9 @@ Terminal=false
         desktop,
         icon,
         level_raw,
+        collision_raw,
         mario_raw,
+        goomba_raw,
         manifest,
     ]
     manifest.write_text(
@@ -134,10 +147,13 @@ Terminal=false
                 "level": {
                     "source_png": str(level.png),
                     "asset": str(level_raw.relative_to(out)),
+                    "collision_asset": str(collision_raw.relative_to(out)),
                     "width": level.width,
                     "height": level.height,
                     "columns": level.columns,
                     "rows": level.rows,
+                    "collision_columns": collision_size[0],
+                    "collision_rows": collision_size[1],
                 },
                 "player": {
                     "source_png": str(mario_png),
@@ -145,6 +161,15 @@ Terminal=false
                     "width": mario_size[0],
                     "height": mario_size[1],
                 },
+                "enemies": [
+                    {
+                        "name": "goomba",
+                        "source_png": str(goomba_png),
+                        "asset": str(goomba_raw.relative_to(out)),
+                        "width": goomba_size[0],
+                        "height": goomba_size[1],
+                    }
+                ],
                 "character_manifest": str(characters.manifest_json),
                 "build": {
                     "elf": f"dist/{app_slug}",
@@ -154,6 +179,7 @@ Terminal=false
                     "The generated runtime does not read a .nes file.",
                     "This is a native MVP, not a complete SMB engine yet.",
                     "Controls: arrows or A/D to move, Space/W/Up to jump, Esc to quit.",
+                    "Collision is derived from the rendered SMB metatile map at build time.",
                 ],
             },
             indent=2,
@@ -189,8 +215,37 @@ def _write_rgba(source_png: Path, target: Path) -> tuple[int, int]:
     return image.size
 
 
+def _write_collision_map(source_png: Path, target: Path) -> tuple[int, int]:
+    image = Image.open(source_png).convert("RGB")
+    cols = image.width // 16
+    rows = image.height // 16
+    sky = image.getpixel((0, 0))
+    cells = bytearray()
+    for row in range(rows):
+        for col in range(cols):
+            non_sky = 0
+            total = 0
+            for y in range(row * 16, row * 16 + 16):
+                for x in range(col * 16, col * 16 + 16):
+                    total += 1
+                    if image.getpixel((x, y)) != sky:
+                        non_sky += 1
+            cells.append(1 if non_sky / total >= 0.20 else 0)
+    target.write_bytes(bytes(cells))
+    return cols, rows
+
+
 def _main_c_source(
-    *, app_name: str, level_width: int, level_height: int, mario_width: int, mario_height: int
+    *,
+    app_name: str,
+    level_width: int,
+    level_height: int,
+    collision_cols: int,
+    collision_rows: int,
+    mario_width: int,
+    mario_height: int,
+    goomba_width: int,
+    goomba_height: int,
 ) -> str:
     return f"""#include <SDL2/SDL.h>
 #include <stdbool.h>
@@ -204,8 +259,13 @@ def _main_c_source(
 #define SCALE 3
 #define LEVEL_W {level_width}
 #define LEVEL_H {level_height}
+#define COLLISION_COLS {collision_cols}
+#define COLLISION_ROWS {collision_rows}
 #define MARIO_W {mario_width}
 #define MARIO_H {mario_height}
+#define GOOMBA_W {goomba_width}
+#define GOOMBA_H {goomba_height}
+#define TILE_SIZE 16
 
 static uint8_t *read_asset(const char *path, size_t expected) {{
     FILE *f = fopen(path, "rb");
@@ -242,19 +302,50 @@ static void draw_level(uint32_t *frame, const uint8_t *level, int camera_x) {{
     }}
 }}
 
-static void draw_mario(uint32_t *frame, const uint8_t *mario, int x, int y, bool flip) {{
-    for (int py = 0; py < MARIO_H; py++) {{
+static bool solid_at(const uint8_t *collision, int world_x, int world_y) {{
+    if (world_x < 0 || world_x >= LEVEL_W) return true;
+    if (world_y >= LEVEL_H) return true;
+    if (world_y < 0) return false;
+    int col = world_x / TILE_SIZE;
+    int row = world_y / TILE_SIZE;
+    if (col < 0 || col >= COLLISION_COLS || row < 0 || row >= COLLISION_ROWS) return false;
+    return collision[row * COLLISION_COLS + col] != 0;
+}}
+
+static bool rect_hits_solid(const uint8_t *collision, float x, float y, int w, int h) {{
+    int left = (int)x;
+    int right = (int)(x + w - 1);
+    int top = (int)y;
+    int bottom = (int)(y + h - 1);
+    return solid_at(collision, left, top) || solid_at(collision, right, top) ||
+        solid_at(collision, left, bottom) || solid_at(collision, right, bottom);
+}}
+
+static bool rects_overlap(float ax, float ay, int aw, int ah, float bx, float by, int bw, int bh) {{
+    return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}}
+
+static void draw_sprite(
+    uint32_t *frame,
+    const uint8_t *sprite,
+    int sprite_w,
+    int sprite_h,
+    int x,
+    int y,
+    bool flip
+) {{
+    for (int py = 0; py < sprite_h; py++) {{
         int dy = y + py;
         if (dy < 0 || dy >= SCREEN_H) continue;
-        for (int px = 0; px < MARIO_W; px++) {{
-            int sx = flip ? (MARIO_W - 1 - px) : px;
+        for (int px = 0; px < sprite_w; px++) {{
+            int sx = flip ? (sprite_w - 1 - px) : px;
             int dx = x + px;
             if (dx < 0 || dx >= SCREEN_W) continue;
-            size_t si = ((size_t)py * MARIO_W + sx) * 4;
-            uint8_t a = mario[si + 3];
+            size_t si = ((size_t)py * sprite_w + sx) * 4;
+            uint8_t a = sprite[si + 3];
             if (a < 16) continue;
             frame[(size_t)dy * SCREEN_W + dx] = 0xFF000000u |
-                ((uint32_t)mario[si] << 16) | ((uint32_t)mario[si + 1] << 8) | mario[si + 2];
+                ((uint32_t)sprite[si] << 16) | ((uint32_t)sprite[si + 1] << 8) | sprite[si + 2];
         }}
     }}
 }}
@@ -262,17 +353,25 @@ static void draw_mario(uint32_t *frame, const uint8_t *mario, int x, int y, bool
 int main(int argc, char **argv) {{
     const char *base = SDL_GetBasePath();
     char level_path[4096];
+    char collision_path[4096];
     char mario_path[4096];
+    char goomba_path[4096];
     snprintf(level_path, sizeof(level_path), "%sassets/level_1_1.rgb", base ? base : "");
+    snprintf(collision_path, sizeof(collision_path), "%sassets/collision_1_1.bin", base ? base : "");
     snprintf(mario_path, sizeof(mario_path), "%sassets/mario_small_stand.rgba", base ? base : "");
+    snprintf(goomba_path, sizeof(goomba_path), "%sassets/goomba.rgba", base ? base : "");
 
     uint8_t *level = read_asset(level_path, (size_t)LEVEL_W * LEVEL_H * 3);
+    uint8_t *collision = read_asset(collision_path, (size_t)COLLISION_COLS * COLLISION_ROWS);
     uint8_t *mario = read_asset(mario_path, (size_t)MARIO_W * MARIO_H * 4);
-    if (!level || !mario) return 2;
+    uint8_t *goomba = read_asset(goomba_path, (size_t)GOOMBA_W * GOOMBA_H * 4);
+    if (!level || !collision || !mario || !goomba) return 2;
 
     if (argc > 1 && SDL_strcmp(argv[1], "--self-test") == 0) {{
         free(level);
+        free(collision);
         free(mario);
+        free(goomba);
         return 0;
     }}
 
@@ -296,9 +395,14 @@ int main(int argc, char **argv) {{
     float mario_y = 176.0f;
     float vx = 0.0f;
     float vy = 0.0f;
+    float goomba_x = 352.0f;
+    float goomba_y = 32.0f;
+    float goomba_vx = -36.0f;
+    float goomba_vy = 0.0f;
     bool running = true;
     bool facing_left = false;
-    const float ground_y = 176.0f;
+    bool on_ground = false;
+    bool goomba_alive = true;
     uint32_t last = SDL_GetTicks();
 
     while (running) {{
@@ -315,7 +419,7 @@ int main(int argc, char **argv) {{
         if (move > 0) facing_left = false;
         vx = move * 100.0f;
         bool jump = keys[SDL_SCANCODE_SPACE] || keys[SDL_SCANCODE_UP] || keys[SDL_SCANCODE_W];
-        if (jump && mario_y >= ground_y - 0.5f) vy = -245.0f;
+        if (jump && on_ground) vy = -245.0f;
 
         uint32_t now = SDL_GetTicks();
         float dt = (float)(now - last) / 1000.0f;
@@ -323,20 +427,69 @@ int main(int argc, char **argv) {{
         last = now;
 
         vy += 620.0f * dt;
-        mario_x += vx * dt;
-        mario_y += vy * dt;
-        if (mario_y > ground_y) {{
-            mario_y = ground_y;
+        float next_x = mario_x + vx * dt;
+        if (!rect_hits_solid(collision, next_x, mario_y, MARIO_W, MARIO_H)) {{
+            mario_x = next_x;
+        }}
+        float next_y = mario_y + vy * dt;
+        on_ground = false;
+        if (!rect_hits_solid(collision, mario_x, next_y, MARIO_W, MARIO_H)) {{
+            mario_y = next_y;
+        }} else if (vy > 0.0f) {{
+            int tile_y = ((int)(mario_y + MARIO_H + vy * dt)) / TILE_SIZE;
+            mario_y = (float)(tile_y * TILE_SIZE - MARIO_H);
+            vy = 0.0f;
+            on_ground = true;
+        }} else {{
             vy = 0.0f;
         }}
         if (mario_x < 0.0f) mario_x = 0.0f;
         if (mario_x > LEVEL_W - MARIO_W) mario_x = LEVEL_W - MARIO_W;
 
+        if (goomba_alive) {{
+            goomba_vy += 620.0f * dt;
+            float gx = goomba_x + goomba_vx * dt;
+            if (rect_hits_solid(collision, gx, goomba_y, GOOMBA_W, GOOMBA_H)) {{
+                goomba_vx = -goomba_vx;
+            }} else {{
+                goomba_x = gx;
+            }}
+            float gy = goomba_y + goomba_vy * dt;
+            if (!rect_hits_solid(collision, goomba_x, gy, GOOMBA_W, GOOMBA_H)) {{
+                goomba_y = gy;
+            }} else if (goomba_vy > 0.0f) {{
+                int tile_y = ((int)(goomba_y + GOOMBA_H + goomba_vy * dt)) / TILE_SIZE;
+                goomba_y = (float)(tile_y * TILE_SIZE - GOOMBA_H);
+                goomba_vy = 0.0f;
+            }} else {{
+                goomba_vy = 0.0f;
+            }}
+            int probe_x = goomba_vx < 0.0f ? (int)goomba_x - 2 : (int)(goomba_x + GOOMBA_W + 2);
+            int foot_y = (int)(goomba_y + GOOMBA_H + 2);
+            if (!solid_at(collision, probe_x, foot_y)) {{
+                goomba_vx = -goomba_vx;
+            }}
+            if (rects_overlap(mario_x, mario_y, MARIO_W, MARIO_H, goomba_x, goomba_y, GOOMBA_W, GOOMBA_H)) {{
+                if (vy > 40.0f && mario_y + MARIO_H - 4.0f < goomba_y + 8.0f) {{
+                    goomba_alive = false;
+                    vy = -160.0f;
+                }} else {{
+                    mario_x = 48.0f;
+                    mario_y = 176.0f;
+                    vx = 0.0f;
+                    vy = 0.0f;
+                }}
+            }}
+        }}
+
         int camera = (int)mario_x - 96;
         if (camera < 0) camera = 0;
         if (camera > LEVEL_W - SCREEN_W) camera = LEVEL_W - SCREEN_W;
         draw_level(frame, level, camera);
-        draw_mario(frame, mario, (int)mario_x - camera, (int)mario_y, facing_left);
+        if (goomba_alive) {{
+            draw_sprite(frame, goomba, GOOMBA_W, GOOMBA_H, (int)goomba_x - camera, (int)goomba_y, goomba_vx > 0.0f);
+        }}
+        draw_sprite(frame, mario, MARIO_W, MARIO_H, (int)mario_x - camera, (int)mario_y, facing_left);
 
         SDL_UpdateTexture(texture, NULL, frame, SCREEN_W * (int)sizeof(uint32_t));
         SDL_RenderClear(renderer);
@@ -346,7 +499,9 @@ int main(int argc, char **argv) {{
 
     free(frame);
     free(level);
+    free(collision);
     free(mario);
+    free(goomba);
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
@@ -364,7 +519,7 @@ pkg-config --exists sdl2 || {{ echo "SDL2 development files are required (pkg-co
 mkdir -p dist
 cc -O2 -Wall -Wextra src/main.c -o "dist/{app_slug}" $(pkg-config --cflags --libs sdl2)
 mkdir -p dist/assets
-cp assets/*.rgb assets/*.rgba dist/assets/
+cp assets/*.bin assets/*.rgb assets/*.rgba dist/assets/
 """
 
 

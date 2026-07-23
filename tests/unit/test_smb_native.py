@@ -34,17 +34,24 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert data["kind"] == "smb_native_port_mvp"
     assert data["runtime"].startswith("C/SDL2")
     assert data["level"]["width"] > 256
+    assert data["level"]["collision_columns"] == data["level"]["width"] // 16
+    assert data["level"]["collision_rows"] == data["level"]["height"] // 16
     assert data["player"]["width"] > 0
+    assert data["enemies"][0]["name"] == "goomba"
     assert export.source.exists()
     assert export.build_script.exists()
     assert export.appimage_script.exists()
     assert (export.out_dir / "assets" / "level_1_1.rgb").exists()
+    assert (export.out_dir / "assets" / "collision_1_1.bin").exists()
     assert (export.out_dir / "assets" / "mario_small_stand.rgba").exists()
+    assert (export.out_dir / "assets" / "goomba.rgba").exists()
     assert not (export.out_dir / "emulator").exists()
     assert not list(export.out_dir.rglob("*.nes"))
     source = export.source.read_text(encoding="utf-8")
     assert "SDL_CreateWindow" in source
     assert "--self-test" in source
+    assert "rect_hits_solid" in source
+    assert "goomba_alive" in source
 
 
 @pytest.mark.skipif(not SMB_ROM.exists(), reason=f"SMB ROM not at {SMB_ROM}")
@@ -74,4 +81,6 @@ def test_cli_smb_native_generates_project(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert (out / "src" / "main.c").exists()
     assert (out / "build-appimage.sh").exists()
+    assert (out / "assets" / "collision_1_1.bin").exists()
+    assert (out / "assets" / "goomba.rgba").exists()
     assert not list(out.rglob("*.nes"))
