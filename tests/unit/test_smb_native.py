@@ -52,7 +52,7 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
         "sample_rate": 44100,
         "format": "AUDIO_F32SYS stereo",
         "modes": ["title", "gameplay", "stage-clear", "death"],
-        "sfx": ["jump", "coin", "stomp", "power-up", "shell-kick"],
+        "sfx": ["jump", "coin", "stomp", "power-up", "shell-kick", "brick-shatter"],
         "behavior": "native procedural chiptune-style audio; no NSF, MP3, ROM or emulator is loaded at runtime",
     }
     assert data["controls"] == {
@@ -70,6 +70,7 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
         "stomp_points": 100,
         "shell_kick_points": 400,
         "shell_hit_points": 500,
+        "brick_points": 50,
         "stage_clear_time_bonus_per_second": 50,
     }
     assert data["hud"] == {
@@ -91,7 +92,10 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert data["interactive_blocks"]["mushroom_asset"] == "assets/mushroom.rgba"
     assert data["interactive_blocks"]["mushroom_width"] > 0
     assert data["interactive_blocks"]["mushroom_height"] > 0
+    assert data["interactive_blocks"]["breakable_metatiles"] == ["0x51", "0x52"]
+    assert data["interactive_blocks"]["break_behavior"].startswith("big Mario breaks")
     assert any(block["kind"] == "question-block" for block in data["interactive_blocks"]["blocks"])
+    assert any(block["kind"] == "breakable-brick" for block in data["interactive_blocks"]["blocks"])
     assert any(block["kind"] == "item-brick" for block in data["interactive_blocks"]["blocks"])
     assert data["player"]["width"] > 0
     assert data["player"]["big_height"] > data["player"]["small_height"]
@@ -214,6 +218,7 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "SCORE_STOMP" in source
     assert "SCORE_SHELL_KICK" in source
     assert "SCORE_SHELL_HIT" in source
+    assert "SCORE_BRICK" in source
     assert "SCORE_TIME_BONUS" in source
     assert "KOOPA_SHELL_SPEED" in source
     assert "bool player_dead" in source
@@ -239,11 +244,17 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "score += SCORE_STOMP" in source
     assert "score += SCORE_SHELL_KICK" in source
     assert "score += SCORE_SHELL_HIT" in source
+    assert "score += SCORE_BRICK" in source
     assert "trigger_sfx(audio_device, &audio_state, SFX_JUMP)" in source
     assert "trigger_sfx(audio_device, &audio_state, SFX_COIN)" in source
     assert "trigger_sfx(audio_device, &audio_state, SFX_STOMP)" in source
     assert "trigger_sfx(audio_device, &audio_state, SFX_POWERUP)" in source
     assert "trigger_sfx(audio_device, &audio_state, SFX_SHELL_KICK)" in source
+    assert "trigger_sfx(audio_device, &audio_state, SFX_BRICK)" in source
+    assert "block_is_breakable" in source
+    assert "hit->broken = true" in source
+    assert "if (block && block->broken) return false" in source
+    assert "draw_broken_blocks(frame, blocks, level, camera)" in source
     assert "enemy->kind = KOOPA_SHELL_KIND" in source
     assert "shell_is_moving" in source
     assert "bool shell_stationary" in source

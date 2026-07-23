@@ -126,6 +126,7 @@ cd out/smb-native
 ./build-appimage.sh
 ./Super-Mario-Bros-Native.AppImage
 # Controls: arrows/A-D move, Shift/J run, Space/W/Up jump, Enter/Space start, Esc quit
+# Native gameplay: title screen, HUD, coins, mushroom, enemies, shells, timer, deaths, stage clear, big-Mario brick breaks
 
 # Generer un projet launcher pour transformer une ROM en .exe ou AppImage
 python -m qlnes bundle-rom ROM.nes -o out/rom-app --name "My NES Game" --target all

@@ -39,9 +39,12 @@ SMB_INTERACTIVE_BLOCK_METATILES = {
     0xC1: "question-block",
     0x5F: "question-block",
     0x60: "question-block",
+    0x51: "breakable-brick",
+    0x52: "breakable-brick",
     0x57: "item-brick",
     0x58: "coin-brick",
 }
+SMB_BREAKABLE_BRICK_METATILES = {0x51, 0x52}
 SMB_USED_BLOCK_METATILE = 0xC4
 SMB_SMALL_MARIO_SPRITES = (
     ("small-stand", "mario_small_stand.rgba"),
@@ -307,7 +310,7 @@ Terminal=false
                     "sample_rate": 44100,
                     "format": "AUDIO_F32SYS stereo",
                     "modes": ["title", "gameplay", "stage-clear", "death"],
-                    "sfx": ["jump", "coin", "stomp", "power-up", "shell-kick"],
+                    "sfx": ["jump", "coin", "stomp", "power-up", "shell-kick", "brick-shatter"],
                     "behavior": "native procedural chiptune-style audio; no NSF, MP3, ROM or emulator is loaded at runtime",
                 },
                 "controls": {
@@ -325,6 +328,7 @@ Terminal=false
                     "stomp_points": 100,
                     "shell_kick_points": 400,
                     "shell_hit_points": 500,
+                    "brick_points": 50,
                     "stage_clear_time_bonus_per_second": 50,
                 },
                 "hud": {
@@ -342,6 +346,10 @@ Terminal=false
                     "mushroom_width": mushroom_size[0],
                     "mushroom_height": mushroom_size[1],
                     "record_bytes": SMB_NATIVE_BLOCK_RECORD_BYTES,
+                    "breakable_metatiles": [
+                        f"0x{metatile:02X}" for metatile in sorted(SMB_BREAKABLE_BRICK_METATILES)
+                    ],
+                    "break_behavior": "big Mario breaks empty brick metatiles natively and removes their collision cell",
                     "count": len(interactive_blocks),
                     "blocks": interactive_blocks,
                 },
@@ -416,6 +424,7 @@ Terminal=false
                     "Stage clear triggers near the end of the generated level and restarts after a short victory pause.",
                     "Score, coins, world, time and lives are rendered by a native framebuffer HUD.",
                     "Question/item blocks are decoded from SMB metatiles and can be hit natively.",
+                    "Breakable brick metatiles are removed from native collision when big Mario hits them.",
                     "Koopa stomps switch to a native shell state using the ROM-derived shell sprite.",
                     "Stationary Koopa shells can be kicked and moving shells defeat other enemies natively.",
                 ],
@@ -822,6 +831,7 @@ def _main_c_source(
 #define SCORE_STOMP 100
 #define SCORE_SHELL_KICK 400
 #define SCORE_SHELL_HIT 500
+#define SCORE_BRICK 50
 #define SCORE_TIME_BONUS 50
 #define KOOPA_SHELL_SPEED 150.0f
 #define AUDIO_RATE 44100
@@ -839,7 +849,8 @@ enum {{
     SFX_COIN = 2,
     SFX_STOMP = 3,
     SFX_POWERUP = 4,
-    SFX_SHELL_KICK = 5
+    SFX_SHELL_KICK = 5,
+    SFX_BRICK = 6
 }};
 
 typedef struct {{
@@ -856,6 +867,7 @@ typedef struct {{
     uint8_t y;
     uint8_t metatile;
     bool used;
+    bool broken;
 }} Block;
 
 typedef struct {{
@@ -957,6 +969,9 @@ static double sfx_sample(AudioState *state) {{
     }} else if (state->sfx_kind == SFX_SHELL_KICK) {{
         hz = state->sfx_clock < duration / 3 ? 262.0 : 523.0;
         volume = (1.0 - t) * 0.18;
+    }} else if (state->sfx_kind == SFX_BRICK) {{
+        hz = 130.0 + 260.0 * (1.0 - t);
+        volume = (1.0 - t) * 0.22;
     }}
     state->sfx_clock++;
     return square_sample(state, &state->sfx_phase, hz) * volume;
@@ -1170,23 +1185,48 @@ static void draw_hud(uint32_t *frame, int score, int coins, int time_left, int l
     draw_hud_number(frame, lives, 1, 44, 28, color);
 }}
 
-static bool solid_at(const uint8_t *collision, int world_x, int world_y) {{
+static bool block_is_breakable(const Block *block) {{
+    return block->metatile == 0x51 || block->metatile == 0x52;
+}}
+
+static Block *block_at(Block *blocks, int world_x, int world_y) {{
+    int tile_x = (world_x / TILE_SIZE) * TILE_SIZE;
+    int tile_y = (world_y / TILE_SIZE) * TILE_SIZE;
+    for (int i = 0; i < BLOCK_COUNT; i++) {{
+        if (blocks[i].broken) continue;
+        if ((int)blocks[i].x == tile_x && (int)blocks[i].y == tile_y) return &blocks[i];
+    }}
+    return NULL;
+}}
+
+static const Block *const_block_at(const Block *blocks, int world_x, int world_y) {{
+    int tile_x = (world_x / TILE_SIZE) * TILE_SIZE;
+    int tile_y = (world_y / TILE_SIZE) * TILE_SIZE;
+    for (int i = 0; i < BLOCK_COUNT; i++) {{
+        if ((int)blocks[i].x == tile_x && (int)blocks[i].y == tile_y) return &blocks[i];
+    }}
+    return NULL;
+}}
+
+static bool solid_at(const uint8_t *collision, const Block *blocks, int world_x, int world_y) {{
     if (world_x < 0 || world_x >= LEVEL_W) return true;
     if (world_y >= LEVEL_H) return true;
     if (world_y < 0) return false;
+    const Block *block = const_block_at(blocks, world_x, world_y);
+    if (block && block->broken) return false;
     int col = world_x / TILE_SIZE;
     int row = world_y / TILE_SIZE;
     if (col < 0 || col >= COLLISION_COLS || row < 0 || row >= COLLISION_ROWS) return false;
     return collision[row * COLLISION_COLS + col] != 0;
 }}
 
-static bool rect_hits_solid(const uint8_t *collision, float x, float y, int w, int h) {{
+static bool rect_hits_solid(const uint8_t *collision, const Block *blocks, float x, float y, int w, int h) {{
     int left = (int)x;
     int right = (int)(x + w - 1);
     int top = (int)y;
     int bottom = (int)(y + h - 1);
-    return solid_at(collision, left, top) || solid_at(collision, right, top) ||
-        solid_at(collision, left, bottom) || solid_at(collision, right, bottom);
+    return solid_at(collision, blocks, left, top) || solid_at(collision, blocks, right, top) ||
+        solid_at(collision, blocks, left, bottom) || solid_at(collision, blocks, right, bottom);
 }}
 
 static bool rects_overlap(float ax, float ay, int aw, int ah, float bx, float by, int bw, int bh) {{
@@ -1220,23 +1260,35 @@ static bool load_blocks(const uint8_t *data, Block *blocks) {{
         blocks[i].y = data[o + 2];
         blocks[i].metatile = data[o + 3];
         blocks[i].used = data[o + 4] != 0;
+        blocks[i].broken = false;
     }}
     return true;
 }}
 
-static Block *block_at(Block *blocks, int world_x, int world_y) {{
-    int tile_x = (world_x / TILE_SIZE) * TILE_SIZE;
-    int tile_y = (world_y / TILE_SIZE) * TILE_SIZE;
-    for (int i = 0; i < BLOCK_COUNT; i++) {{
-        if ((int)blocks[i].x == tile_x && (int)blocks[i].y == tile_y) return &blocks[i];
-    }}
-    return NULL;
-}}
-
 static void draw_used_blocks(uint32_t *frame, const Block *blocks, const uint8_t *used_block, int camera_x) {{
     for (int i = 0; i < BLOCK_COUNT; i++) {{
+        if (blocks[i].broken) continue;
         if (!blocks[i].used) continue;
         draw_rgb_tile(frame, used_block, USED_BLOCK_W, USED_BLOCK_H, (int)blocks[i].x - camera_x, blocks[i].y);
+    }}
+}}
+
+static void draw_broken_blocks(uint32_t *frame, const Block *blocks, const uint8_t *level, int camera_x) {{
+    uint32_t sky = 0xFF000000u | ((uint32_t)level[0] << 16) |
+        ((uint32_t)level[1] << 8) | level[2];
+    for (int i = 0; i < BLOCK_COUNT; i++) {{
+        if (!blocks[i].broken) continue;
+        int x = (int)blocks[i].x - camera_x;
+        int y = blocks[i].y;
+        for (int py = 0; py < TILE_SIZE; py++) {{
+            int dy = y + py;
+            if (dy < 0 || dy >= SCREEN_H) continue;
+            for (int px = 0; px < TILE_SIZE; px++) {{
+                int dx = x + px;
+                if (dx < 0 || dx >= SCREEN_W) continue;
+                frame[(size_t)dy * SCREEN_W + dx] = sky;
+            }}
+        }}
     }}
 }}
 
@@ -1274,7 +1326,7 @@ static void spawn_mushroom(Powerup *powerup, const Block *block) {{
     powerup->target_y = (float)block->y - MUSHROOM_H;
 }}
 
-static void update_powerup(Powerup *powerup, const uint8_t *collision, float dt) {{
+static void update_powerup(Powerup *powerup, const uint8_t *collision, const Block *blocks, float dt) {{
     if (!powerup->active) return;
     if (powerup->emerging) {{
         powerup->y -= 22.0f * dt;
@@ -1286,13 +1338,13 @@ static void update_powerup(Powerup *powerup, const uint8_t *collision, float dt)
     }}
     powerup->vy += 620.0f * dt;
     float next_x = powerup->x + powerup->vx * dt;
-    if (rect_hits_solid(collision, next_x, powerup->y, MUSHROOM_W, MUSHROOM_H)) {{
+    if (rect_hits_solid(collision, blocks, next_x, powerup->y, MUSHROOM_W, MUSHROOM_H)) {{
         powerup->vx = -powerup->vx;
     }} else {{
         powerup->x = next_x;
     }}
     float next_y = powerup->y + powerup->vy * dt;
-    if (!rect_hits_solid(collision, powerup->x, next_y, MUSHROOM_W, MUSHROOM_H)) {{
+    if (!rect_hits_solid(collision, blocks, powerup->x, next_y, MUSHROOM_W, MUSHROOM_H)) {{
         powerup->y = next_y;
     }} else if (powerup->vy > 0.0f) {{
         int tile_y = ((int)(powerup->y + MUSHROOM_H + powerup->vy * dt)) / TILE_SIZE;
@@ -1777,12 +1829,12 @@ int main(int argc, char **argv) {{
         }} else {{
         vy += 620.0f * dt;
         float next_x = mario_x + vx * dt;
-        if (!rect_hits_solid(collision, next_x, mario_y, player_w, player_h)) {{
+        if (!rect_hits_solid(collision, blocks, next_x, mario_y, player_w, player_h)) {{
             mario_x = next_x;
         }}
         float next_y = mario_y + vy * dt;
         on_ground = false;
-        if (!rect_hits_solid(collision, mario_x, next_y, player_w, player_h)) {{
+        if (!rect_hits_solid(collision, blocks, mario_x, next_y, player_w, player_h)) {{
             mario_y = next_y;
         }} else if (vy > 0.0f) {{
             int tile_y = ((int)(mario_y + player_h + vy * dt)) / TILE_SIZE;
@@ -1792,25 +1844,32 @@ int main(int argc, char **argv) {{
         }} else {{
             Block *hit = block_at(blocks, (int)(mario_x + player_w / 2), (int)next_y);
             if (hit && !hit->used) {{
-                hit->used = true;
-                if (hit->metatile == 0x57) {{
-                    spawn_mushroom(&powerup, hit);
-                }} else {{
-                    score += SCORE_COIN;
-                    coins += 1;
-                    trigger_sfx(audio_device, &audio_state, SFX_COIN);
-                    coin_effect.active = true;
-                    coin_effect.x = (float)hit->x + 4.0f;
-                    coin_effect.y = (float)hit->y - 8.0f;
-                    coin_effect.started_at = now;
+                if (block_is_breakable(hit) && mario_big) {{
+                    hit->broken = true;
+                    score += SCORE_BRICK;
+                    trigger_sfx(audio_device, &audio_state, SFX_BRICK);
                     update_window_title(window, score, coins, time_left, lives);
+                }} else if (!block_is_breakable(hit)) {{
+                    hit->used = true;
+                    if (hit->metatile == 0x57) {{
+                        spawn_mushroom(&powerup, hit);
+                    }} else {{
+                        score += SCORE_COIN;
+                        coins += 1;
+                        trigger_sfx(audio_device, &audio_state, SFX_COIN);
+                        coin_effect.active = true;
+                        coin_effect.x = (float)hit->x + 4.0f;
+                        coin_effect.y = (float)hit->y - 8.0f;
+                        coin_effect.started_at = now;
+                        update_window_title(window, score, coins, time_left, lives);
+                    }}
                 }}
             }}
             vy = 0.0f;
         }}
         if (mario_x < 0.0f) mario_x = 0.0f;
         if (mario_x > LEVEL_W - player_w) mario_x = LEVEL_W - player_w;
-        update_powerup(&powerup, collision, dt);
+        update_powerup(&powerup, collision, blocks, dt);
         if (powerup.active && rects_overlap(mario_x, mario_y, player_w, player_h, powerup.x, powerup.y, MUSHROOM_W, MUSHROOM_H)) {{
             powerup.active = false;
             if (!mario_big) {{
@@ -1865,13 +1924,13 @@ int main(int argc, char **argv) {{
             int eh = enemy_height(enemy);
             enemy->vy += 620.0f * dt;
             float gx = enemy->x + enemy->vx * dt;
-            if (rect_hits_solid(collision, gx, enemy->y, ew, eh)) {{
+            if (rect_hits_solid(collision, blocks, gx, enemy->y, ew, eh)) {{
                 enemy->vx = -enemy->vx;
             }} else {{
                 enemy->x = gx;
             }}
             float gy = enemy->y + enemy->vy * dt;
-            if (!rect_hits_solid(collision, enemy->x, gy, ew, eh)) {{
+            if (!rect_hits_solid(collision, blocks, enemy->x, gy, ew, eh)) {{
                 enemy->y = gy;
             }} else if (enemy->vy > 0.0f) {{
                 int tile_y = ((int)(enemy->y + eh + enemy->vy * dt)) / TILE_SIZE;
@@ -1882,7 +1941,7 @@ int main(int argc, char **argv) {{
             }}
             int probe_x = enemy->vx < 0.0f ? (int)enemy->x - 2 : (int)(enemy->x + ew + 2);
             int foot_y = (int)(enemy->y + eh + 2);
-            if (!solid_at(collision, probe_x, foot_y)) {{
+            if (!solid_at(collision, blocks, probe_x, foot_y)) {{
                 enemy->vx = -enemy->vx;
             }}
             if (rects_overlap(mario_x, mario_y, player_w, player_h, enemy->x, enemy->y, ew, eh)) {{
@@ -1961,6 +2020,7 @@ int main(int argc, char **argv) {{
         if (camera > LEVEL_W - SCREEN_W) camera = LEVEL_W - SCREEN_W;
         draw_level(frame, level, camera);
         draw_hud(frame, score, coins, time_left, lives, stage_clear);
+        draw_broken_blocks(frame, blocks, level, camera);
         draw_used_blocks(frame, blocks, used_block, camera);
         if (coin_effect.active && now - coin_effect.started_at >= 650) coin_effect.active = false;
         draw_coin_effect(frame, &coin_effect, coin_frames, now, camera);
