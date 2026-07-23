@@ -36,6 +36,40 @@ SMB_NATIVE_ENEMY_RECORD_BYTES = 5
 SMB_NATIVE_BLOCK_RECORD_BYTES = 5
 SMB_JUMPING_COIN_FRAME_COUNT = 4
 SMB_NATIVE_DEFAULT_STAGE_SEQUENCE = ("1-1", "1-2")
+SMB_NATIVE_FULL_STAGE_SEQUENCE = (
+    "1-1",
+    "1-2",
+    "1-3",
+    "1-4",
+    "2-1",
+    "2-2",
+    "2-3",
+    "2-4",
+    "3-1",
+    "3-2",
+    "3-3",
+    "3-4",
+    "4-1",
+    "4-2",
+    "4-3",
+    "4-4",
+    "5-1",
+    "5-2",
+    "5-3",
+    "5-4",
+    "6-1",
+    "6-2",
+    "6-3",
+    "6-4",
+    "7-1",
+    "7-2",
+    "7-3",
+    "7-4",
+    "8-1",
+    "8-2",
+    "8-3",
+    "8-4",
+)
 SMB_INTERACTIVE_BLOCK_METATILES = {
     0xC0: "question-block",
     0xC1: "question-block",
@@ -99,6 +133,14 @@ def slugify_binary_name(name: str) -> str:
     return slug or "smb-native"
 
 
+def _resolve_native_stage_sequence(stage: str) -> list[str]:
+    if stage == "all":
+        return list(SMB_NATIVE_FULL_STAGE_SEQUENCE)
+    if stage == "1-1":
+        return list(SMB_NATIVE_DEFAULT_STAGE_SEQUENCE)
+    return [stage]
+
+
 def create_smb_native_port(
     rom_path: Path | str,
     out_dir: Path | str,
@@ -116,7 +158,7 @@ def create_smb_native_port(
 
     rom_bytes = rom.read_bytes()
     validate_smb_nrom(rom_bytes)
-    stage_names = list(SMB_NATIVE_DEFAULT_STAGE_SEQUENCE if stage == "1-1" else (stage,))
+    stage_names = _resolve_native_stage_sequence(stage)
     for stage_name in stage_names:
         if stage_name not in WORLD_MAP:
             valid = ", ".join(sorted(WORLD_MAP))
@@ -259,7 +301,6 @@ def create_smb_native_port(
     goomba_size = _write_rgba(goomba_png, goomba_raw)
     koopa_size = _write_rgba(koopa_png, koopa_raw)
     koopa_shell_size = _write_rgba(koopa_shell_png, koopa_shell_raw)
-    enemy_spawns = _write_enemy_spawns(rom_bytes, stage, enemies_raw)
 
     main_c = src_dir / "main.c"
     main_c.write_text(
@@ -501,9 +542,9 @@ Terminal=false
                         "asset": str(goomba_raw.relative_to(out)),
                         "width": goomba_size[0],
                         "height": goomba_size[1],
-                        "spawn_asset": str(enemies_raw.relative_to(out)),
+                        "spawn_asset": str(first_stage.enemies_raw.relative_to(out)),
                         "spawn_count": sum(
-                            1 for spawn in enemy_spawns if spawn["kind"] == "goomba"
+                            1 for spawn in first_stage.enemy_spawns if spawn["kind"] == "goomba"
                         ),
                     },
                     {
@@ -512,9 +553,11 @@ Terminal=false
                         "asset": str(koopa_raw.relative_to(out)),
                         "width": koopa_size[0],
                         "height": koopa_size[1],
-                        "spawn_asset": str(enemies_raw.relative_to(out)),
+                        "spawn_asset": str(first_stage.enemies_raw.relative_to(out)),
                         "spawn_count": sum(
-                            1 for spawn in enemy_spawns if spawn["kind"] == "koopa-troopa"
+                            1
+                            for spawn in first_stage.enemy_spawns
+                            if spawn["kind"] == "koopa-troopa"
                         ),
                     },
                     {
@@ -540,6 +583,7 @@ Terminal=false
                     "Title screen uses the ROM-derived SMB title nametable rendered at generation time.",
                     "Collision is derived from the rendered SMB metatile map at build time.",
                     "Default native AppImage sequence includes stages 1-1 and 1-2 with separate generated assets.",
+                    "Passing --stage all generates the 32 main SMB stages into the native AppImage sequence.",
                     "Supported enemy spawns are decoded from SMB EnemyData for each generated stage.",
                     "Small and big Mario standing, walking, and jumping sprites are normalized from SMB tables.",
                     "Mario death uses the SMB small-killed metasprite and restarts the native level state.",

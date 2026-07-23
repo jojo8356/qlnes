@@ -364,3 +364,34 @@ def test_cli_smb_native_generates_project(tmp_path: Path) -> None:
     assert (out / "assets" / "enemies_1_1.bin").exists()
     assert (out / "assets" / "enemies_1_2.bin").exists()
     assert not list(out.rglob("*.nes"))
+
+
+@pytest.mark.skipif(not SMB_ROM.exists(), reason=f"SMB ROM not at {SMB_ROM}")
+def test_create_smb_native_port_stage_all_generates_main_quest_sequence(tmp_path: Path) -> None:
+    export = create_smb_native_port(
+        SMB_ROM,
+        tmp_path / "native-all",
+        app_name="SMB Native All Test",
+        stage="all",
+        force=True,
+    )
+
+    data = json.loads(export.manifest_json.read_text(encoding="utf-8"))
+    assert len(data["stage_sequence"]) == 32
+    assert data["stage_sequence"][:4] == ["1-1", "1-2", "1-3", "1-4"]
+    assert data["stage_sequence"][-4:] == ["8-1", "8-2", "8-3", "8-4"]
+    assert len(data["stages"]) == 32
+    assert data["stages"][0]["asset"] == "assets/level_1_1.rgb"
+    assert data["stages"][-1]["asset"] == "assets/level_8_4.rgb"
+    assert data["stages"][-1]["collision_asset"] == "assets/collision_8_4.bin"
+    assert data["stages"][-1]["block_asset"] == "assets/blocks_8_4.bin"
+    assert data["stages"][-1]["enemy_asset"] == "assets/enemies_8_4.bin"
+    assert (export.out_dir / "assets" / "level_8_4.rgb").exists()
+    assert (export.out_dir / "assets" / "collision_8_4.bin").exists()
+    assert (export.out_dir / "assets" / "blocks_8_4.bin").exists()
+    assert (export.out_dir / "assets" / "enemies_8_4.bin").exists()
+    source = export.source.read_text(encoding="utf-8")
+    assert "STAGE_COUNT 32" in source
+    assert '"8-4"' in source
+    assert "current_stage = (current_stage + 1) % STAGE_COUNT" in source
+    assert not list(export.out_dir.rglob("*.nes"))
