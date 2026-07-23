@@ -29,6 +29,16 @@ SMB_GOOMBA_ID = 0x06
 SMB_GOOMBA_GROUPS = {0x37: 2, 0x38: 3, 0x39: 2, 0x3A: 3}
 SMB_KOOPA_GROUPS = {0x3B: 2, 0x3C: 3}
 SMB_NATIVE_ENEMY_RECORD_BYTES = 5
+SMB_NATIVE_BLOCK_RECORD_BYTES = 5
+SMB_INTERACTIVE_BLOCK_METATILES = {
+    0xC0: "question-block",
+    0xC1: "question-block",
+    0x5F: "question-block",
+    0x60: "question-block",
+    0x57: "item-brick",
+    0x58: "coin-brick",
+}
+SMB_USED_BLOCK_METATILE = 0xC4
 SMB_SMALL_MARIO_SPRITES = (
     ("small-stand", "mario_small_stand.rgba"),
     ("small-walk-1", "mario_small_walk_1.rgba"),
@@ -102,11 +112,19 @@ def create_smb_native_port(
 
     level_raw = assets_dir / "level_1_1.rgb"
     collision_raw = assets_dir / "collision_1_1.bin"
+    blocks_raw = assets_dir / "blocks_1_1.bin"
+    used_block_raw = assets_dir / "used_empty_block.rgb"
     goomba_raw = assets_dir / "goomba.rgba"
     koopa_raw = assets_dir / "koopa_troopa.rgba"
     enemies_raw = assets_dir / "enemies_1_1.bin"
     _write_rgb(level.png, level_raw)
     collision_size = _write_collision_map(level.png, collision_raw)
+    interactive_blocks, used_block_size = _write_block_interactions(
+        rom_bytes,
+        stage,
+        blocks_raw,
+        used_block_raw,
+    )
     mario_size, mario_assets = _write_mario_frame_assets(mario_pngs, assets_dir)
     goomba_size = _write_rgba(goomba_png, goomba_raw)
     koopa_size = _write_rgba(koopa_png, koopa_raw)
@@ -120,6 +138,10 @@ def create_smb_native_port(
             level_height=level.height,
             collision_cols=collision_size[0],
             collision_rows=collision_size[1],
+            block_count=len(interactive_blocks),
+            block_record_bytes=SMB_NATIVE_BLOCK_RECORD_BYTES,
+            used_block_width=used_block_size[0],
+            used_block_height=used_block_size[1],
             mario_width=mario_size[0],
             mario_height=mario_size[1],
             mario_frame_count=len(SMB_SMALL_MARIO_SPRITES),
@@ -165,6 +187,8 @@ Terminal=false
         icon,
         level_raw,
         collision_raw,
+        blocks_raw,
+        used_block_raw,
         *(assets_dir / asset_name for _, asset_name in SMB_SMALL_MARIO_SPRITES),
         goomba_raw,
         koopa_raw,
@@ -191,6 +215,13 @@ Terminal=false
                     "rows": level.rows,
                     "collision_columns": collision_size[0],
                     "collision_rows": collision_size[1],
+                },
+                "interactive_blocks": {
+                    "asset": str(blocks_raw.relative_to(out)),
+                    "used_block_asset": str(used_block_raw.relative_to(out)),
+                    "record_bytes": SMB_NATIVE_BLOCK_RECORD_BYTES,
+                    "count": len(interactive_blocks),
+                    "blocks": interactive_blocks,
                 },
                 "player": {
                     "source_png": str(mario_pngs["small-stand"]),
@@ -236,6 +267,7 @@ Terminal=false
                     "Collision is derived from the rendered SMB metatile map at build time.",
                     "Supported enemy spawns are decoded from SMB EnemyData for the selected stage.",
                     "Small Mario standing, walking, and jumping sprites are normalized from SMB tables.",
+                    "Question/item blocks are decoded from SMB metatiles and can be hit natively.",
                 ],
             },
             indent=2,
@@ -326,6 +358,47 @@ def _write_collision_map(source_png: Path, target: Path) -> tuple[int, int]:
             cells.append(1 if non_sky / total >= 0.20 else 0)
     target.write_bytes(bytes(cells))
     return cols, rows
+
+
+def _write_block_interactions(
+    rom_bytes: bytes,
+    stage: str,
+    blocks_target: Path,
+    used_block_target: Path,
+) -> tuple[list[dict[str, object]], tuple[int, int]]:
+    if stage not in WORLD_MAP:
+        valid = ", ".join(sorted(WORLD_MAP))
+        raise ValueError(f"unknown SMB stage {stage!r}; valid: {valid}")
+
+    runtime = _SmbLevelRuntime(rom_bytes)
+    columns = runtime.load_stage(WORLD_MAP[stage], max_columns=256)
+    palettes = runtime.load_background_palette()
+    used_block = runtime.render_metatile(SMB_USED_BLOCK_METATILE, palettes).convert("RGB")
+    used_block_target.write_bytes(used_block.tobytes())
+
+    records = bytearray()
+    blocks: list[dict[str, object]] = []
+    for col, column in enumerate(columns):
+        for row, metatile in enumerate(column):
+            kind = SMB_INTERACTIVE_BLOCK_METATILES.get(metatile)
+            if kind is None:
+                continue
+            x = col * 16
+            y = row * 16
+            records.extend((x & 0xFF, (x >> 8) & 0xFF, y & 0xFF, metatile & 0xFF, 0))
+            blocks.append(
+                {
+                    "kind": kind,
+                    "metatile": f"0x{metatile:02X}",
+                    "x": x,
+                    "y": y,
+                    "column": col,
+                    "row": row,
+                }
+            )
+
+    blocks_target.write_bytes(bytes(records))
+    return blocks, used_block.size
 
 
 def _write_enemy_spawns(
@@ -491,6 +564,10 @@ def _main_c_source(
     level_height: int,
     collision_cols: int,
     collision_rows: int,
+    block_count: int,
+    block_record_bytes: int,
+    used_block_width: int,
+    used_block_height: int,
     mario_width: int,
     mario_height: int,
     mario_frame_count: int,
@@ -515,6 +592,10 @@ def _main_c_source(
 #define LEVEL_H {level_height}
 #define COLLISION_COLS {collision_cols}
 #define COLLISION_ROWS {collision_rows}
+#define BLOCK_COUNT {block_count}
+#define BLOCK_RECORD_BYTES {block_record_bytes}
+#define USED_BLOCK_W {used_block_width}
+#define USED_BLOCK_H {used_block_height}
 #define MARIO_W {mario_width}
 #define MARIO_H {mario_height}
 #define MARIO_FRAME_COUNT {mario_frame_count}
@@ -534,6 +615,13 @@ typedef struct {{
     uint8_t kind;
     bool alive;
 }} Enemy;
+
+typedef struct {{
+    uint16_t x;
+    uint8_t y;
+    uint8_t metatile;
+    bool used;
+}} Block;
 
 static uint8_t *read_asset(const char *path, size_t expected) {{
     FILE *f = fopen(path, "rb");
@@ -566,6 +654,27 @@ static void draw_level(uint32_t *frame, const uint8_t *level, int camera_x) {{
             size_t i = ((size_t)sy * LEVEL_W + sx) * 3;
             frame[(size_t)y * SCREEN_W + x] = 0xFF000000u | ((uint32_t)level[i] << 16) |
                 ((uint32_t)level[i + 1] << 8) | (uint32_t)level[i + 2];
+        }}
+    }}
+}}
+
+static void draw_rgb_tile(
+    uint32_t *frame,
+    const uint8_t *tile,
+    int tile_w,
+    int tile_h,
+    int x,
+    int y
+) {{
+    for (int py = 0; py < tile_h; py++) {{
+        int dy = y + py;
+        if (dy < 0 || dy >= SCREEN_H) continue;
+        for (int px = 0; px < tile_w; px++) {{
+            int dx = x + px;
+            if (dx < 0 || dx >= SCREEN_W) continue;
+            size_t si = ((size_t)py * tile_w + px) * 3;
+            frame[(size_t)dy * SCREEN_W + dx] = 0xFF000000u |
+                ((uint32_t)tile[si] << 16) | ((uint32_t)tile[si + 1] << 8) | tile[si + 2];
         }}
     }}
 }}
@@ -609,6 +718,33 @@ static bool load_enemies(const uint8_t *data, Enemy *enemies) {{
     return true;
 }}
 
+static bool load_blocks(const uint8_t *data, Block *blocks) {{
+    for (int i = 0; i < BLOCK_COUNT; i++) {{
+        size_t o = (size_t)i * BLOCK_RECORD_BYTES;
+        blocks[i].x = (uint16_t)data[o] | ((uint16_t)data[o + 1] << 8);
+        blocks[i].y = data[o + 2];
+        blocks[i].metatile = data[o + 3];
+        blocks[i].used = data[o + 4] != 0;
+    }}
+    return true;
+}}
+
+static Block *block_at(Block *blocks, int world_x, int world_y) {{
+    int tile_x = (world_x / TILE_SIZE) * TILE_SIZE;
+    int tile_y = (world_y / TILE_SIZE) * TILE_SIZE;
+    for (int i = 0; i < BLOCK_COUNT; i++) {{
+        if ((int)blocks[i].x == tile_x && (int)blocks[i].y == tile_y) return &blocks[i];
+    }}
+    return NULL;
+}}
+
+static void draw_used_blocks(uint32_t *frame, const Block *blocks, const uint8_t *used_block, int camera_x) {{
+    for (int i = 0; i < BLOCK_COUNT; i++) {{
+        if (!blocks[i].used) continue;
+        draw_rgb_tile(frame, used_block, USED_BLOCK_W, USED_BLOCK_H, (int)blocks[i].x - camera_x, blocks[i].y);
+    }}
+}}
+
 static int enemy_width(const Enemy *enemy) {{
     return enemy->kind == 0x00 ? KOOPA_W : GOOMBA_W;
 }}
@@ -633,6 +769,12 @@ static const uint8_t *mario_sprite(
         return mario_frames[1 + frame];
     }}
     return mario_frames[0];
+}}
+
+static void update_window_title(SDL_Window *window, int coins) {{
+    char title[256];
+    snprintf(title, sizeof(title), "%s  Coins %02d", APP_TITLE, coins);
+    SDL_SetWindowTitle(window, title);
 }}
 
 static void draw_sprite(
@@ -664,6 +806,8 @@ int main(int argc, char **argv) {{
     const char *base = SDL_GetBasePath();
     char level_path[4096];
     char collision_path[4096];
+    char blocks_path[4096];
+    char used_block_path[4096];
     char mario_path_0[4096];
     char mario_path_1[4096];
     char mario_path_2[4096];
@@ -674,6 +818,8 @@ int main(int argc, char **argv) {{
     char enemies_path[4096];
     snprintf(level_path, sizeof(level_path), "%sassets/level_1_1.rgb", base ? base : "");
     snprintf(collision_path, sizeof(collision_path), "%sassets/collision_1_1.bin", base ? base : "");
+    snprintf(blocks_path, sizeof(blocks_path), "%sassets/blocks_1_1.bin", base ? base : "");
+    snprintf(used_block_path, sizeof(used_block_path), "%sassets/used_empty_block.rgb", base ? base : "");
     snprintf(mario_path_0, sizeof(mario_path_0), "%sassets/mario_small_stand.rgba", base ? base : "");
     snprintf(mario_path_1, sizeof(mario_path_1), "%sassets/mario_small_walk_1.rgba", base ? base : "");
     snprintf(mario_path_2, sizeof(mario_path_2), "%sassets/mario_small_walk_2.rgba", base ? base : "");
@@ -685,6 +831,8 @@ int main(int argc, char **argv) {{
 
     uint8_t *level = read_asset(level_path, (size_t)LEVEL_W * LEVEL_H * 3);
     uint8_t *collision = read_asset(collision_path, (size_t)COLLISION_COLS * COLLISION_ROWS);
+    uint8_t *block_data = read_asset(blocks_path, (size_t)BLOCK_COUNT * BLOCK_RECORD_BYTES);
+    uint8_t *used_block = read_asset(used_block_path, (size_t)USED_BLOCK_W * USED_BLOCK_H * 3);
     uint8_t *mario_frames[MARIO_FRAME_COUNT];
     mario_frames[0] = read_asset(mario_path_0, (size_t)MARIO_W * MARIO_H * 4);
     mario_frames[1] = read_asset(mario_path_1, (size_t)MARIO_W * MARIO_H * 4);
@@ -698,13 +846,17 @@ int main(int argc, char **argv) {{
     for (int i = 0; i < MARIO_FRAME_COUNT; i++) {{
         if (!mario_frames[i]) mario_loaded = false;
     }}
-    if (!level || !collision || !mario_loaded || !goomba || !koopa || !enemy_data) return 2;
+    if (!level || !collision || !block_data || !used_block || !mario_loaded || !goomba || !koopa || !enemy_data) return 2;
+    Block blocks[BLOCK_COUNT > 0 ? BLOCK_COUNT : 1];
     Enemy enemies[ENEMY_COUNT > 0 ? ENEMY_COUNT : 1];
+    load_blocks(block_data, blocks);
     load_enemies(enemy_data, enemies);
 
     if (argc > 1 && SDL_strcmp(argv[1], "--self-test") == 0) {{
         free(level);
         free(collision);
+        free(block_data);
+        free(used_block);
         for (int i = 0; i < MARIO_FRAME_COUNT; i++) free(mario_frames[i]);
         free(goomba);
         free(koopa);
@@ -735,7 +887,9 @@ int main(int argc, char **argv) {{
     bool running = true;
     bool facing_left = false;
     bool on_ground = false;
+    int coins = 0;
     uint32_t last = SDL_GetTicks();
+    update_window_title(window, coins);
 
     while (running) {{
         SDL_Event e;
@@ -773,6 +927,12 @@ int main(int argc, char **argv) {{
             vy = 0.0f;
             on_ground = true;
         }} else {{
+            Block *hit = block_at(blocks, (int)(mario_x + MARIO_W / 2), (int)next_y);
+            if (hit && !hit->used) {{
+                hit->used = true;
+                coins += 1;
+                update_window_title(window, coins);
+            }}
             vy = 0.0f;
         }}
         if (mario_x < 0.0f) mario_x = 0.0f;
@@ -822,6 +982,7 @@ int main(int argc, char **argv) {{
         if (camera < 0) camera = 0;
         if (camera > LEVEL_W - SCREEN_W) camera = LEVEL_W - SCREEN_W;
         draw_level(frame, level, camera);
+        draw_used_blocks(frame, blocks, used_block, camera);
         for (int i = 0; i < ENEMY_COUNT; i++) {{
             Enemy *enemy = &enemies[i];
             if (!enemy->alive) continue;
@@ -854,6 +1015,8 @@ int main(int argc, char **argv) {{
     free(frame);
     free(level);
     free(collision);
+    free(block_data);
+    free(used_block);
     for (int i = 0; i < MARIO_FRAME_COUNT; i++) free(mario_frames[i]);
     free(goomba);
     free(koopa);
