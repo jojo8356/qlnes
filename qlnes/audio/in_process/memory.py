@@ -14,6 +14,7 @@ Namco163Memory (mapper 19) supports Namco 129/163 PRG and 1 KiB CHR windows.
 MMC5Memory (mapper 5) supports MMC5 PRG modes and CHR windows for sprite capture.
 VRC24Memory (mappers 21/22/23/25) supports Konami VRC2/VRC4 PRG and CHR windows.
 VRC6Memory (mappers 24/26) supports Konami VRC6 PRG and 1 KiB CHR windows.
+VRC7Memory (mapper 85) supports Konami VRC7 PRG and 1 KiB CHR windows.
 IremG101Memory (mapper 32) supports G-101 PRG and 1 KiB CHR windows.
 Taito33Memory (mapper 33) supports TC0190 PRG and mixed 2/1 KiB CHR windows.
 NINA0306Memory (mapper 79) supports AVE NINA-03/NINA-06 PRG/CHR banking.
@@ -1319,6 +1320,102 @@ class VRC24Memory(NROMMemory):
         self._prg0 = 0
         self._prg1 = 1
         self._swap_mode = False
+        self._chr_regs = list(range(8))
+
+
+class VRC7Memory(NROMMemory):
+    """Mapper-85 Konami VRC7 memory for runtime sprite capture.
+
+    VRC7 has two board variants: one selects secondary registers with A3
+    (`$x008`), the other with A4 (`$x010`). This model accepts both aliases for
+    PRG and CHR banking, and ignores IRQ, mirroring, WRAM protection and FM
+    audio because they are not required for sprite PNG snapshots.
+    """
+
+    def __init__(self, prg: bytes, chr_data: bytes) -> None:
+        if len(prg) % 0x2000 != 0 or len(prg) < 0x8000:
+            raise ValueError("VRC7 PRG must contain at least four 8 KiB banks")
+        initial = prg[:0x6000] + prg[-0x2000:]
+        super().__init__(initial)
+        self._prg_banks = [prg[i : i + 0x2000] for i in range(0, len(prg), 0x2000)]
+        self._chr_rom = bytes(chr_data)
+        self._chr_1k_count = max(len(self._chr_rom) // 0x0400, 1)
+        self._prg_regs = [0, 1, 2]
+        self._chr_regs = list(range(8))
+
+    def _read_prg(self, addr: int) -> int:
+        if addr < 0xA000:
+            return self._prg_banks[self._prg_regs[0] % len(self._prg_banks)][addr - 0x8000]
+        if addr < 0xC000:
+            return self._prg_banks[self._prg_regs[1] % len(self._prg_banks)][addr - 0xA000]
+        if addr < 0xE000:
+            return self._prg_banks[self._prg_regs[2] % len(self._prg_banks)][addr - 0xC000]
+        return self._prg_banks[-1][addr - 0xE000]
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if 0x8000 <= addr <= 0xFFFF:
+            self._write_mapper_register(addr, value & 0xFF)
+            return
+        super().__setitem__(addr, value)
+
+    def _write_mapper_register(self, addr: int, value: int) -> None:
+        reg = addr & 0xF018
+        if reg == 0x8000:
+            self._prg_regs[0] = value & 0x3F
+        elif reg in (0x8008, 0x8010, 0x8018):
+            self._prg_regs[1] = value & 0x3F
+        elif reg == 0x9000:
+            self._prg_regs[2] = value & 0x3F
+        elif reg == 0xA000:
+            self._set_chr_reg(0, value)
+        elif reg in (0xA008, 0xA010, 0xA018):
+            self._set_chr_reg(1, value)
+        elif reg == 0xB000:
+            self._set_chr_reg(2, value)
+        elif reg in (0xB008, 0xB010, 0xB018):
+            self._set_chr_reg(3, value)
+        elif reg == 0xC000:
+            self._set_chr_reg(4, value)
+        elif reg in (0xC008, 0xC010, 0xC018):
+            self._set_chr_reg(5, value)
+        elif reg == 0xD000:
+            self._set_chr_reg(6, value)
+        elif reg in (0xD008, 0xD010, 0xD018):
+            self._set_chr_reg(7, value)
+
+    def _set_chr_reg(self, slot: int, value: int) -> None:
+        self._chr_regs[slot] = value
+        self.chr_bank = self._dominant_chr_8k_bank()
+
+    def _mapped_chr_pattern_table(self) -> bytes:
+        if not self._chr_rom:
+            return bytes(self._pattern_table)
+        out = bytearray(0x2000)
+        for slot, reg in enumerate(self._chr_regs):
+            bank = reg % self._chr_1k_count
+            start = bank * 0x0400
+            out[slot * 0x0400 : (slot + 1) * 0x0400] = self._chr_rom[start : start + 0x0400]
+        return bytes(out)
+
+    def _dominant_chr_8k_bank(self) -> int:
+        if self._chr_1k_count < 8:
+            return 0
+        return (self._chr_regs[0] % self._chr_1k_count) // 8
+
+    def ppu_snapshot(self) -> PpuSnapshot:
+        snap = super().ppu_snapshot()
+        return PpuSnapshot(
+            ppuctrl=snap.ppuctrl,
+            ppumask=snap.ppumask,
+            palette_ram=snap.palette_ram,
+            oam=snap.oam,
+            pattern_table=self._mapped_chr_pattern_table(),
+            chr_bank=self._dominant_chr_8k_bank(),
+        )
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        self._prg_regs = [0, 1, 2]
         self._chr_regs = list(range(8))
 
 

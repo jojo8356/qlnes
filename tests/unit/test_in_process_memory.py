@@ -33,6 +33,7 @@ from qlnes.audio.in_process.memory import (
     UxROMMemory,
     VRC24Memory,
     VRC6Memory,
+    VRC7Memory,
 )
 
 
@@ -622,6 +623,29 @@ def test_mapper22_vrc2a_shifts_chr_bank_values():
     snap = m.ppu_snapshot()
     assert snap.pattern_table[0x1000] == 27
     assert snap.pattern_table[0x13FF] == 27
+
+
+def test_mapper85_vrc7_switches_prg_and_1k_chr_windows():
+    banks = [bytes([bank_id] * 0x2000) for bank_id in range(8)]
+    chr_data = b"".join(bytes([bank_id] * 0x0400) for bank_id in range(32))
+    m = VRC7Memory(b"".join(banks), chr_data=chr_data)
+    assert m[0x8000] == 0
+    assert m[0xA000] == 1
+    assert m[0xC000] == 2
+    assert m[0xE000] == 7
+
+    m[0x8000] = 0x04
+    m[0x8010] = 0x05
+    m[0x9000] = 0x06
+    assert m[0x8000] == 4
+    assert m[0xA000] == 5
+    assert m[0xC000] == 6
+    assert m[0xE000] == 7
+
+    m[0xC010] = 0x1B
+    snap = m.ppu_snapshot()
+    assert snap.pattern_table[0x1400] == 27
+    assert snap.pattern_table[0x17FF] == 27
 
 
 def test_mapper32_irem_g101_switches_prg_mode_and_1k_chr_windows():
