@@ -122,6 +122,7 @@ class RuntimeSpriteSamplesManifest:
     out_dir: Path
     samples: list[RuntimeSpriteSample] = field(default_factory=list)
     unique_sprites: list[Path] = field(default_factory=list)
+    unique_spritesheet: Path | None = None
     manifest_json: Path | None = None
 
     @property
@@ -442,6 +443,35 @@ def write_spritesheet_png(
         sheet.alpha_composite(sprite_img, ((idx % columns) * sprite_w, (idx // columns) * sprite_h))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(out_path)
+    return out_path
+
+
+def write_png_spritesheet(
+    sprite_paths: Sequence[Path],
+    out_path: Path,
+    *,
+    columns: int = 16,
+) -> Path:
+    """Pack already-rendered RGBA sprite PNG files into one transparent sheet."""
+
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise RuntimeError("Pillow is required for transparent sprite PNG export") from exc
+
+    if not sprite_paths:
+        raise ValueError("no sprite PNGs to write")
+    images = [Image.open(path).convert("RGBA") for path in sprite_paths]
+    sprite_w = max(image.width for image in images)
+    sprite_h = max(image.height for image in images)
+    rows = (len(images) + columns - 1) // columns
+    sheet = Image.new("RGBA", (columns * sprite_w, rows * sprite_h), (0, 0, 0, 0))
+    for idx, image in enumerate(images):
+        sheet.alpha_composite(image, ((idx % columns) * sprite_w, (idx // columns) * sprite_h))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    sheet.save(out_path)
+    for image in images:
+        image.close()
     return out_path
 
 
@@ -870,6 +900,12 @@ def export_in_process_runtime_sprite_samples(
                 }
             )
 
+    if samples.unique_sprites:
+        samples.unique_spritesheet = write_png_spritesheet(
+            samples.unique_sprites,
+            out_dir / "unique-spritesheet.png",
+        )
+
     manifest_json = out_dir / "runtime-sprite-samples-manifest.json"
     manifest_json.write_text(
         json.dumps(
@@ -882,6 +918,9 @@ def export_in_process_runtime_sprite_samples(
                 "unique_sprite_count": samples.unique_count,
                 "transparent_index": 0,
                 "unique_sprites_dir": str(unique_dir) if unique_entries else None,
+                "unique_spritesheet": (
+                    str(samples.unique_spritesheet) if samples.unique_spritesheet else None
+                ),
                 "unique_sprites": unique_entries,
                 "samples": [
                     {

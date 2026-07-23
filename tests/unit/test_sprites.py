@@ -667,10 +667,16 @@ class TestSpriteExport(unittest.TestCase):
             self.assertTrue((out_dir / "frame-000002" / "oam-spritesheet.png").exists())
             self.assertEqual(manifest.unique_count, 1)
             self.assertTrue((out_dir / "unique" / "sprite-0000.png").exists())
+            self.assertTrue((out_dir / "unique-spritesheet.png").exists())
+            sheet = Image.open(out_dir / "unique-spritesheet.png").convert("RGBA")
+            self.assertEqual(sheet.size, (16 * 8, 8))
+            self.assertEqual(sheet.getpixel((0, 0))[3], 0)
+            self.assertEqual(sheet.getpixel((1, 0)), (0xFC, 0xFC, 0xFC, 255))
             data = json.loads((out_dir / "runtime-sprite-samples-manifest.json").read_text())
             self.assertEqual(data["kind"], "runtime_sprite_samples_export")
             self.assertEqual(data["sample_frames"], [1, 2])
             self.assertEqual(data["unique_sprite_count"], 1)
+            self.assertEqual(data["unique_spritesheet"], str(out_dir / "unique-spritesheet.png"))
             self.assertEqual(data["transparent_index"], 0)
 
     def test_cli_sprites_runtime_sample_frames_command(self):
@@ -696,6 +702,7 @@ class TestSpriteExport(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertTrue((out_dir / "frame-000001" / "oam-screen.png").exists())
             self.assertTrue((out_dir / "unique" / "sprite-0000.png").exists())
+            self.assertTrue((out_dir / "unique-spritesheet.png").exists())
             self.assertTrue((out_dir / "runtime-sprite-samples-manifest.json").exists())
 
     def test_export_sprite_batch_writes_one_manifest_per_rom_and_summary(self):
