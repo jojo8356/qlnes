@@ -1213,6 +1213,22 @@ def export_sprite_batch(
             atlas = png_spritesheet_atlas(batch.all_unique_trimmed)
             for entry, coords in zip(all_unique_manifest_entries, atlas):
                 entry["sheet"] = coords
+            atlas_json = out_dir / "all-unique-trimmed-atlas.json"
+            atlas_json.write_text(
+                json.dumps(
+                    {
+                        "kind": "sprite_atlas",
+                        "spritesheet": str(batch.all_unique_trimmed_spritesheet),
+                        "image": str(batch.all_unique_trimmed_spritesheet),
+                        "transparent_index": 0,
+                        "sprite_count": len(all_unique_manifest_entries),
+                        "sprites": all_unique_manifest_entries,
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
 
     out_dir.mkdir(parents=True, exist_ok=True)
     manifest_json = out_dir / "sprites-batch-manifest.json"
@@ -1247,6 +1263,11 @@ def export_sprite_batch(
                 "all_unique_trimmed_spritesheet": (
                     str(batch.all_unique_trimmed_spritesheet)
                     if batch.all_unique_trimmed_spritesheet
+                    else None
+                ),
+                "all_unique_trimmed_atlas": (
+                    str(out_dir / "all-unique-trimmed-atlas.json")
+                    if batch.all_unique_trimmed
                     else None
                 ),
                 "transparent_index": 0,

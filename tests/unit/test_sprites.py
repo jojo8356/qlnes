@@ -843,6 +843,15 @@ class TestSpriteExport(unittest.TestCase):
             self.assertEqual(data["all_unique_trimmed_count"], 1)
             self.assertTrue((out_dir / "all-unique-trimmed" / "sprite-0000.png").exists())
             self.assertTrue((out_dir / "all-unique-trimmed-spritesheet.png").exists())
+            self.assertTrue((out_dir / "all-unique-trimmed-atlas.json").exists())
+            self.assertEqual(
+                data["all_unique_trimmed_atlas"],
+                str(out_dir / "all-unique-trimmed-atlas.json"),
+            )
+            atlas = json.loads((out_dir / "all-unique-trimmed-atlas.json").read_text())
+            self.assertEqual(atlas["kind"], "sprite_atlas")
+            self.assertEqual(atlas["sprite_count"], 1)
+            self.assertEqual(atlas["spritesheet"], str(out_dir / "all-unique-trimmed-spritesheet.png"))
             self.assertRegex(data["all_unique_trimmed"][0]["trimmed_sha256"], r"^[0-9a-f]{64}$")
             self.assertEqual(
                 data["all_unique_trimmed"][0]["sheet"],
