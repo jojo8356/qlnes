@@ -21,6 +21,7 @@ from .smb_graphics import (
     render_smb_blocks,
     render_smb_characters,
     render_smb_level,
+    render_smb_title_assets,
     validate_smb_nrom,
 )
 
@@ -106,6 +107,7 @@ def create_smb_native_port(
     build_dir.mkdir(exist_ok=True)
 
     level = render_smb_level(rom, build_dir / "levels", stage=stage, max_columns=256)
+    title_assets = render_smb_title_assets(rom, build_dir / "title")
     characters = render_smb_characters(rom, build_dir / "characters")
     block_assets = render_smb_blocks(rom, build_dir / "blocks")
     mario_pngs = {
@@ -139,6 +141,7 @@ def create_smb_native_port(
         raise RuntimeError(f"expected SMB power-up sprite missing: {mushroom_png}")
 
     level_raw = assets_dir / "level_1_1.rgb"
+    title_screen_raw = assets_dir / "title_screen.rgb"
     collision_raw = assets_dir / "collision_1_1.bin"
     blocks_raw = assets_dir / "blocks_1_1.bin"
     used_block_raw = assets_dir / "used_empty_block.rgb"
@@ -152,6 +155,7 @@ def create_smb_native_port(
     dead_mario_raw = assets_dir / SMB_DEAD_MARIO_SPRITE[1]
     enemies_raw = assets_dir / "enemies_1_1.bin"
     _write_rgb(level.png, level_raw)
+    title_screen_size = _write_rgb(title_assets.title_screen, title_screen_raw)
     collision_size = _write_collision_map(level.png, collision_raw)
     interactive_blocks, used_block_size = _write_block_interactions(
         rom_bytes,
@@ -183,6 +187,8 @@ def create_smb_native_port(
             app_name=app_name,
             level_width=level.width,
             level_height=level.height,
+            title_screen_width=title_screen_size[0],
+            title_screen_height=title_screen_size[1],
             collision_cols=collision_size[0],
             collision_rows=collision_size[1],
             block_count=len(interactive_blocks),
@@ -244,6 +250,7 @@ Terminal=false
         desktop,
         icon,
         level_raw,
+        title_screen_raw,
         collision_raw,
         blocks_raw,
         used_block_raw,
@@ -284,6 +291,15 @@ Terminal=false
                     "restart_ms": 2500,
                     "time_bonus_per_second": 50,
                     "behavior": "native stage-clear state freezes control and restarts the generated level",
+                },
+                "title_screen": {
+                    "source_png": str(title_assets.title_screen),
+                    "asset": str(title_screen_raw.relative_to(out)),
+                    "width": title_screen_size[0],
+                    "height": title_screen_size[1],
+                    "source_manifest": str(title_assets.manifest_json),
+                    "start_controls": ["Enter", "Space"],
+                    "behavior": "native title-screen state renders the ROM-derived SMB title screen before gameplay",
                 },
                 "scoring": {
                     "starting_time": 400,
@@ -375,6 +391,7 @@ Terminal=false
                     "The generated runtime does not read a .nes file.",
                     "This is a native MVP, not a complete SMB engine yet.",
                     "Controls: arrows or A/D to move, Space/W/Up to jump, Esc to quit.",
+                    "Title screen uses the ROM-derived SMB title nametable rendered at generation time.",
                     "Collision is derived from the rendered SMB metatile map at build time.",
                     "Supported enemy spawns are decoded from SMB EnemyData for the selected stage.",
                     "Small and big Mario standing, walking, and jumping sprites are normalized from SMB tables.",
@@ -703,6 +720,8 @@ def _main_c_source(
     app_name: str,
     level_width: int,
     level_height: int,
+    title_screen_width: int,
+    title_screen_height: int,
     collision_cols: int,
     collision_rows: int,
     block_count: int,
@@ -742,6 +761,8 @@ def _main_c_source(
 #define SCALE 3
 #define LEVEL_W {level_width}
 #define LEVEL_H {level_height}
+#define TITLE_SCREEN_W {title_screen_width}
+#define TITLE_SCREEN_H {title_screen_height}
 #define COLLISION_COLS {collision_cols}
 #define COLLISION_ROWS {collision_rows}
 #define BLOCK_COUNT {block_count}
@@ -859,6 +880,18 @@ static void draw_level(uint32_t *frame, const uint8_t *level, int camera_x) {{
             size_t i = ((size_t)sy * LEVEL_W + sx) * 3;
             frame[(size_t)y * SCREEN_W + x] = 0xFF000000u | ((uint32_t)level[i] << 16) |
                 ((uint32_t)level[i + 1] << 8) | (uint32_t)level[i + 2];
+        }}
+    }}
+}}
+
+static void draw_rgb_image(uint32_t *frame, const uint8_t *image, int image_w, int image_h) {{
+    for (int y = 0; y < SCREEN_H; y++) {{
+        int sy = y < image_h ? y : image_h - 1;
+        for (int x = 0; x < SCREEN_W; x++) {{
+            int sx = x < image_w ? x : image_w - 1;
+            size_t i = ((size_t)sy * image_w + sx) * 3;
+            frame[(size_t)y * SCREEN_W + x] = 0xFF000000u | ((uint32_t)image[i] << 16) |
+                ((uint32_t)image[i + 1] << 8) | (uint32_t)image[i + 2];
         }}
     }}
 }}
@@ -1157,6 +1190,12 @@ static void update_window_title(SDL_Window *window, int score, int coins, int ti
     SDL_SetWindowTitle(window, title);
 }}
 
+static void update_title_screen_window_title(SDL_Window *window) {{
+    char title[256];
+    snprintf(title, sizeof(title), "%s  PRESS ENTER OR SPACE", APP_TITLE);
+    SDL_SetWindowTitle(window, title);
+}}
+
 static void update_stage_clear_title(SDL_Window *window, int score, int coins, int time_left, int lives) {{
     char title[256];
     snprintf(
@@ -1282,6 +1321,7 @@ static void draw_sprite(
 int main(int argc, char **argv) {{
     const char *base = SDL_GetBasePath();
     char level_path[4096];
+    char title_screen_path[4096];
     char collision_path[4096];
     char blocks_path[4096];
     char used_block_path[4096];
@@ -1306,6 +1346,7 @@ int main(int argc, char **argv) {{
     char koopa_shell_path[4096];
     char enemies_path[4096];
     snprintf(level_path, sizeof(level_path), "%sassets/level_1_1.rgb", base ? base : "");
+    snprintf(title_screen_path, sizeof(title_screen_path), "%sassets/title_screen.rgb", base ? base : "");
     snprintf(collision_path, sizeof(collision_path), "%sassets/collision_1_1.bin", base ? base : "");
     snprintf(blocks_path, sizeof(blocks_path), "%sassets/blocks_1_1.bin", base ? base : "");
     snprintf(used_block_path, sizeof(used_block_path), "%sassets/used_empty_block.rgb", base ? base : "");
@@ -1331,6 +1372,7 @@ int main(int argc, char **argv) {{
     snprintf(enemies_path, sizeof(enemies_path), "%sassets/enemies_1_1.bin", base ? base : "");
 
     uint8_t *level = read_asset(level_path, (size_t)LEVEL_W * LEVEL_H * 3);
+    uint8_t *title_screen = read_asset(title_screen_path, (size_t)TITLE_SCREEN_W * TITLE_SCREEN_H * 3);
     uint8_t *collision = read_asset(collision_path, (size_t)COLLISION_COLS * COLLISION_ROWS);
     uint8_t *block_data = read_asset(blocks_path, (size_t)BLOCK_COUNT * BLOCK_RECORD_BYTES);
     uint8_t *used_block = read_asset(used_block_path, (size_t)USED_BLOCK_W * USED_BLOCK_H * 3);
@@ -1365,7 +1407,7 @@ int main(int argc, char **argv) {{
     for (int i = 0; i < COIN_FRAME_COUNT; i++) {{
         if (!coin_frames[i]) coins_loaded = false;
     }}
-    if (!level || !collision || !block_data || !used_block || !coins_loaded || !mushroom || !mario_loaded || !dead_mario || !goomba || !koopa || !koopa_shell || !enemy_data) return 2;
+    if (!level || !title_screen || !collision || !block_data || !used_block || !coins_loaded || !mushroom || !mario_loaded || !dead_mario || !goomba || !koopa || !koopa_shell || !enemy_data) return 2;
     Block blocks[BLOCK_COUNT > 0 ? BLOCK_COUNT : 1];
     Enemy enemies[ENEMY_COUNT > 0 ? ENEMY_COUNT : 1];
     load_blocks(block_data, blocks);
@@ -1373,6 +1415,7 @@ int main(int argc, char **argv) {{
 
     if (argc > 1 && SDL_strcmp(argv[1], "--self-test") == 0) {{
         free(level);
+        free(title_screen);
         free(collision);
         free(block_data);
         free(used_block);
@@ -1416,6 +1459,7 @@ int main(int argc, char **argv) {{
     bool mario_big = false;
     bool player_dead = false;
     bool stage_clear = false;
+    bool title_screen_active = true;
     uint32_t death_started_at = 0;
     uint32_t stage_clear_started_at = 0;
     uint32_t timer_started_at = SDL_GetTicks();
@@ -1426,14 +1470,39 @@ int main(int argc, char **argv) {{
     CoinEffect coin_effect = {{false, 0.0f, 0.0f, 0}};
     Powerup powerup = {{false, false, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}};
     uint32_t last = SDL_GetTicks();
-    update_window_title(window, score, coins, time_left, lives);
+    update_title_screen_window_title(window);
 
     while (running) {{
         SDL_Event e;
         while (SDL_PollEvent(&e)) {{
             if (e.type == SDL_QUIT) running = false;
             if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) running = false;
+            if (
+                title_screen_active &&
+                e.type == SDL_KEYDOWN &&
+                (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_SPACE)
+            ) {{
+                title_screen_active = false;
+                timer_started_at = SDL_GetTicks();
+                last = timer_started_at;
+                update_window_title(window, score, coins, time_left, lives);
+            }}
         }}
+
+        uint32_t now = SDL_GetTicks();
+        float dt = (float)(now - last) / 1000.0f;
+        if (dt > 0.05f) dt = 0.05f;
+        last = now;
+
+        if (title_screen_active) {{
+            draw_rgb_image(frame, title_screen, TITLE_SCREEN_W, TITLE_SCREEN_H);
+            SDL_UpdateTexture(texture, NULL, frame, SCREEN_W * (int)sizeof(uint32_t));
+            SDL_RenderClear(renderer);
+            SDL_RenderCopy(renderer, texture, NULL, NULL);
+            SDL_RenderPresent(renderer);
+            continue;
+        }}
+
         const uint8_t *keys = SDL_GetKeyboardState(NULL);
         float move = 0.0f;
         if (keys[SDL_SCANCODE_LEFT] || keys[SDL_SCANCODE_A]) move -= 1.0f;
@@ -1443,11 +1512,6 @@ int main(int argc, char **argv) {{
         vx = (player_dead || stage_clear) ? 0.0f : move * 100.0f;
         bool jump = keys[SDL_SCANCODE_SPACE] || keys[SDL_SCANCODE_UP] || keys[SDL_SCANCODE_W];
         if (!player_dead && !stage_clear && jump && on_ground) vy = -245.0f;
-
-        uint32_t now = SDL_GetTicks();
-        float dt = (float)(now - last) / 1000.0f;
-        if (dt > 0.05f) dt = 0.05f;
-        last = now;
         if (!player_dead && !stage_clear) {{
             int elapsed_seconds = (int)((now - timer_started_at) / 1000);
             int next_time_left = STARTING_TIME - elapsed_seconds;
@@ -1754,6 +1818,7 @@ int main(int argc, char **argv) {{
 
     free(frame);
     free(level);
+    free(title_screen);
     free(collision);
     free(block_data);
     free(used_block);

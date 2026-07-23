@@ -40,6 +40,12 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert data["stage_clear"]["restart_ms"] == 2500
     assert data["stage_clear"]["time_bonus_per_second"] == 50
     assert data["stage_clear"]["behavior"].startswith("native stage-clear")
+    assert data["title_screen"]["asset"] == "assets/title_screen.rgb"
+    assert data["title_screen"]["width"] == 256
+    assert data["title_screen"]["height"] == 240
+    assert data["title_screen"]["source_manifest"].endswith("smb-title-assets.json")
+    assert data["title_screen"]["start_controls"] == ["Enter", "Space"]
+    assert data["title_screen"]["behavior"].startswith("native title-screen")
     assert data["scoring"] == {
         "starting_time": 400,
         "coin_points": 200,
@@ -111,6 +117,7 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert export.build_script.exists()
     assert export.appimage_script.exists()
     assert (export.out_dir / "assets" / "level_1_1.rgb").exists()
+    assert (export.out_dir / "assets" / "title_screen.rgb").exists()
     assert (export.out_dir / "assets" / "collision_1_1.bin").exists()
     assert (export.out_dir / "assets" / "blocks_1_1.bin").exists()
     assert (export.out_dir / "assets" / "used_empty_block.rgb").exists()
@@ -139,6 +146,13 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     source = export.source.read_text(encoding="utf-8")
     assert "SDL_CreateWindow" in source
     assert "--self-test" in source
+    assert "TITLE_SCREEN_W" in source
+    assert "TITLE_SCREEN_H" in source
+    assert "title_screen_active" in source
+    assert "draw_rgb_image(frame, title_screen, TITLE_SCREEN_W, TITLE_SCREEN_H)" in source
+    assert "update_title_screen_window_title" in source
+    assert "PRESS ENTER OR SPACE" in source
+    assert "SDLK_RETURN" in source
     assert "rect_hits_solid" in source
     assert "ENEMY_COUNT" in source
     assert "Enemy *enemy" in source
@@ -228,6 +242,7 @@ def test_cli_smb_native_generates_project(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert (out / "src" / "main.c").exists()
     assert (out / "build-appimage.sh").exists()
+    assert (out / "assets" / "title_screen.rgb").exists()
     assert (out / "assets" / "collision_1_1.bin").exists()
     assert (out / "assets" / "blocks_1_1.bin").exists()
     assert (out / "assets" / "used_empty_block.rgb").exists()
