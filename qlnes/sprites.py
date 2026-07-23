@@ -476,6 +476,41 @@ def write_png_spritesheet(
     return out_path
 
 
+def png_spritesheet_atlas(
+    sprite_paths: Sequence[Path],
+    *,
+    columns: int = 16,
+) -> list[dict[str, int]]:
+    """Return grid coordinates matching `write_png_spritesheet`."""
+
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise RuntimeError("Pillow is required for transparent sprite PNG export") from exc
+
+    if not sprite_paths:
+        return []
+    sizes: list[tuple[int, int]] = []
+    for path in sprite_paths:
+        with Image.open(path) as image:
+            sizes.append(image.size)
+    cell_w = max(width for width, _ in sizes)
+    cell_h = max(height for _, height in sizes)
+    atlas: list[dict[str, int]] = []
+    for idx, (width, height) in enumerate(sizes):
+        atlas.append(
+            {
+                "sheet_x": (idx % columns) * cell_w,
+                "sheet_y": (idx // columns) * cell_h,
+                "sheet_w": width,
+                "sheet_h": height,
+                "cell_w": cell_w,
+                "cell_h": cell_h,
+            }
+        )
+    return atlas
+
+
 def trim_transparent_png(
     src_path: Path,
     out_path: Path,
@@ -938,6 +973,11 @@ def export_in_process_runtime_sprite_samples(
             trimmed_paths,
             out_dir / "unique-trimmed-spritesheet.png",
         )
+        raw_atlas = png_spritesheet_atlas(samples.unique_sprites)
+        trimmed_atlas = png_spritesheet_atlas(trimmed_paths)
+        for entry, raw, trimmed in zip(unique_entries, raw_atlas, trimmed_atlas):
+            entry["sheet"] = raw
+            entry["trimmed_sheet"] = trimmed
 
     manifest_json = out_dir / "runtime-sprite-samples-manifest.json"
     manifest_json.write_text(

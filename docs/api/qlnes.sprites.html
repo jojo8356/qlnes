@@ -462,6 +462,7 @@ PPU&nbsp;palette&nbsp;RAM.</span></dd></dl>
 Accepts&nbsp;decimal&nbsp;or&nbsp;Python-style&nbsp;integer&nbsp;strings&nbsp;such&nbsp;as&nbsp;``0x16``.&nbsp;Bare<br>
 two-digit&nbsp;hexadecimal&nbsp;tokens&nbsp;like&nbsp;``16``&nbsp;are&nbsp;treated&nbsp;as&nbsp;hex&nbsp;because&nbsp;NES<br>
 palette&nbsp;values&nbsp;are&nbsp;usually&nbsp;written&nbsp;that&nbsp;way.</span></dd></dl>
+ <dl><dt><a name="-png_spritesheet_atlas"><strong>png_spritesheet_atlas</strong></a>(sprite_paths: 'Sequence[Path]', *, columns: 'int' = 16) -&gt; 'list[dict[str, int]]'</dt><dd><span class="code">Return&nbsp;grid&nbsp;coordinates&nbsp;matching&nbsp;`write_png_spritesheet`.</span></dd></dl>
  <dl><dt><a name="-rgba_for_sprite_pixel"><strong>rgba_for_sprite_pixel</strong></a>(color_index: 'int', *, palette_id: 'int', palette_ram: 'Sequence[int]') -&gt; 'tuple[int, int, int, int]'</dt><dd><span class="code">Resolve&nbsp;one&nbsp;decoded&nbsp;CHR&nbsp;pixel&nbsp;to&nbsp;RGBA.<br>
 &nbsp;<br>
 Sprite&nbsp;color&nbsp;index&nbsp;0&nbsp;is&nbsp;transparent&nbsp;on&nbsp;NES&nbsp;hardware,&nbsp;so&nbsp;it&nbsp;returns&nbsp;alpha&nbsp;0.<br>

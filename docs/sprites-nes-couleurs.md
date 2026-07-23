@@ -134,7 +134,9 @@ toutes les frames capturées, leurs manifestes locaux, et un dossier `unique/`
 qui déduplique les PNG RGBA finaux par hash SHA-256. Une spritesheet
 `unique-spritesheet.png` regroupe aussi ces sprites uniques. Le dossier
 `unique-trimmed/` et `unique-trimmed-spritesheet.png` fournissent les mêmes
-sprites recadrés sur leur bbox alpha, en conservant la transparence. Ce mode ne
+sprites recadrés sur leur bbox alpha, en conservant la transparence. Les
+entrées `unique_sprites[]` du manifeste incluent aussi les coordonnées d'atlas
+`sheet` et `trimmed_sheet` pour lire directement les spritesheets. Ce mode ne
 garantit pas tous les sprites d'un jeu complet, mais il couvre mieux les
 animations et états de boot/titre qu'une seule capture finale.
 

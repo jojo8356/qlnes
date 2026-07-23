@@ -689,6 +689,14 @@ class TestSpriteExport(unittest.TestCase):
                 str(out_dir / "unique-trimmed-spritesheet.png"),
             )
             self.assertEqual(data["unique_sprites"][0]["transparent_bbox"], [1, 0, 8, 8])
+            self.assertEqual(
+                data["unique_sprites"][0]["sheet"],
+                {"sheet_x": 0, "sheet_y": 0, "sheet_w": 8, "sheet_h": 8, "cell_w": 8, "cell_h": 8},
+            )
+            self.assertEqual(
+                data["unique_sprites"][0]["trimmed_sheet"],
+                {"sheet_x": 0, "sheet_y": 0, "sheet_w": 7, "sheet_h": 8, "cell_w": 7, "cell_h": 8},
+            )
             self.assertEqual(data["transparent_index"], 0)
 
     def test_cli_sprites_runtime_sample_frames_command(self):
