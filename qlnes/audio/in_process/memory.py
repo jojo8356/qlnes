@@ -5,7 +5,8 @@ implement mapper-specific PRG/CHR layouts. The in-process runner currently
 ships NROMMemory (mapper 0), UxROMMemory (mapper 2), CNROMMemory
 (mapper 3), GxROMMemory (mapper 66), and a conservative MMC1Memory
 (mapper 1). MMC3Memory (mapper 4) supports enough PRG/CHR banking for
-runtime sprite capture on simple boot snapshots.
+runtime sprite capture on simple boot snapshots. AxROMMemory (mapper 7)
+supports 32 KiB PRG switching with CHR-RAM captures.
 
 The APU observer lives inside __setitem__: when py65 writes to
 $4000-$4017, we record an ApuWriteEvent. PPU reads/writes go through
@@ -293,6 +294,35 @@ class GxROMMemory(NROMMemory):
         if addr >= 0x8000:
             self._prg_bank = ((value >> 4) & 0x03) % len(self._banks)
             self.chr_bank = (value & 0x03) % self._chr_bank_count
+            return
+        super().__setitem__(addr, value)
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        self._prg_bank = 0
+
+
+class AxROMMemory(NROMMemory):
+    """Mapper-7 AxROM memory.
+
+    $8000-$FFFF is a switchable 32 KiB PRG bank. AxROM boards commonly use
+    CHR-RAM, which the base PPU write observer already captures through
+    PPUADDR/PPUDATA.
+    """
+
+    def __init__(self, prg: bytes) -> None:
+        if len(prg) % 0x8000 != 0 or len(prg) == 0:
+            raise ValueError("AxROM PRG must contain at least one 32 KiB bank")
+        super().__init__(prg[:0x8000])
+        self._banks = [prg[i : i + 0x8000] for i in range(0, len(prg), 0x8000)]
+        self._prg_bank = 0
+
+    def _read_prg(self, addr: int) -> int:
+        return self._banks[self._prg_bank][addr - 0x8000]
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if addr >= 0x8000:
+            self._prg_bank = (value & 0x07) % len(self._banks)
             return
         super().__setitem__(addr, value)
 

@@ -102,7 +102,7 @@ python -m qlnes sprites ROM.nes -o out/sprites --palette 0F,30,16,27
 # Extraire les sprites OAM avec couleurs originales depuis un snapshot PPU/OAM
 python -m qlnes sprites ROM.nes -o out/oam-sprites --snapshot snapshot-ppu-oam.json
 
-# Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/GxROM : capture palette/OAM automatiquement
+# Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/AxROM/GxROM : capture palette/OAM automatiquement
 python -m qlnes sprites ROM.nes -o out/oam-sprites --runtime-frames 120
 ```
 
@@ -226,10 +226,10 @@ qlnes/
 ## Limites connues
 
 - **Mappers supportés** : 0 (NROM), 1 (MMC1 mode 3), 2 (UxROM), 3 (CNROM),
-  4 (MMC3 initial), 66 (GxROM/GNROM)
+  4 (MMC3 initial), 7 (AxROM), 66 (GxROM/GNROM)
 - **Discovery dynamique** : nécessite `cynes`, supporté seulement pour mapper 0 (limitation runner actuelle)
 - **Capture sprites runtime** : couvre les cas simples NROM, MMC1/SxROM,
-  UxROM, CNROM, MMC3 et GxROM/GNROM.
+  UxROM, CNROM, MMC3, AxROM et GxROM/GNROM.
   MMC1 couvre aussi les fenêtres CHR 4 KiB split simples. Les variantes mapper
   complexes, les IRQ/raster effects et les changements mid-frame demandent
   encore un snapshot externe ou un observateur PPU plus complet.

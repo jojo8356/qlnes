@@ -83,6 +83,14 @@ class TestGxROM(unittest.TestCase):
         self.assertEqual(len(images), 1)
 
 
+class TestAxROM(unittest.TestCase):
+    def test_axrom_one_image_per_32k_bank(self):
+        images = rom_to_images(fake_rom(4, 7))
+        self.assertEqual(len(images), 2)
+        self.assertEqual(images[0][1][0x8000], 0)
+        self.assertEqual(images[1][1][0x8000], 2)
+
+
 class TestMMC3InitialLayout(unittest.TestCase):
     def test_mmc3_builds_initial_fixed_bank_view(self):
         images = rom_to_images(fake_rom(2, 4))

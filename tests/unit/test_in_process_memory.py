@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 
 from qlnes.audio.in_process.memory import (
+    AxROMMemory,
     CNROMMemory,
     GxROMMemory,
     MMC1Memory,
@@ -276,6 +277,25 @@ def test_gxrom_reset_state_restores_prg_and_chr_bank():
     m.reset_state()
     assert m[0x8000] == 0
     assert m.ppu_snapshot().chr_bank == 0
+
+
+def test_axrom_mapper_write_switches_32k_prg_bank():
+    banks = [bytes([bank_id] * 0x8000) for bank_id in range(4)]
+    m = AxROMMemory(b"".join(banks))
+    assert m[0x8000] == 0
+    assert m[0xFFFF] == 0
+    m[0x8000] = 0x02
+    assert m[0x8000] == 2
+    assert m[0xFFFF] == 2
+
+
+def test_axrom_reset_state_restores_initial_prg_bank():
+    banks = [bytes([bank_id] * 0x8000) for bank_id in range(2)]
+    m = AxROMMemory(b"".join(banks))
+    m[0x8000] = 0x01
+    assert m[0x8000] == 1
+    m.reset_state()
+    assert m[0x8000] == 0
 
 
 def _mmc1_write_register(m: MMC1Memory, addr: int, value: int) -> None:

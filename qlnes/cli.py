@@ -517,7 +517,7 @@ def sprites(
 
     Par defaut, cette commande applique une palette fournie ou une palette de
     preview. Pour des couleurs originales, utiliser `--runtime-frames` sur les
-    ROMs NROM/MMC1/UxROM/CNROM/MMC3/GxROM simples ou fournir un dump PPU/OAM
+    ROMs NROM/MMC1/UxROM/CNROM/MMC3/AxROM/GxROM simples ou fournir un dump PPU/OAM
     externe via `--snapshot`.
     """
     from .io.log import get_logger
