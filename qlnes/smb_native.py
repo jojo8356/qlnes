@@ -290,6 +290,8 @@ Terminal=false
                     "coin_points": 200,
                     "mushroom_points": 1000,
                     "stomp_points": 100,
+                    "shell_kick_points": 400,
+                    "shell_hit_points": 500,
                     "stage_clear_time_bonus_per_second": 50,
                 },
                 "hud": {
@@ -381,6 +383,7 @@ Terminal=false
                     "Score, coins, world, time and lives are rendered by a native framebuffer HUD.",
                     "Question/item blocks are decoded from SMB metatiles and can be hit natively.",
                     "Koopa stomps switch to a native shell state using the ROM-derived shell sprite.",
+                    "Stationary Koopa shells can be kicked and moving shells defeat other enemies natively.",
                 ],
             },
             indent=2,
@@ -777,7 +780,10 @@ def _main_c_source(
 #define SCORE_COIN 200
 #define SCORE_MUSHROOM 1000
 #define SCORE_STOMP 100
+#define SCORE_SHELL_KICK 400
+#define SCORE_SHELL_HIT 500
 #define SCORE_TIME_BONUS 50
+#define KOOPA_SHELL_SPEED 150.0f
 
 typedef struct {{
     float x;
@@ -979,6 +985,10 @@ static bool rect_hits_solid(const uint8_t *collision, float x, float y, int w, i
 
 static bool rects_overlap(float ax, float ay, int aw, int ah, float bx, float by, int bw, int bh) {{
     return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}}
+
+static bool shell_is_moving(const Enemy *enemy) {{
+    return enemy->kind == KOOPA_SHELL_KIND && (enemy->vx < -1.0f || enemy->vx > 1.0f);
 }}
 
 static bool load_enemies(const uint8_t *data, Enemy *enemies) {{
@@ -1624,18 +1634,31 @@ int main(int argc, char **argv) {{
                 enemy->vx = -enemy->vx;
             }}
             if (rects_overlap(mario_x, mario_y, player_w, player_h, enemy->x, enemy->y, ew, eh)) {{
+                bool shell_stationary = enemy->kind == KOOPA_SHELL_KIND && !shell_is_moving(enemy);
                 if (vy > 40.0f && mario_y + player_h - 4.0f < enemy->y + 8.0f) {{
                     if (enemy->kind == 0x00) {{
                         enemy->kind = KOOPA_SHELL_KIND;
                         enemy->vx = 0.0f;
                         enemy->vy = 0.0f;
                         enemy->y += (float)(KOOPA_H - KOOPA_SHELL_H);
+                    }} else if (enemy->kind == KOOPA_SHELL_KIND) {{
+                        enemy->vx = 0.0f;
+                        enemy->vy = 0.0f;
                     }} else {{
                         enemy->alive = false;
                     }}
                     score += SCORE_STOMP;
                     update_window_title(window, score, coins, time_left, lives);
                     vy = -160.0f;
+                }} else if (shell_stationary) {{
+                    enemy->vx = mario_x < enemy->x ? KOOPA_SHELL_SPEED : -KOOPA_SHELL_SPEED;
+                    if (mario_x < enemy->x) {{
+                        mario_x = enemy->x - (float)player_w - 1.0f;
+                    }} else {{
+                        mario_x = enemy->x + (float)ew + 1.0f;
+                    }}
+                    score += SCORE_SHELL_KICK;
+                    update_window_title(window, score, coins, time_left, lives);
                 }} else if (mario_big) {{
                     mario_big = false;
                     mario_y += (float)(BIG_MARIO_H - SMALL_MARIO_H);
@@ -1653,6 +1676,25 @@ int main(int argc, char **argv) {{
                         coins,
                         time_left
                     );
+                }}
+            }}
+        }}
+
+        for (int i = 0; i < ENEMY_COUNT; i++) {{
+            Enemy *shell = &enemies[i];
+            if (!shell->alive || !shell_is_moving(shell)) continue;
+            int sw = enemy_width(shell);
+            int sh = enemy_height(shell);
+            for (int j = 0; j < ENEMY_COUNT; j++) {{
+                if (i == j) continue;
+                Enemy *target = &enemies[j];
+                if (!target->alive || target->kind == KOOPA_SHELL_KIND) continue;
+                int tw = enemy_width(target);
+                int th = enemy_height(target);
+                if (rects_overlap(shell->x, shell->y, sw, sh, target->x, target->y, tw, th)) {{
+                    target->alive = false;
+                    score += SCORE_SHELL_HIT;
+                    update_window_title(window, score, coins, time_left, lives);
                 }}
             }}
         }}

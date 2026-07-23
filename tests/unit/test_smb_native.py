@@ -45,6 +45,8 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
         "coin_points": 200,
         "mushroom_points": 1000,
         "stomp_points": 100,
+        "shell_kick_points": 400,
+        "shell_hit_points": 500,
         "stage_clear_time_bonus_per_second": 50,
     }
     assert data["hud"] == {
@@ -155,7 +157,10 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "SCORE_COIN" in source
     assert "SCORE_MUSHROOM" in source
     assert "SCORE_STOMP" in source
+    assert "SCORE_SHELL_KICK" in source
+    assert "SCORE_SHELL_HIT" in source
     assert "SCORE_TIME_BONUS" in source
+    assert "KOOPA_SHELL_SPEED" in source
     assert "bool player_dead" in source
     assert "bool stage_clear" in source
     assert "reset_level_state" in source
@@ -177,7 +182,12 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "score += SCORE_COIN" in source
     assert "score += SCORE_MUSHROOM" in source
     assert "score += SCORE_STOMP" in source
+    assert "score += SCORE_SHELL_KICK" in source
+    assert "score += SCORE_SHELL_HIT" in source
     assert "enemy->kind = KOOPA_SHELL_KIND" in source
+    assert "shell_is_moving" in source
+    assert "bool shell_stationary" in source
+    assert "target->alive = false" in source
     assert "koopa_shell" in source
     assert "*score += *time_left * SCORE_TIME_BONUS" in source
     assert "Lives %d" in source
