@@ -397,11 +397,13 @@ def audio(
     130 SIGINT.
     """
     from .audio.bilan import write_audio_bilan
+    from .audio.engine import SoundEngineRegistry
     from .audio.renderer import ENGINE_MODE_VALUES, render_rom_audio_v2
     from .config import ConfigLoader
     from .io.errors import QlnesError, emit
     from .io.log import LOG_LEVELS, get_logger, setup_logging
     from .io.preflight import Preflight
+    from .rom import Rom
 
     use_color = (color == "always") or (color == "auto" and sys.stderr.isatty())
 
@@ -442,6 +444,16 @@ def audio(
         if engine_mode == "oracle":
             pf.add("fceux_on_path", _check_fceux_on_path)
         pf.run()
+
+        if engine_mode == "in-process":
+            detected_rom = Rom.from_file(rom)
+            detected_engine, _ = SoundEngineRegistry.detect(detected_rom)
+            if detected_engine.name == "unknown":
+                raise QlnesError(
+                    "unsupported_mapper",
+                    f"no recognized audio engine for mapper {detected_rom.mapper}",
+                    extra={"mapper": detected_rom.mapper, "artifact": "audio"},
+                )
 
         if engine_mode == "oracle":
             logger.info("→ capture APU via fceux (%d frames)…", resolved_frames)
