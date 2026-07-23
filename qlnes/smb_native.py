@@ -96,6 +96,16 @@ SMB_BIG_MARIO_SPRITES = (
     ("big-walk-3", "mario_big_walk_3.rgba"),
     ("big-jump", "mario_big_jump.rgba"),
 )
+SMB_SMALL_MARIO_SWIM_SPRITES = (
+    ("small-swim-1", "mario_small_swim_1.rgba"),
+    ("small-swim-2", "mario_small_swim_2.rgba"),
+    ("small-swim-3", "mario_small_swim_3.rgba"),
+)
+SMB_BIG_MARIO_SWIM_SPRITES = (
+    ("big-swim-1", "mario_big_swim_1.rgba"),
+    ("big-swim-2", "mario_big_swim_2.rgba"),
+    ("big-swim-3", "mario_big_swim_3.rgba"),
+)
 SMB_DEAD_MARIO_SPRITE = ("small-killed", "mario_small_killed.rgba")
 
 
@@ -191,6 +201,14 @@ def create_smb_native_port(
         sprite_name: build_dir / "characters" / "players" / f"{sprite_name}.png"
         for sprite_name, _ in SMB_BIG_MARIO_SPRITES
     }
+    small_swim_pngs = {
+        sprite_name: build_dir / "characters" / "players" / f"{sprite_name}.png"
+        for sprite_name, _ in SMB_SMALL_MARIO_SWIM_SPRITES
+    }
+    big_swim_pngs = {
+        sprite_name: build_dir / "characters" / "players" / f"{sprite_name}.png"
+        for sprite_name, _ in SMB_BIG_MARIO_SWIM_SPRITES
+    }
     dead_mario_png = build_dir / "characters" / "players" / f"{SMB_DEAD_MARIO_SPRITE[0]}.png"
     goomba_png = build_dir / "characters" / "enemies" / "goomba.png"
     koopa_png = build_dir / "characters" / "enemies" / "koopa-troopa-1.png"
@@ -203,6 +221,12 @@ def create_smb_native_port(
     for mario_png in big_mario_pngs.values():
         if not mario_png.exists():
             raise RuntimeError(f"expected SMB big player sprite missing: {mario_png}")
+    for mario_png in small_swim_pngs.values():
+        if not mario_png.exists():
+            raise RuntimeError(f"expected SMB small swim sprite missing: {mario_png}")
+    for mario_png in big_swim_pngs.values():
+        if not mario_png.exists():
+            raise RuntimeError(f"expected SMB big swim sprite missing: {mario_png}")
     if not dead_mario_png.exists():
         raise RuntimeError(f"expected SMB dead player sprite missing: {dead_mario_png}")
     if not goomba_png.exists():
@@ -295,6 +319,16 @@ def create_smb_native_port(
         assets_dir,
         SMB_BIG_MARIO_SPRITES,
     )
+    small_swim_size, small_swim_assets = _write_mario_frame_assets(
+        small_swim_pngs,
+        assets_dir,
+        SMB_SMALL_MARIO_SWIM_SPRITES,
+    )
+    big_swim_size, big_swim_assets = _write_mario_frame_assets(
+        big_swim_pngs,
+        assets_dir,
+        SMB_BIG_MARIO_SWIM_SPRITES,
+    )
     mushroom_size = _write_rgba(mushroom_png, mushroom_raw)
     brick_chunk_size = _write_rgba(brick_chunk_png, brick_chunk_raw)
     dead_mario_size = _write_rgba(dead_mario_png, dead_mario_raw)
@@ -308,6 +342,7 @@ def create_smb_native_port(
             app_name=app_name,
             stage_labels=[stage_asset.stage for stage_asset in stage_assets],
             stage_level_widths=[stage_asset.level.width for stage_asset in stage_assets],
+            stage_area_types=[stage_asset.level.area_type for stage_asset in stage_assets],
             stage_level_files=[
                 str(stage_asset.level_raw.relative_to(out)) for stage_asset in stage_assets
             ],
@@ -341,9 +376,14 @@ def create_smb_native_port(
             small_mario_height=small_mario_size[1],
             big_mario_width=big_mario_size[0],
             big_mario_height=big_mario_size[1],
+            small_swim_width=small_swim_size[0],
+            small_swim_height=small_swim_size[1],
+            big_swim_width=big_swim_size[0],
+            big_swim_height=big_swim_size[1],
             dead_mario_width=dead_mario_size[0],
             dead_mario_height=dead_mario_size[1],
             mario_frame_count=len(SMB_SMALL_MARIO_SPRITES),
+            swim_frame_count=len(SMB_SMALL_MARIO_SWIM_SPRITES),
             goomba_width=goomba_size[0],
             goomba_height=goomba_size[1],
             koopa_width=koopa_size[0],
@@ -396,6 +436,8 @@ Terminal=false
         brick_chunk_raw,
         *(assets_dir / asset_name for _, asset_name in SMB_SMALL_MARIO_SPRITES),
         *(assets_dir / asset_name for _, asset_name in SMB_BIG_MARIO_SPRITES),
+        *(assets_dir / asset_name for _, asset_name in SMB_SMALL_MARIO_SWIM_SPRITES),
+        *(assets_dir / asset_name for _, asset_name in SMB_BIG_MARIO_SWIM_SPRITES),
         dead_mario_raw,
         goomba_raw,
         koopa_raw,
@@ -426,6 +468,7 @@ Terminal=false
                         "height": stage_asset.level.height,
                         "columns": stage_asset.level.columns,
                         "rows": stage_asset.level.rows,
+                        "area_type": stage_asset.level.area_type,
                         "collision_columns": stage_asset.collision_size[0],
                         "collision_rows": stage_asset.collision_size[1],
                         "interactive_block_count": len(stage_asset.interactive_blocks),
@@ -526,6 +569,12 @@ Terminal=false
                     "big_height": big_mario_size[1],
                     "small_sprites": small_mario_assets,
                     "big_sprites": big_mario_assets,
+                    "small_swim_sprites": small_swim_assets,
+                    "big_swim_sprites": big_swim_assets,
+                    "swim_physics": {
+                        "water_area_type": 0,
+                        "behavior": "water stages use native low-gravity swim movement and ROM-derived swim sprites",
+                    },
                     "dead_sprite": {
                         "name": SMB_DEAD_MARIO_SPRITE[0],
                         "source_png": str(dead_mario_png),
@@ -969,6 +1018,7 @@ def _main_c_source(
     app_name: str,
     stage_labels: list[str],
     stage_level_widths: list[int],
+    stage_area_types: list[int],
     stage_level_files: list[str],
     stage_collision_files: list[str],
     stage_block_files: list[str],
@@ -994,9 +1044,14 @@ def _main_c_source(
     small_mario_height: int,
     big_mario_width: int,
     big_mario_height: int,
+    small_swim_width: int,
+    small_swim_height: int,
+    big_swim_width: int,
+    big_swim_height: int,
     dead_mario_width: int,
     dead_mario_height: int,
     mario_frame_count: int,
+    swim_frame_count: int,
     goomba_width: int,
     goomba_height: int,
     koopa_width: int,
@@ -1008,6 +1063,7 @@ def _main_c_source(
 ) -> str:
     stage_labels_c = ", ".join(f'"{label}"' for label in stage_labels)
     stage_widths_c = ", ".join(str(width) for width in stage_level_widths)
+    stage_area_types_c = ", ".join(str(area_type) for area_type in stage_area_types)
     stage_level_files_c = ", ".join(f'"{path}"' for path in stage_level_files)
     stage_collision_files_c = ", ".join(f'"{path}"' for path in stage_collision_files)
     stage_block_files_c = ", ".join(f'"{path}"' for path in stage_block_files)
@@ -1044,9 +1100,14 @@ def _main_c_source(
 #define SMALL_MARIO_H {small_mario_height}
 #define BIG_MARIO_W {big_mario_width}
 #define BIG_MARIO_H {big_mario_height}
+#define SMALL_SWIM_W {small_swim_width}
+#define SMALL_SWIM_H {small_swim_height}
+#define BIG_SWIM_W {big_swim_width}
+#define BIG_SWIM_H {big_swim_height}
 #define DEAD_MARIO_W {dead_mario_width}
 #define DEAD_MARIO_H {dead_mario_height}
 #define MARIO_FRAME_COUNT {mario_frame_count}
+#define SWIM_FRAME_COUNT {swim_frame_count}
 #define GOOMBA_W {goomba_width}
 #define GOOMBA_H {goomba_height}
 #define KOOPA_W {koopa_width}
@@ -1061,6 +1122,10 @@ def _main_c_source(
 #define MARIO_START_Y 176.0f
 #define WALK_SPEED 100.0f
 #define RUN_SPEED 150.0f
+#define GROUND_GRAVITY 620.0f
+#define WATER_GRAVITY 150.0f
+#define WATER_MAX_FALL_SPEED 92.0f
+#define WATER_SWIM_IMPULSE -132.0f
 #define STARTING_LIVES 3
 #define STARTING_TIME 400
 #define DEATH_RESTART_MS 1300
@@ -1078,6 +1143,7 @@ def _main_c_source(
 
 static const char *STAGE_LABELS[STAGE_COUNT] = {{{stage_labels_c}}};
 static const int STAGE_LEVEL_WIDTHS[STAGE_COUNT] = {{{stage_widths_c}}};
+static const int STAGE_AREA_TYPES[STAGE_COUNT] = {{{stage_area_types_c}}};
 static const char *STAGE_LEVEL_FILES[STAGE_COUNT] = {{{stage_level_files_c}}};
 static const char *STAGE_COLLISION_FILES[STAGE_COUNT] = {{{stage_collision_files_c}}};
 static const char *STAGE_BLOCK_FILES[STAGE_COUNT] = {{{stage_block_files_c}}};
@@ -1653,7 +1719,7 @@ static void update_powerup(
         }}
         return;
     }}
-    powerup->vy += 620.0f * dt;
+    powerup->vy += GROUND_GRAVITY * dt;
     float next_x = powerup->x + powerup->vx * dt;
     if (rect_hits_solid(collision, blocks, level_w, next_x, powerup->y, MUSHROOM_W, MUSHROOM_H)) {{
         powerup->vx = -powerup->vx;
@@ -1695,11 +1761,19 @@ static const uint8_t *enemy_sprite(
 static const uint8_t *mario_sprite(
     uint8_t **small_mario_frames,
     uint8_t **big_mario_frames,
+    uint8_t **small_swim_frames,
+    uint8_t **big_swim_frames,
     bool mario_big,
     bool on_ground,
+    bool water_stage,
     float vx,
     uint32_t ticks
 ) {{
+    if (water_stage) {{
+        uint8_t **swim_frames = mario_big ? big_swim_frames : small_swim_frames;
+        uint32_t swim_frame = (ticks / 120) % SWIM_FRAME_COUNT;
+        return swim_frames[swim_frame];
+    }}
     uint8_t **frames = mario_big ? big_mario_frames : small_mario_frames;
     if (!on_ground) return frames[4];
     if (vx < -1.0f || vx > 1.0f) {{
@@ -1715,6 +1789,16 @@ static int mario_width(bool mario_big) {{
 
 static int mario_height(bool mario_big) {{
     return mario_big ? BIG_MARIO_H : SMALL_MARIO_H;
+}}
+
+static int mario_draw_width(bool mario_big, bool water_stage) {{
+    if (water_stage) return mario_big ? BIG_SWIM_W : SMALL_SWIM_W;
+    return mario_width(mario_big);
+}}
+
+static int mario_draw_height(bool mario_big, bool water_stage) {{
+    if (water_stage) return mario_big ? BIG_SWIM_H : SMALL_SWIM_H;
+    return mario_height(mario_big);
 }}
 
 static void update_window_title(
@@ -1902,6 +1986,12 @@ int main(int argc, char **argv) {{
     char big_mario_path_2[4096];
     char big_mario_path_3[4096];
     char big_mario_path_4[4096];
+    char small_swim_path_0[4096];
+    char small_swim_path_1[4096];
+    char small_swim_path_2[4096];
+    char big_swim_path_0[4096];
+    char big_swim_path_1[4096];
+    char big_swim_path_2[4096];
     char dead_mario_path[4096];
     char goomba_path[4096];
     char koopa_path[4096];
@@ -1924,6 +2014,12 @@ int main(int argc, char **argv) {{
     snprintf(big_mario_path_2, sizeof(big_mario_path_2), "%sassets/mario_big_walk_2.rgba", base ? base : "");
     snprintf(big_mario_path_3, sizeof(big_mario_path_3), "%sassets/mario_big_walk_3.rgba", base ? base : "");
     snprintf(big_mario_path_4, sizeof(big_mario_path_4), "%sassets/mario_big_jump.rgba", base ? base : "");
+    snprintf(small_swim_path_0, sizeof(small_swim_path_0), "%sassets/mario_small_swim_1.rgba", base ? base : "");
+    snprintf(small_swim_path_1, sizeof(small_swim_path_1), "%sassets/mario_small_swim_2.rgba", base ? base : "");
+    snprintf(small_swim_path_2, sizeof(small_swim_path_2), "%sassets/mario_small_swim_3.rgba", base ? base : "");
+    snprintf(big_swim_path_0, sizeof(big_swim_path_0), "%sassets/mario_big_swim_1.rgba", base ? base : "");
+    snprintf(big_swim_path_1, sizeof(big_swim_path_1), "%sassets/mario_big_swim_2.rgba", base ? base : "");
+    snprintf(big_swim_path_2, sizeof(big_swim_path_2), "%sassets/mario_big_swim_3.rgba", base ? base : "");
     snprintf(dead_mario_path, sizeof(dead_mario_path), "%sassets/mario_small_killed.rgba", base ? base : "");
     snprintf(goomba_path, sizeof(goomba_path), "%sassets/goomba.rgba", base ? base : "");
     snprintf(koopa_path, sizeof(koopa_path), "%sassets/koopa_troopa.rgba", base ? base : "");
@@ -1963,6 +2059,14 @@ int main(int argc, char **argv) {{
     big_mario_frames[2] = read_asset(big_mario_path_2, (size_t)BIG_MARIO_W * BIG_MARIO_H * 4);
     big_mario_frames[3] = read_asset(big_mario_path_3, (size_t)BIG_MARIO_W * BIG_MARIO_H * 4);
     big_mario_frames[4] = read_asset(big_mario_path_4, (size_t)BIG_MARIO_W * BIG_MARIO_H * 4);
+    uint8_t *small_swim_frames[SWIM_FRAME_COUNT];
+    small_swim_frames[0] = read_asset(small_swim_path_0, (size_t)SMALL_SWIM_W * SMALL_SWIM_H * 4);
+    small_swim_frames[1] = read_asset(small_swim_path_1, (size_t)SMALL_SWIM_W * SMALL_SWIM_H * 4);
+    small_swim_frames[2] = read_asset(small_swim_path_2, (size_t)SMALL_SWIM_W * SMALL_SWIM_H * 4);
+    uint8_t *big_swim_frames[SWIM_FRAME_COUNT];
+    big_swim_frames[0] = read_asset(big_swim_path_0, (size_t)BIG_SWIM_W * BIG_SWIM_H * 4);
+    big_swim_frames[1] = read_asset(big_swim_path_1, (size_t)BIG_SWIM_W * BIG_SWIM_H * 4);
+    big_swim_frames[2] = read_asset(big_swim_path_2, (size_t)BIG_SWIM_W * BIG_SWIM_H * 4);
     uint8_t *dead_mario = read_asset(dead_mario_path, (size_t)DEAD_MARIO_W * DEAD_MARIO_H * 4);
     uint8_t *goomba = read_asset(goomba_path, (size_t)GOOMBA_W * GOOMBA_H * 4);
     uint8_t *koopa = read_asset(koopa_path, (size_t)KOOPA_W * KOOPA_H * 4);
@@ -1971,14 +2075,19 @@ int main(int argc, char **argv) {{
     for (int i = 0; i < MARIO_FRAME_COUNT; i++) {{
         if (!small_mario_frames[i] || !big_mario_frames[i]) mario_loaded = false;
     }}
+    bool swim_loaded = true;
+    for (int i = 0; i < SWIM_FRAME_COUNT; i++) {{
+        if (!small_swim_frames[i] || !big_swim_frames[i]) swim_loaded = false;
+    }}
     bool coins_loaded = true;
     for (int i = 0; i < COIN_FRAME_COUNT; i++) {{
         if (!coin_frames[i]) coins_loaded = false;
     }}
-    if (!stages_loaded || !title_screen || !used_block || !coins_loaded || !mushroom || !brick_chunk || !mario_loaded || !dead_mario || !goomba || !koopa || !koopa_shell) return 2;
+    if (!stages_loaded || !title_screen || !used_block || !coins_loaded || !mushroom || !brick_chunk || !mario_loaded || !swim_loaded || !dead_mario || !goomba || !koopa || !koopa_shell) return 2;
     int current_stage = 0;
     const char *stage_label = STAGE_LABELS[current_stage];
     int current_level_w = STAGE_LEVEL_WIDTHS[current_stage];
+    bool water_stage = STAGE_AREA_TYPES[current_stage] == 0;
     uint8_t *level = levels[current_stage];
     uint8_t *collision = collisions[current_stage];
     uint8_t *block_data = block_sets[current_stage];
@@ -2003,6 +2112,10 @@ int main(int argc, char **argv) {{
         for (int i = 0; i < MARIO_FRAME_COUNT; i++) {{
             free(small_mario_frames[i]);
             free(big_mario_frames[i]);
+        }}
+        for (int i = 0; i < SWIM_FRAME_COUNT; i++) {{
+            free(small_swim_frames[i]);
+            free(big_swim_frames[i]);
         }}
         free(dead_mario);
         free(goomba);
@@ -2040,6 +2153,7 @@ int main(int argc, char **argv) {{
     bool player_dead = false;
     bool stage_clear = false;
     bool title_screen_active = true;
+    bool jump_was_down = false;
     uint32_t death_started_at = 0;
     uint32_t stage_clear_started_at = 0;
     uint32_t timer_started_at = SDL_GetTicks();
@@ -2096,8 +2210,10 @@ int main(int argc, char **argv) {{
         float player_speed = run ? RUN_SPEED : WALK_SPEED;
         vx = (player_dead || stage_clear) ? 0.0f : move * player_speed;
         bool jump = keys[SDL_SCANCODE_SPACE] || keys[SDL_SCANCODE_UP] || keys[SDL_SCANCODE_W];
-        if (!player_dead && !stage_clear && jump && on_ground) {{
-            vy = -245.0f;
+        bool jump_pressed = jump && !jump_was_down;
+        jump_was_down = jump;
+        if (!player_dead && !stage_clear && ((jump && on_ground && !water_stage) || (jump_pressed && water_stage))) {{
+            vy = water_stage ? WATER_SWIM_IMPULSE : -245.0f;
             trigger_sfx(audio_device, &audio_state, SFX_JUMP);
         }}
         if (!player_dead && !stage_clear) {{
@@ -2130,7 +2246,7 @@ int main(int argc, char **argv) {{
         int player_w = mario_width(mario_big);
         int player_h = mario_height(mario_big);
         if (player_dead) {{
-            vy += 620.0f * dt;
+            vy += GROUND_GRAVITY * dt;
             mario_y += vy * dt;
             if (now - death_started_at >= DEATH_RESTART_MS) {{
                 if (lives <= 0) {{
@@ -2166,6 +2282,7 @@ int main(int argc, char **argv) {{
                 current_stage = (current_stage + 1) % STAGE_COUNT;
                 stage_label = STAGE_LABELS[current_stage];
                 current_level_w = STAGE_LEVEL_WIDTHS[current_stage];
+                water_stage = STAGE_AREA_TYPES[current_stage] == 0;
                 level = levels[current_stage];
                 collision = collisions[current_stage];
                 block_data = block_sets[current_stage];
@@ -2194,7 +2311,9 @@ int main(int argc, char **argv) {{
                 update_window_title(window, stage_label, score, coins, time_left, lives);
             }}
         }} else {{
-        vy += 620.0f * dt;
+        float gravity = water_stage ? WATER_GRAVITY : GROUND_GRAVITY;
+        vy += gravity * dt;
+        if (water_stage && vy > WATER_MAX_FALL_SPEED) vy = WATER_MAX_FALL_SPEED;
         float next_x = mario_x + vx * dt;
         if (!rect_hits_solid(collision, blocks, current_level_w, next_x, mario_y, player_w, player_h)) {{
             mario_x = next_x;
@@ -2295,7 +2414,7 @@ int main(int argc, char **argv) {{
             if (!enemy->alive) continue;
             int ew = enemy_width(enemy);
             int eh = enemy_height(enemy);
-            enemy->vy += 620.0f * dt;
+            enemy->vy += GROUND_GRAVITY * dt;
             float gx = enemy->x + enemy->vx * dt;
             if (rect_hits_solid(collision, blocks, current_level_w, gx, enemy->y, ew, eh)) {{
                 enemy->vx = -enemy->vx;
@@ -2435,9 +2554,9 @@ int main(int argc, char **argv) {{
             if (mario_visible) {{
             draw_sprite(
                 frame,
-                mario_sprite(small_mario_frames, big_mario_frames, mario_big, on_ground, vx, now),
-                mario_width(mario_big),
-                mario_height(mario_big),
+                mario_sprite(small_mario_frames, big_mario_frames, small_swim_frames, big_swim_frames, mario_big, on_ground, water_stage, vx, now),
+                mario_draw_width(mario_big, water_stage),
+                mario_draw_height(mario_big, water_stage),
                 (int)mario_x - camera,
                 (int)mario_y,
                 facing_left
@@ -2466,6 +2585,10 @@ int main(int argc, char **argv) {{
     for (int i = 0; i < MARIO_FRAME_COUNT; i++) {{
         free(small_mario_frames[i]);
         free(big_mario_frames[i]);
+    }}
+    for (int i = 0; i < SWIM_FRAME_COUNT; i++) {{
+        free(small_swim_frames[i]);
+        free(big_swim_frames[i]);
     }}
     free(dead_mario);
     free(goomba);

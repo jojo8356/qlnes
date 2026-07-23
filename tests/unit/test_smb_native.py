@@ -42,6 +42,7 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert data["stages"][1]["enemy_asset"] == "assets/enemies_1_2.bin"
     assert data["stages"][1]["width"] > 256
     assert data["stages"][1]["interactive_block_count"] > 0
+    assert all(isinstance(stage["area_type"], int) for stage in data["stages"])
     assert data["level"]["width"] > 256
     assert data["level"]["collision_columns"] == data["level"]["width"] // 16
     assert data["level"]["collision_rows"] == data["level"]["height"] // 16
@@ -132,6 +133,20 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
         "big-walk-3",
         "big-jump",
     ]
+    assert [sprite["name"] for sprite in data["player"]["small_swim_sprites"]] == [
+        "small-swim-1",
+        "small-swim-2",
+        "small-swim-3",
+    ]
+    assert [sprite["name"] for sprite in data["player"]["big_swim_sprites"]] == [
+        "big-swim-1",
+        "big-swim-2",
+        "big-swim-3",
+    ]
+    assert data["player"]["swim_physics"] == {
+        "water_area_type": 0,
+        "behavior": "water stages use native low-gravity swim movement and ROM-derived swim sprites",
+    }
     assert data["player"]["dead_sprite"]["name"] == "small-killed"
     assert data["player"]["dead_sprite"]["asset"] == "assets/mario_small_killed.rgba"
     assert data["player"]["dead_sprite"]["width"] > 0
@@ -179,6 +194,12 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert (export.out_dir / "assets" / "mario_big_walk_2.rgba").exists()
     assert (export.out_dir / "assets" / "mario_big_walk_3.rgba").exists()
     assert (export.out_dir / "assets" / "mario_big_jump.rgba").exists()
+    assert (export.out_dir / "assets" / "mario_small_swim_1.rgba").exists()
+    assert (export.out_dir / "assets" / "mario_small_swim_2.rgba").exists()
+    assert (export.out_dir / "assets" / "mario_small_swim_3.rgba").exists()
+    assert (export.out_dir / "assets" / "mario_big_swim_1.rgba").exists()
+    assert (export.out_dir / "assets" / "mario_big_swim_2.rgba").exists()
+    assert (export.out_dir / "assets" / "mario_big_swim_3.rgba").exists()
     assert (export.out_dir / "assets" / "mario_small_killed.rgba").exists()
     assert (export.out_dir / "assets" / "goomba.rgba").exists()
     assert (export.out_dir / "assets" / "koopa_troopa.rgba").exists()
@@ -224,7 +245,14 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "BRICK_CHUNK_W" in source
     assert "BRICK_CHUNK_H" in source
     assert "MARIO_FRAME_COUNT" in source
+    assert "SWIM_FRAME_COUNT" in source
+    assert "SMALL_SWIM_W" in source
+    assert "BIG_SWIM_H" in source
     assert "mario_sprite" in source
+    assert "small_swim_frames" in source
+    assert "big_swim_frames" in source
+    assert "mario_draw_width(mario_big, water_stage)" in source
+    assert "mario_draw_height(mario_big, water_stage)" in source
     assert "SMALL_MARIO_H" in source
     assert "BIG_MARIO_H" in source
     assert "bool mario_big" in source
@@ -232,6 +260,13 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "DEAD_MARIO_H" in source
     assert "WALK_SPEED" in source
     assert "RUN_SPEED" in source
+    assert "STAGE_AREA_TYPES" in source
+    assert "bool water_stage = STAGE_AREA_TYPES[current_stage] == 0" in source
+    assert "water_stage = STAGE_AREA_TYPES[current_stage] == 0" in source
+    assert "WATER_GRAVITY" in source
+    assert "WATER_MAX_FALL_SPEED" in source
+    assert "WATER_SWIM_IMPULSE" in source
+    assert "jump_pressed && water_stage" in source
     assert "INVULNERABLE_MS" in source
     assert "SDL_SCANCODE_LSHIFT" in source
     assert "SDL_SCANCODE_RSHIFT" in source
@@ -358,6 +393,8 @@ def test_cli_smb_native_generates_project(tmp_path: Path) -> None:
     assert (out / "assets" / "mario_small_jump.rgba").exists()
     assert (out / "assets" / "mario_big_walk_1.rgba").exists()
     assert (out / "assets" / "mario_big_jump.rgba").exists()
+    assert (out / "assets" / "mario_small_swim_1.rgba").exists()
+    assert (out / "assets" / "mario_big_swim_1.rgba").exists()
     assert (out / "assets" / "mario_small_killed.rgba").exists()
     assert (out / "assets" / "koopa_troopa.rgba").exists()
     assert (out / "assets" / "koopa_shell.rgba").exists()
@@ -386,12 +423,16 @@ def test_create_smb_native_port_stage_all_generates_main_quest_sequence(tmp_path
     assert data["stages"][-1]["collision_asset"] == "assets/collision_8_4.bin"
     assert data["stages"][-1]["block_asset"] == "assets/blocks_8_4.bin"
     assert data["stages"][-1]["enemy_asset"] == "assets/enemies_8_4.bin"
+    area_types_by_stage = {stage["stage"]: stage["area_type"] for stage in data["stages"]}
+    assert area_types_by_stage["2-2"] == 0
+    assert area_types_by_stage["7-2"] == 0
     assert (export.out_dir / "assets" / "level_8_4.rgb").exists()
     assert (export.out_dir / "assets" / "collision_8_4.bin").exists()
     assert (export.out_dir / "assets" / "blocks_8_4.bin").exists()
     assert (export.out_dir / "assets" / "enemies_8_4.bin").exists()
     source = export.source.read_text(encoding="utf-8")
     assert "STAGE_COUNT 32" in source
+    assert "STAGE_AREA_TYPES" in source
     assert '"8-4"' in source
     assert "current_stage = (current_stage + 1) % STAGE_COUNT" in source
     assert not list(export.out_dir.rglob("*.nes"))
