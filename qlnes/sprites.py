@@ -1065,6 +1065,48 @@ def _batch_out_dir(root: Path, rom: Path, out_dir: Path, used: set[Path]) -> Pat
         idx += 1
 
 
+def _collect_runtime_manifest_sprites(
+    manifest_json: Path,
+    *,
+    rom: Path,
+    rom_out: Path,
+    work_dir: Path,
+) -> list[dict[str, object]]:
+    data = json.loads(manifest_json.read_text(encoding="utf-8"))
+    collected: list[dict[str, object]] = []
+    for sprite in data.get("sprites", []):
+        if not isinstance(sprite, dict):
+            continue
+        src_value = sprite.get("path")
+        if not isinstance(src_value, str):
+            continue
+        src = Path(src_value)
+        if not src.exists():
+            continue
+        png_data = src.read_bytes()
+        digest = hashlib.sha256(png_data).hexdigest()
+        trimmed_path = work_dir / rom.stem / src.name
+        _, bbox = trim_transparent_png(src, trimmed_path)
+        trimmed_digest = hashlib.sha256(trimmed_path.read_bytes()).hexdigest()
+        collected.append(
+            {
+                "path": str(src),
+                "trimmed_path": str(trimmed_path),
+                "transparent_bbox": list(bbox) if bbox is not None else None,
+                "source_path": str(src),
+                "rom": str(rom),
+                "rom_out_dir": str(rom_out),
+                "sha256": digest,
+                "trimmed_sha256": trimmed_digest,
+                "first_seen_frame": data.get("runtime_frames") or data.get("frame"),
+                "oam_index": sprite.get("oam_index"),
+                "tile_index": sprite.get("tile_index"),
+                "palette_id": sprite.get("palette_id"),
+            }
+        )
+    return collected
+
+
 def export_sprite_batch(
     input_path: Path,
     out_dir: Path,
@@ -1138,6 +1180,15 @@ def export_sprite_batch(
                     frames=runtime_frames,
                     include_hidden=include_hidden,
                 )
+                if manifest.manifest_json is not None:
+                    all_unique_entries.extend(
+                        _collect_runtime_manifest_sprites(
+                            manifest.manifest_json,
+                            rom=rom,
+                            rom_out=rom_out,
+                            work_dir=out_dir / ".batch-runtime-trimmed",
+                        )
+                    )
             else:
                 manifest = export_sprite_pattern_table(
                     rom,
@@ -1172,7 +1223,7 @@ def export_sprite_batch(
             )
 
     all_unique_manifest_entries: list[dict[str, object]] = []
-    if runtime_sample_frames is not None and all_unique_entries:
+    if (runtime_sample_frames is not None or runtime_frames is not None) and all_unique_entries:
         global_dir = out_dir / "all-unique-trimmed"
         seen_global: set[str] = set()
         for entry in all_unique_entries:

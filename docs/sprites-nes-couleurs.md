@@ -158,8 +158,9 @@ global, puis retourne un code non-zero s'il y a au moins un échec. Ajouter
 `--allow-failures` pour conserver un code retour `0` dans les pipelines qui
 acceptent les ROMs non supportées.
 
-En mode `--runtime-sample-*`, le batch produit aussi `all-unique-trimmed/` et
-`all-unique-trimmed-spritesheet.png` à la racine de sortie. Le fichier
+En mode `--runtime-frames` ou `--runtime-sample-*`, le batch produit aussi
+`all-unique-trimmed/` et `all-unique-trimmed-spritesheet.png` à la racine de
+sortie. Le fichier
 `all-unique-trimmed-atlas.json` fournit un atlas dédié avec la spritesheet, les
 coordonnées `sheet`, la provenance ROM et les hashes. Ces fichiers dédupliquent
 les sprites recadrés de toutes les ROMs traitées par `trimmed_sha256`.

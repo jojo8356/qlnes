@@ -807,6 +807,12 @@ class TestSpriteExport(unittest.TestCase):
             self.assertEqual(data["mode"], "runtime")
             self.assertEqual(data["success_count"], 1)
             self.assertEqual(data["failure_count"], 1)
+            self.assertEqual(data["all_unique_trimmed_count"], 1)
+            self.assertTrue((out_dir / "all-unique-trimmed" / "sprite-0000.png").exists())
+            self.assertTrue((out_dir / "all-unique-trimmed-atlas.json").exists())
+            atlas = json.loads((out_dir / "all-unique-trimmed-atlas.json").read_text())
+            self.assertEqual(atlas["sprite_count"], 1)
+            self.assertEqual(atlas["sprites"][0]["first_seen_frame"], 1)
             errors = [entry["error"] for entry in data["entries"] if not entry["ok"]]
             self.assertTrue(errors)
 
