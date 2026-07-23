@@ -1623,6 +1623,51 @@ class TestSpriteExport(unittest.TestCase):
             self.assertEqual(data["sprites"][0]["x"], 12)
             self.assertEqual(data["sprites"][0]["y"], 21)
 
+    def test_runtime_snapshot_exports_8x16_oam_sprite_with_flips(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "sprite.nes"
+            rom_path.write_bytes(_sprite_test_rom())
+            snapshot_path = Path(td) / "snapshot-8x16-flip.json"
+            palette_ram = [0x0F] * 32
+            palette_ram[0x10:0x14] = [0x0F, 0x30, 0x16, 0x27]
+            oam = [0xF8, 0, 0, 0] * 64
+            # Sprite 0 visible, 8x16 tile pair from pattern table 1, H+V flips.
+            oam[0:4] = [20, 0x01, 0xC0, 12]
+            chr_data = [0] * 0x2000
+            top_rows = [[1, 0, 0, 0, 0, 0, 0, 0] for _ in range(8)]
+            bottom_rows = [[2, 0, 0, 0, 0, 0, 0, 0] for _ in range(8)]
+            chr_data[0x1000 : 0x1010] = list(_encode_tile(top_rows))
+            chr_data[0x1010 : 0x1020] = list(_encode_tile(bottom_rows))
+            snapshot_path.write_text(
+                json.dumps(
+                    {
+                        "ppuctrl": "0x20",
+                        "ppumask": "0x1E",
+                        "palette_ram": palette_ram,
+                        "oam": oam,
+                        "chr_data": chr_data,
+                    }
+                )
+            )
+            out_dir = Path(td) / "runtime"
+
+            manifest = export_runtime_oam_sprites(rom_path, snapshot_path, out_dir)
+
+            self.assertEqual(manifest.sprite_height, 16)
+            img = Image.open(out_dir / "oam" / "sprite-00-tile-01-pal0.png").convert("RGBA")
+            self.assertEqual(img.size, (8, 16))
+            self.assertEqual(img.getpixel((0, 0))[3], 0)
+            self.assertEqual(img.getpixel((7, 0)), (0xF8, 0x38, 0x00, 255))
+            self.assertEqual(img.getpixel((7, 8)), (0xFC, 0xFC, 0xFC, 255))
+            screen = Image.open(out_dir / "oam-screen.png").convert("RGBA")
+            self.assertEqual(screen.getpixel((12, 21))[3], 0)
+            self.assertEqual(screen.getpixel((19, 21)), (0xF8, 0x38, 0x00, 255))
+            data = json.loads((out_dir / "sprites-manifest.json").read_text())
+            self.assertEqual(data["sprite_height"], 16)
+            self.assertTrue(data["sprites"][0]["flip_h"])
+            self.assertTrue(data["sprites"][0]["flip_v"])
+            self.assertEqual(data["sprites"][0]["height"], 16)
+
     def test_runtime_snapshot_can_supply_chr_data_for_chr_ram_rom(self):
         with tempfile.TemporaryDirectory() as td:
             rom_path = Path(td) / "chr-ram.nes"

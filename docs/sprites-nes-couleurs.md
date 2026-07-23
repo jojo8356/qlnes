@@ -66,6 +66,10 @@ Dans ce mode, qlnes :
 - ecrit `oam-spritesheet.png`, `oam-screen.png` et `oam/sprite-XX-*.png`
   en RGBA transparent.
 
+Le chemin snapshot/runtime est testé avec un sprite 8x16 en double flip
+horizontal/vertical pour vérifier les pixels PNG individuels et leur placement
+dans `oam-screen.png`.
+
 `oam-screen.png` est un canvas transparent 256x240 avec les sprites replacés à
 leurs coordonnées écran. Les sprites de plus petit index OAM sont composés
 devant ceux de plus grand index, comme sur la NES. La priorité devant/derrière
