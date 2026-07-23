@@ -18,6 +18,7 @@ from .det import sha256_file
 from .smb_graphics import (
     WORLD_MAP,
     _SmbLevelRuntime,
+    render_smb_blocks,
     render_smb_characters,
     render_smb_level,
     validate_smb_nrom,
@@ -30,6 +31,7 @@ SMB_GOOMBA_GROUPS = {0x37: 2, 0x38: 3, 0x39: 2, 0x3A: 3}
 SMB_KOOPA_GROUPS = {0x3B: 2, 0x3C: 3}
 SMB_NATIVE_ENEMY_RECORD_BYTES = 5
 SMB_NATIVE_BLOCK_RECORD_BYTES = 5
+SMB_JUMPING_COIN_FRAME_COUNT = 4
 SMB_INTERACTIVE_BLOCK_METATILES = {
     0xC0: "question-block",
     0xC1: "question-block",
@@ -96,6 +98,7 @@ def create_smb_native_port(
 
     level = render_smb_level(rom, build_dir / "levels", stage=stage, max_columns=256)
     characters = render_smb_characters(rom, build_dir / "characters")
+    block_assets = render_smb_blocks(rom, build_dir / "blocks")
     mario_pngs = {
         sprite_name: build_dir / "characters" / "players" / f"{sprite_name}.png"
         for sprite_name, _ in SMB_SMALL_MARIO_SPRITES
@@ -114,6 +117,9 @@ def create_smb_native_port(
     collision_raw = assets_dir / "collision_1_1.bin"
     blocks_raw = assets_dir / "blocks_1_1.bin"
     used_block_raw = assets_dir / "used_empty_block.rgb"
+    coin_frame_raws = [
+        assets_dir / f"jumping_coin_frame_{idx}.rgba" for idx in range(SMB_JUMPING_COIN_FRAME_COUNT)
+    ]
     goomba_raw = assets_dir / "goomba.rgba"
     koopa_raw = assets_dir / "koopa_troopa.rgba"
     enemies_raw = assets_dir / "enemies_1_1.bin"
@@ -125,6 +131,7 @@ def create_smb_native_port(
         blocks_raw,
         used_block_raw,
     )
+    coin_frame_size = _write_coin_frame_assets(build_dir / "blocks" / "sprites", coin_frame_raws)
     mario_size, mario_assets = _write_mario_frame_assets(mario_pngs, assets_dir)
     goomba_size = _write_rgba(goomba_png, goomba_raw)
     koopa_size = _write_rgba(koopa_png, koopa_raw)
@@ -142,6 +149,9 @@ def create_smb_native_port(
             block_record_bytes=SMB_NATIVE_BLOCK_RECORD_BYTES,
             used_block_width=used_block_size[0],
             used_block_height=used_block_size[1],
+            coin_width=coin_frame_size[0],
+            coin_height=coin_frame_size[1],
+            coin_frame_count=SMB_JUMPING_COIN_FRAME_COUNT,
             mario_width=mario_size[0],
             mario_height=mario_size[1],
             mario_frame_count=len(SMB_SMALL_MARIO_SPRITES),
@@ -189,6 +199,7 @@ Terminal=false
         collision_raw,
         blocks_raw,
         used_block_raw,
+        *coin_frame_raws,
         *(assets_dir / asset_name for _, asset_name in SMB_SMALL_MARIO_SPRITES),
         goomba_raw,
         koopa_raw,
@@ -219,6 +230,9 @@ Terminal=false
                 "interactive_blocks": {
                     "asset": str(blocks_raw.relative_to(out)),
                     "used_block_asset": str(used_block_raw.relative_to(out)),
+                    "jumping_coin_assets": [str(path.relative_to(out)) for path in coin_frame_raws],
+                    "jumping_coin_width": coin_frame_size[0],
+                    "jumping_coin_height": coin_frame_size[1],
                     "record_bytes": SMB_NATIVE_BLOCK_RECORD_BYTES,
                     "count": len(interactive_blocks),
                     "blocks": interactive_blocks,
@@ -255,6 +269,7 @@ Terminal=false
                     },
                 ],
                 "enemy_spawns": enemy_spawns,
+                "block_manifest": str(block_assets.manifest_json),
                 "character_manifest": str(characters.manifest_json),
                 "build": {
                     "elf": f"dist/{app_slug}",
@@ -337,6 +352,30 @@ def _write_mario_frame_assets(
         return (width, height), assets
     finally:
         for image in images.values():
+            image.close()
+
+
+def _write_coin_frame_assets(
+    source_dir: Path,
+    targets: list[Path],
+) -> tuple[int, int]:
+    images = [
+        Image.open(source_dir / f"jumping-coin-frame-{idx}.png").convert("RGBA")
+        for idx in range(SMB_JUMPING_COIN_FRAME_COUNT)
+    ]
+    try:
+        width = max(image.width for image in images)
+        height = max(image.height for image in images)
+        for image, target in zip(images, targets, strict=True):
+            normalized = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+            normalized.alpha_composite(
+                image,
+                ((width - image.width) // 2, height - image.height),
+            )
+            target.write_bytes(normalized.tobytes())
+        return width, height
+    finally:
+        for image in images:
             image.close()
 
 
@@ -568,6 +607,9 @@ def _main_c_source(
     block_record_bytes: int,
     used_block_width: int,
     used_block_height: int,
+    coin_width: int,
+    coin_height: int,
+    coin_frame_count: int,
     mario_width: int,
     mario_height: int,
     mario_frame_count: int,
@@ -596,6 +638,9 @@ def _main_c_source(
 #define BLOCK_RECORD_BYTES {block_record_bytes}
 #define USED_BLOCK_W {used_block_width}
 #define USED_BLOCK_H {used_block_height}
+#define COIN_W {coin_width}
+#define COIN_H {coin_height}
+#define COIN_FRAME_COUNT {coin_frame_count}
 #define MARIO_W {mario_width}
 #define MARIO_H {mario_height}
 #define MARIO_FRAME_COUNT {mario_frame_count}
@@ -622,6 +667,23 @@ typedef struct {{
     uint8_t metatile;
     bool used;
 }} Block;
+
+typedef struct {{
+    bool active;
+    float x;
+    float y;
+    uint32_t started_at;
+}} CoinEffect;
+
+static void draw_sprite(
+    uint32_t *frame,
+    const uint8_t *sprite,
+    int sprite_w,
+    int sprite_h,
+    int x,
+    int y,
+    bool flip
+);
 
 static uint8_t *read_asset(const char *path, size_t expected) {{
     FILE *f = fopen(path, "rb");
@@ -745,6 +807,30 @@ static void draw_used_blocks(uint32_t *frame, const Block *blocks, const uint8_t
     }}
 }}
 
+static void draw_coin_effect(
+    uint32_t *frame,
+    const CoinEffect *coin_effect,
+    uint8_t **coin_frames,
+    uint32_t now,
+    int camera_x
+) {{
+    if (!coin_effect->active) return;
+    uint32_t elapsed = now - coin_effect->started_at;
+    if (elapsed >= 650) return;
+    int coin_frame = (elapsed / 80) % COIN_FRAME_COUNT;
+    float t = (float)elapsed / 650.0f;
+    float arc = -46.0f * (1.0f - (2.0f * t - 1.0f) * (2.0f * t - 1.0f));
+    draw_sprite(
+        frame,
+        coin_frames[coin_frame],
+        COIN_W,
+        COIN_H,
+        (int)coin_effect->x - camera_x,
+        (int)(coin_effect->y + arc),
+        false
+    );
+}}
+
 static int enemy_width(const Enemy *enemy) {{
     return enemy->kind == 0x00 ? KOOPA_W : GOOMBA_W;
 }}
@@ -808,6 +894,10 @@ int main(int argc, char **argv) {{
     char collision_path[4096];
     char blocks_path[4096];
     char used_block_path[4096];
+    char coin_path_0[4096];
+    char coin_path_1[4096];
+    char coin_path_2[4096];
+    char coin_path_3[4096];
     char mario_path_0[4096];
     char mario_path_1[4096];
     char mario_path_2[4096];
@@ -820,6 +910,10 @@ int main(int argc, char **argv) {{
     snprintf(collision_path, sizeof(collision_path), "%sassets/collision_1_1.bin", base ? base : "");
     snprintf(blocks_path, sizeof(blocks_path), "%sassets/blocks_1_1.bin", base ? base : "");
     snprintf(used_block_path, sizeof(used_block_path), "%sassets/used_empty_block.rgb", base ? base : "");
+    snprintf(coin_path_0, sizeof(coin_path_0), "%sassets/jumping_coin_frame_0.rgba", base ? base : "");
+    snprintf(coin_path_1, sizeof(coin_path_1), "%sassets/jumping_coin_frame_1.rgba", base ? base : "");
+    snprintf(coin_path_2, sizeof(coin_path_2), "%sassets/jumping_coin_frame_2.rgba", base ? base : "");
+    snprintf(coin_path_3, sizeof(coin_path_3), "%sassets/jumping_coin_frame_3.rgba", base ? base : "");
     snprintf(mario_path_0, sizeof(mario_path_0), "%sassets/mario_small_stand.rgba", base ? base : "");
     snprintf(mario_path_1, sizeof(mario_path_1), "%sassets/mario_small_walk_1.rgba", base ? base : "");
     snprintf(mario_path_2, sizeof(mario_path_2), "%sassets/mario_small_walk_2.rgba", base ? base : "");
@@ -833,6 +927,11 @@ int main(int argc, char **argv) {{
     uint8_t *collision = read_asset(collision_path, (size_t)COLLISION_COLS * COLLISION_ROWS);
     uint8_t *block_data = read_asset(blocks_path, (size_t)BLOCK_COUNT * BLOCK_RECORD_BYTES);
     uint8_t *used_block = read_asset(used_block_path, (size_t)USED_BLOCK_W * USED_BLOCK_H * 3);
+    uint8_t *coin_frames[COIN_FRAME_COUNT];
+    coin_frames[0] = read_asset(coin_path_0, (size_t)COIN_W * COIN_H * 4);
+    coin_frames[1] = read_asset(coin_path_1, (size_t)COIN_W * COIN_H * 4);
+    coin_frames[2] = read_asset(coin_path_2, (size_t)COIN_W * COIN_H * 4);
+    coin_frames[3] = read_asset(coin_path_3, (size_t)COIN_W * COIN_H * 4);
     uint8_t *mario_frames[MARIO_FRAME_COUNT];
     mario_frames[0] = read_asset(mario_path_0, (size_t)MARIO_W * MARIO_H * 4);
     mario_frames[1] = read_asset(mario_path_1, (size_t)MARIO_W * MARIO_H * 4);
@@ -846,7 +945,11 @@ int main(int argc, char **argv) {{
     for (int i = 0; i < MARIO_FRAME_COUNT; i++) {{
         if (!mario_frames[i]) mario_loaded = false;
     }}
-    if (!level || !collision || !block_data || !used_block || !mario_loaded || !goomba || !koopa || !enemy_data) return 2;
+    bool coins_loaded = true;
+    for (int i = 0; i < COIN_FRAME_COUNT; i++) {{
+        if (!coin_frames[i]) coins_loaded = false;
+    }}
+    if (!level || !collision || !block_data || !used_block || !coins_loaded || !mario_loaded || !goomba || !koopa || !enemy_data) return 2;
     Block blocks[BLOCK_COUNT > 0 ? BLOCK_COUNT : 1];
     Enemy enemies[ENEMY_COUNT > 0 ? ENEMY_COUNT : 1];
     load_blocks(block_data, blocks);
@@ -857,6 +960,7 @@ int main(int argc, char **argv) {{
         free(collision);
         free(block_data);
         free(used_block);
+        for (int i = 0; i < COIN_FRAME_COUNT; i++) free(coin_frames[i]);
         for (int i = 0; i < MARIO_FRAME_COUNT; i++) free(mario_frames[i]);
         free(goomba);
         free(koopa);
@@ -888,6 +992,7 @@ int main(int argc, char **argv) {{
     bool facing_left = false;
     bool on_ground = false;
     int coins = 0;
+    CoinEffect coin_effect = {{false, 0.0f, 0.0f, 0}};
     uint32_t last = SDL_GetTicks();
     update_window_title(window, coins);
 
@@ -931,6 +1036,10 @@ int main(int argc, char **argv) {{
             if (hit && !hit->used) {{
                 hit->used = true;
                 coins += 1;
+                coin_effect.active = true;
+                coin_effect.x = (float)hit->x + 4.0f;
+                coin_effect.y = (float)hit->y - 8.0f;
+                coin_effect.started_at = now;
                 update_window_title(window, coins);
             }}
             vy = 0.0f;
@@ -983,6 +1092,8 @@ int main(int argc, char **argv) {{
         if (camera > LEVEL_W - SCREEN_W) camera = LEVEL_W - SCREEN_W;
         draw_level(frame, level, camera);
         draw_used_blocks(frame, blocks, used_block, camera);
+        if (coin_effect.active && now - coin_effect.started_at >= 650) coin_effect.active = false;
+        draw_coin_effect(frame, &coin_effect, coin_frames, now, camera);
         for (int i = 0; i < ENEMY_COUNT; i++) {{
             Enemy *enemy = &enemies[i];
             if (!enemy->alive) continue;
@@ -1017,6 +1128,7 @@ int main(int argc, char **argv) {{
     free(collision);
     free(block_data);
     free(used_block);
+    for (int i = 0; i < COIN_FRAME_COUNT; i++) free(coin_frames[i]);
     for (int i = 0; i < MARIO_FRAME_COUNT; i++) free(mario_frames[i]);
     free(goomba);
     free(koopa);

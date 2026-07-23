@@ -39,6 +39,14 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert data["interactive_blocks"]["count"] >= 10
     assert data["interactive_blocks"]["record_bytes"] == 5
     assert data["interactive_blocks"]["used_block_asset"] == "assets/used_empty_block.rgb"
+    assert data["interactive_blocks"]["jumping_coin_assets"] == [
+        "assets/jumping_coin_frame_0.rgba",
+        "assets/jumping_coin_frame_1.rgba",
+        "assets/jumping_coin_frame_2.rgba",
+        "assets/jumping_coin_frame_3.rgba",
+    ]
+    assert data["interactive_blocks"]["jumping_coin_width"] > 0
+    assert data["interactive_blocks"]["jumping_coin_height"] > 0
     assert any(block["kind"] == "question-block" for block in data["interactive_blocks"]["blocks"])
     assert data["player"]["width"] > 0
     assert [sprite["name"] for sprite in data["player"]["sprites"]] == [
@@ -63,6 +71,10 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert (export.out_dir / "assets" / "collision_1_1.bin").exists()
     assert (export.out_dir / "assets" / "blocks_1_1.bin").exists()
     assert (export.out_dir / "assets" / "used_empty_block.rgb").exists()
+    assert (export.out_dir / "assets" / "jumping_coin_frame_0.rgba").exists()
+    assert (export.out_dir / "assets" / "jumping_coin_frame_1.rgba").exists()
+    assert (export.out_dir / "assets" / "jumping_coin_frame_2.rgba").exists()
+    assert (export.out_dir / "assets" / "jumping_coin_frame_3.rgba").exists()
     assert (export.out_dir / "assets" / "mario_small_stand.rgba").exists()
     assert (export.out_dir / "assets" / "mario_small_walk_1.rgba").exists()
     assert (export.out_dir / "assets" / "mario_small_walk_2.rgba").exists()
@@ -85,6 +97,8 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "BLOCK_COUNT" in source
     assert "draw_used_blocks" in source
     assert "update_window_title" in source
+    assert "CoinEffect" in source
+    assert "draw_coin_effect" in source
 
 
 @pytest.mark.skipif(not SMB_ROM.exists(), reason=f"SMB ROM not at {SMB_ROM}")
@@ -117,6 +131,8 @@ def test_cli_smb_native_generates_project(tmp_path: Path) -> None:
     assert (out / "assets" / "collision_1_1.bin").exists()
     assert (out / "assets" / "blocks_1_1.bin").exists()
     assert (out / "assets" / "used_empty_block.rgb").exists()
+    assert (out / "assets" / "jumping_coin_frame_0.rgba").exists()
+    assert (out / "assets" / "jumping_coin_frame_3.rgba").exists()
     assert (out / "assets" / "goomba.rgba").exists()
     assert (out / "assets" / "mario_small_walk_1.rgba").exists()
     assert (out / "assets" / "mario_small_jump.rgba").exists()
