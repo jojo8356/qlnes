@@ -665,9 +665,12 @@ class TestSpriteExport(unittest.TestCase):
             self.assertEqual([sample.frame for sample in manifest.samples], [1, 2])
             self.assertTrue((out_dir / "frame-000001" / "oam-spritesheet.png").exists())
             self.assertTrue((out_dir / "frame-000002" / "oam-spritesheet.png").exists())
+            self.assertEqual(manifest.unique_count, 1)
+            self.assertTrue((out_dir / "unique" / "sprite-0000.png").exists())
             data = json.loads((out_dir / "runtime-sprite-samples-manifest.json").read_text())
             self.assertEqual(data["kind"], "runtime_sprite_samples_export")
             self.assertEqual(data["sample_frames"], [1, 2])
+            self.assertEqual(data["unique_sprite_count"], 1)
             self.assertEqual(data["transparent_index"], 0)
 
     def test_cli_sprites_runtime_sample_frames_command(self):
@@ -692,6 +695,7 @@ class TestSpriteExport(unittest.TestCase):
 
             self.assertEqual(rc, 0)
             self.assertTrue((out_dir / "frame-000001" / "oam-screen.png").exists())
+            self.assertTrue((out_dir / "unique" / "sprite-0000.png").exists())
             self.assertTrue((out_dir / "runtime-sprite-samples-manifest.json").exists())
 
     def test_export_sprite_batch_writes_one_manifest_per_rom_and_summary(self):
@@ -780,6 +784,7 @@ class TestSpriteExport(unittest.TestCase):
             self.assertEqual(data["mode"], "runtime-samples")
             self.assertEqual(data["runtime_sample_frames"], [1, 2])
             self.assertEqual(data["success_count"], 1)
+            self.assertEqual(data["entries"][0]["n_tiles"], 1)
 
     def test_in_process_runtime_export_uses_cnrom_selected_chr_bank(self):
         with tempfile.TemporaryDirectory() as td:

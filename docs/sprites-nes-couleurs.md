@@ -122,7 +122,8 @@ python -m qlnes sprites ROM.nes \
 
 Chaque sous-dossier `frame-000120/` contient les mêmes PNG OAM transparents que
 `--runtime-frames`. Le manifeste `runtime-sprite-samples-manifest.json` liste
-toutes les frames capturées et leurs manifestes locaux. Ce mode ne garantit pas
+toutes les frames capturées, leurs manifestes locaux, et un dossier `unique/`
+qui déduplique les PNG RGBA finaux par hash SHA-256. Ce mode ne garantit pas
 tous les sprites d'un jeu complet, mais il couvre mieux les animations et états
 de boot/titre qu'une seule capture finale.
 

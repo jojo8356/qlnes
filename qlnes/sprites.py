@@ -11,6 +11,7 @@ uses an explicit preview palette and records that fact in the manifest.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 from dataclasses import dataclass, field
@@ -120,11 +121,16 @@ class RuntimeSpriteSample:
 class RuntimeSpriteSamplesManifest:
     out_dir: Path
     samples: list[RuntimeSpriteSample] = field(default_factory=list)
+    unique_sprites: list[Path] = field(default_factory=list)
     manifest_json: Path | None = None
 
     @property
     def n_tiles(self) -> int:
         return sum(sample.n_tiles for sample in self.samples)
+
+    @property
+    def unique_count(self) -> int:
+        return len(self.unique_sprites)
 
 
 def parse_palette_values(text: str) -> tuple[int, ...]:
@@ -825,6 +831,45 @@ def export_in_process_runtime_sprite_samples(
         )
 
     out_dir.mkdir(parents=True, exist_ok=True)
+    unique_dir = out_dir / "unique"
+    unique_entries: list[dict[str, object]] = []
+    seen: dict[str, Path] = {}
+    for sample in samples.samples:
+        if sample.manifest_json is None:
+            continue
+        sample_data = json.loads(sample.manifest_json.read_text(encoding="utf-8"))
+        for sprite in sample_data.get("sprites", []):
+            if not isinstance(sprite, dict):
+                continue
+            src_value = sprite.get("path")
+            if not isinstance(src_value, str):
+                continue
+            src = Path(src_value)
+            if not src.exists():
+                continue
+            png_data = src.read_bytes()
+            digest = hashlib.sha256(png_data).hexdigest()
+            if digest in seen:
+                continue
+            unique_dir.mkdir(parents=True, exist_ok=True)
+            dst = unique_dir / f"sprite-{len(unique_entries):04d}.png"
+            dst.write_bytes(png_data)
+            seen[digest] = dst
+            samples.unique_sprites.append(dst)
+            unique_entries.append(
+                {
+                    "path": str(dst),
+                    "source_path": str(src),
+                    "sha256": digest,
+                    "first_seen_frame": sample.frame,
+                    "oam_index": sprite.get("oam_index"),
+                    "tile_index": sprite.get("tile_index"),
+                    "palette_id": sprite.get("palette_id"),
+                    "width": sprite.get("width"),
+                    "height": sprite.get("height"),
+                }
+            )
+
     manifest_json = out_dir / "runtime-sprite-samples-manifest.json"
     manifest_json.write_text(
         json.dumps(
@@ -834,7 +879,10 @@ def export_in_process_runtime_sprite_samples(
                 "sample_frames": list(frames),
                 "sample_count": len(samples.samples),
                 "total_exported_sprites": samples.n_tiles,
+                "unique_sprite_count": samples.unique_count,
                 "transparent_index": 0,
+                "unique_sprites_dir": str(unique_dir) if unique_entries else None,
+                "unique_sprites": unique_entries,
                 "samples": [
                     {
                         "frame": sample.frame,
@@ -938,7 +986,7 @@ def export_sprite_batch(
                         rom=rom,
                         out_dir=rom_out,
                         ok=True,
-                        n_tiles=sampled.n_tiles,
+                        n_tiles=sampled.unique_count,
                         manifest_json=sampled.manifest_json,
                     )
                 )
