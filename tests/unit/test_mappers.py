@@ -10,7 +10,7 @@ class TestMapperHeader(unittest.TestCase):
         self.assertIsNone(parse_header(b"NOPE" + bytes(20)))
 
     def test_mapper_extraction(self):
-        for m in (0, 1, 2, 3, 4, 7, 11, 34, 66, 69, 71):
+        for m in SUPPORTED_MAPPERS:
             h = parse_header(ines_header(1, 1, m))
             self.assertEqual(h.mapper, m, f"mapper={m}")
 

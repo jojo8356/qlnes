@@ -30,6 +30,7 @@ from ...rom import Rom
 from ..static.apu_event import ApuWriteEvent
 from .memory import (
     AxROMMemory,
+    Bandai70Memory,
     BNROMNINAMemory,
     CamericaMemory,
     CNROMMemory,
@@ -84,9 +85,9 @@ class InProcessRunner:
     @staticmethod
     def _build_memory(rom: Rom) -> Memory:
         mapper = rom.mapper
-        if mapper not in (0, 1, 2, 3, 4, 7, 11, 13, 34, 42, 66, 69, 71, 72, 78, 79, 87, 101, 206, None):
+        if mapper not in (0, 1, 2, 3, 4, 7, 11, 13, 34, 42, 66, 69, 70, 71, 72, 78, 79, 87, 101, 206, None):
             raise ValueError(
-                f"InProcessRunner currently supports mapper 0, 1, 2, 3, 4, 7, 11, 13, 34, 42, 66, 69, 71, 72, 78, 79, 87, 101 and 206 only; "
+                f"InProcessRunner currently supports mapper 0, 1, 2, 3, 4, 7, 11, 13, 34, 42, 66, 69, 70, 71, 72, 78, 79, 87, 101 and 206 only; "
                 f"got mapper {mapper}."
             )
         prg = rom.prg if rom.header is not None else rom.raw
@@ -112,6 +113,8 @@ class InProcessRunner:
             return GxROMMemory(prg, rom.header.chr_banks)
         if mapper == 69 and rom.header is not None:
             return FME7Memory(prg, InProcessRunner._chr_rom(rom))
+        if mapper == 70 and rom.header is not None:
+            return Bandai70Memory(prg, rom.header.chr_banks)
         if mapper == 71:
             return CamericaMemory(prg)
         if mapper == 72 and rom.header is not None:

@@ -5,6 +5,7 @@ import pytest
 
 from qlnes.audio.in_process.memory import (
     AxROMMemory,
+    Bandai70Memory,
     BNROMNINAMemory,
     CamericaMemory,
     CNROMMemory,
@@ -432,6 +433,21 @@ def test_mapper34_reset_state_restores_initial_prg_chr_and_prg_ram():
     assert m[0x7FFD] == 0x00
     assert m[0x8000] == 0
     assert m.ppu_snapshot().pattern_table[0x1000] == 1
+
+
+def test_mapper70_bandai_switches_low_prg_bank_and_chr_bank():
+    banks = [bytes([bank_id] * 0x4000) for bank_id in range(4)]
+    m = Bandai70Memory(b"".join(banks), chr_banks=8)
+    assert m[0x8000] == 0
+    assert m[0xC000] == 3
+    assert m.ppu_snapshot().chr_bank == 0
+    m[0x8000] = 0x25
+    assert m[0x8000] == 2
+    assert m[0xC000] == 3
+    assert m.ppu_snapshot().chr_bank == 5
+    m.reset_state()
+    assert m[0x8000] == 0
+    assert m.ppu_snapshot().chr_bank == 0
 
 
 def test_mapper42_switches_prg_6000_window_and_chr_bank():
