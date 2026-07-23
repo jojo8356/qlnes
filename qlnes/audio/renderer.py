@@ -38,18 +38,19 @@ from .engine import (
     SoundEngineRegistry,
 )
 
-
-EngineMode = Literal["auto", "in-process", "oracle"]
-ENGINE_MODE_VALUES: tuple[str, ...] = ("auto", "in-process", "oracle")
-
 # Force engine registration at import time.
-from .engines import famitracker  # noqa: F401
-from .engines import generic  # noqa: F401
+from .engines import (
+    famitracker,  # noqa: F401
+    generic,  # noqa: F401
+)
 from .mp3 import EXPECTED_VERSION as _LAMEENC_EXPECTED
 from .mp3 import INSTALLED_VERSION as _LAMEENC_INSTALLED
 from .mp3 import Mp3Encoder
 from .mp3 import is_pinned_version as _lameenc_is_pinned
 from .wav import write_wav
+
+EngineMode = Literal["auto", "in-process", "oracle"]
+ENGINE_MODE_VALUES: tuple[str, ...] = ("auto", "in-process", "oracle")
 
 
 @dataclass

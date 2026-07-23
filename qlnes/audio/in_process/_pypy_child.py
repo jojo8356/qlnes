@@ -4,7 +4,7 @@ Runs the entire in-process render pipeline (InProcessRunner +
 ApuEmulator) inside the PyPy interpreter and writes the resulting
 int16 LE PCM bytes to stdout. Both phases are JIT-friendly Python
 loops; running the whole thing in PyPy is the only way to get the
-F.2 measured 22× speedup end-to-end.
+F.2 measured 22x speedup end-to-end.
 
 Argv format:
     pypy3 _pypy_child.py <rom_path> <init_hex> <play_hex> <frames>
@@ -37,10 +37,10 @@ def main() -> int:
     repo_root = Path(__file__).resolve().parents[3]
     sys.path.insert(0, str(repo_root))
 
-    from qlnes.apu import ApuEmulator  # noqa: E402
-    from qlnes.audio.engine import CYCLES_PER_FRAME  # noqa: E402
-    from qlnes.audio.in_process import InProcessRunner  # noqa: E402
-    from qlnes.rom import Rom  # noqa: E402
+    from qlnes.apu import ApuEmulator
+    from qlnes.audio.engine import CYCLES_PER_FRAME
+    from qlnes.audio.in_process import InProcessRunner
+    from qlnes.rom import Rom
 
     rom_path = Path(sys.argv[1])
     init = int(sys.argv[2], 16)

@@ -8,10 +8,10 @@ runtime sprite capture workflow from ASM evidence.
 
 from __future__ import annotations
 
-from collections import Counter
-from dataclasses import dataclass, field
 import re
-from typing import Iterable
+from collections import Counter
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 
 from .ines import INesHeader
 from .nes_hw import NES_REGS
@@ -279,9 +279,7 @@ def _is_mapper_write(target: int | None, header: INesHeader | None) -> bool:
         return True
     if header.mapper in (16, 79, 87, 101) and 0x4100 <= target <= 0x7FFF:
         return True
-    if header.mapper == 5 and 0x5100 <= target <= 0x5130:
-        return True
-    return False
+    return header.mapper == 5 and 0x5100 <= target <= 0x5130
 
 
 def _context_lines(code: list[Line], index: int) -> tuple[str, ...]:

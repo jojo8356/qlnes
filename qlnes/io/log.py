@@ -15,7 +15,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import IO, Literal
+from typing import IO
 
 import ulog
 

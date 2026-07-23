@@ -177,9 +177,7 @@ def _valid_stream_start(byte: int) -> bool:
         return True
     if byte <= 0x78:
         return True
-    if 0x80 <= byte <= 0xFA:
-        return True
-    return False
+    return 0x80 <= byte <= 0xFA
 
 
 @dataclass

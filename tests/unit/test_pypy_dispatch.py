@@ -11,7 +11,6 @@ gated integration test (test_pypy_subprocess.py).
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -44,7 +43,7 @@ def test_find_pypy_returns_none_when_nothing_available(tmp_path, monkeypatch):
 def test_find_pypy_picks_env_var_first(tmp_path, monkeypatch):
     """$PYPY_BIN takes priority over vendor install and PATH."""
     env_path = _make_executable(tmp_path / "env_pypy")
-    vendored = _make_executable(tmp_path / "vendor" / "pypy" / "bin" / "pypy3")
+    _make_executable(tmp_path / "vendor" / "pypy" / "bin" / "pypy3")
     monkeypatch.setenv("PYPY_BIN", str(env_path))
     monkeypatch.setattr("shutil.which", lambda name: "/some/other/pypy3")
     assert find_pypy(repo_root=tmp_path) == env_path

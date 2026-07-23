@@ -15,8 +15,8 @@ def _make_rom_with_reset_handler(prg: bytes) -> Rom:
     """Wrap a 32 KB PRG body in an iNES header (mapper 0)."""
     header = bytearray(16)
     header[0:4] = b"NES\x1a"
-    header[4] = 2  # 2 × 16 KB PRG
-    header[5] = 0  # 0 × 8 KB CHR
+    header[4] = 2  # 2 x 16 KB PRG
+    header[5] = 0  # 0 x 8 KB CHR
     return Rom(bytes(header) + prg, name="synthetic")
 
 

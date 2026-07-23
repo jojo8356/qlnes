@@ -20,7 +20,6 @@ from qlnes.audio.engine import (
 from qlnes.audio.engines.famitracker import FamiTrackerEngine
 from qlnes.rom import Rom
 
-
 # ---- AC3: default-raise --------------------------------------------------
 
 
@@ -163,7 +162,7 @@ def _make_rom_with_mapper(prg: bytes, mapper: int) -> Rom:
 def test_famitracker_init_addr_rejects_mmc1_mapper():
     """Mapper-1 (MMC1) ROMs aren't supported by F.3's NROM-only runner;
     init_addr must raise InProcessUnavailable so F.5 falls back to oracle."""
-    # Need 64 KB PRG (16 KB minimum × 4) for MMC1; use 32 KB which is
+    # Need 64 KB PRG (16 KB minimum x 4) for MMC1; use 32 KB which is
     # also valid for MMC1 (NROM-equivalent layout but with mapper=1).
     rom = _make_rom_with_mapper(_prg32_with_vectors(0x8000, 0x9000), mapper=1)
     e = FamiTrackerEngine()

@@ -41,17 +41,17 @@ from .memory import (
     GxROMMemory,
     HolyDiverMemory,
     IremG101Memory,
+    J87Memory,
     Jaleco18Memory,
     JF10Memory,
     JF17Memory,
-    J87Memory,
     Mapper42Memory,
+    Memory,
     MMC1Memory,
-    MMC5Memory,
     MMC2Memory,
     MMC3Memory,
     MMC4Memory,
-    Memory,
+    MMC5Memory,
     Namco108Memory,
     Namco163Memory,
     NINA0306Memory,
@@ -60,12 +60,11 @@ from .memory import (
     Taito33Memory,
     UxROMMemory,
     VRC1Memory,
-    VRC24Memory,
     VRC6Memory,
     VRC7Memory,
+    VRC24Memory,
 )
 from .nmi import NTSC_CYCLES_PER_FRAME, trigger_nmi, trigger_nmi_to
-
 
 # When run_natural_boot waits for the game's reset code to settle and
 # enable NMI, we cap the wait so a malformed ROM can't hang forever.
@@ -194,7 +193,7 @@ class InProcessRunner:
         frames: int = 600,
         init_a: int | None = None,
     ) -> Iterator[ApuWriteEvent]:
-        """NSF-shaped run: jump to init, then NMI=play 60×/s for `frames`.
+        """NSF-shaped run: jump to init, then NMI=play 60x/s for `frames`.
 
         Sets PC = init_addr with a sentinel return address pushed so an
         RTS at the end of init lands us at $FFFF (the loop exits when

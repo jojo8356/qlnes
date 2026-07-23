@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import shutil
 import wave
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
@@ -274,7 +275,7 @@ def _dominant_frequency(samples: list[int], sample_rate: int) -> float:
     for i in range(1, len(centered)):
         if centered[i - 1] <= 0 < centered[i]:
             crossings.append(i)
-    periods = [b - a for a, b in zip(crossings, crossings[1:]) if b > a]
+    periods = [b - a for a, b in pairwise(crossings) if b > a]
     if not periods:
         return 0.0
     periods = periods[len(periods) // 10 : -(len(periods) // 10) or None]

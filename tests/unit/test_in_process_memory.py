@@ -19,12 +19,12 @@ from qlnes.audio.in_process.memory import (
     Jaleco18Memory,
     JF10Memory,
     JF17Memory,
+    Mapper42Memory,
     MMC1Memory,
-    MMC5Memory,
     MMC2Memory,
     MMC3Memory,
     MMC4Memory,
-    Mapper42Memory,
+    MMC5Memory,
     Namco108Memory,
     Namco163Memory,
     NINA0306Memory,
@@ -33,9 +33,9 @@ from qlnes.audio.in_process.memory import (
     Taito33Memory,
     UxROMMemory,
     VRC1Memory,
-    VRC24Memory,
     VRC6Memory,
     VRC7Memory,
+    VRC24Memory,
 )
 
 

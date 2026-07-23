@@ -14,9 +14,9 @@ from __future__ import annotations
 import hashlib
 import json
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Sequence
 
 from .assets import TILE_BYTES, decode_tile
 from .ines import HEADER_SIZE, parse_header
@@ -1093,7 +1093,7 @@ def export_in_process_runtime_sprite_samples(
         )
         raw_atlas = png_spritesheet_atlas(samples.unique_sprites)
         trimmed_atlas = png_spritesheet_atlas(trimmed_paths)
-        for entry, raw, trimmed in zip(unique_entries, raw_atlas, trimmed_atlas):
+        for entry, raw, trimmed in zip(unique_entries, raw_atlas, trimmed_atlas, strict=True):
             entry["sheet"] = raw
             entry["trimmed_sheet"] = trimmed
 
@@ -1388,7 +1388,7 @@ def export_sprite_batch(
                 out_dir / "all-unique-trimmed-spritesheet.png",
             )
             atlas = png_spritesheet_atlas(batch.all_unique_trimmed)
-            for entry, coords in zip(all_unique_manifest_entries, atlas):
+            for entry, coords in zip(all_unique_manifest_entries, atlas, strict=True):
                 entry["sheet"] = coords
             atlas_json = out_dir / "all-unique-trimmed-atlas.json"
             atlas_json.write_text(

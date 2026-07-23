@@ -12,10 +12,10 @@ from .nmi import NTSC_CYCLES_PER_FRAME, trigger_nmi, trigger_nmi_to
 from .runner import InProcessRunner, render_rom
 
 __all__ = [
+    "NTSC_CYCLES_PER_FRAME",
     "InProcessRunner",
     "Memory",
     "NROMMemory",
-    "NTSC_CYCLES_PER_FRAME",
     "render_rom",
     "trigger_nmi",
     "trigger_nmi_to",

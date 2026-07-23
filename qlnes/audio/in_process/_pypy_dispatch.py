@@ -1,6 +1,6 @@
 """PyPy subprocess workhorse for the in-process music renderer (F.5b).
 
-The F.2 spike measured PyPy 3.11 at 22× the speed of CPython 3.13 on
+The F.2 spike measured PyPy 3.11 at 22x the speed of CPython 3.13 on
 the qlnes hot loop (3-min Alter Ego: 4.16 s vs 93.2 s). To capture
 that speedup end-to-end the *entire* in-process pipeline (CPU
 emulator → ApuEmulator → PCM bytes) runs inside the PyPy child;

@@ -42,6 +42,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import ClassVar
 
 from ..static.apu_event import ApuWriteEvent
 
@@ -1189,7 +1190,7 @@ class VRC24Memory(NROMMemory):
     Mirroring, IRQ and the VRC2 1-bit latch are outside this sprite path.
     """
 
-    _PORT_OFFSETS: dict[int, tuple[tuple[int, int, int, int], ...]] = {
+    _PORT_OFFSETS: ClassVar[dict[int, tuple[tuple[int, int, int, int], ...]]] = {
         21: ((0x000, 0x002, 0x004, 0x006), (0x000, 0x040, 0x080, 0x0C0)),
         22: ((0x000, 0x002, 0x001, 0x003),),
         23: ((0x000, 0x001, 0x002, 0x003), (0x000, 0x004, 0x008, 0x00C)),
@@ -2133,10 +2134,7 @@ class MMC3Memory(NROMMemory):
     def _chr_bank_1k_for_addr(self, ppu_addr: int) -> int:
         chr_mode = (self._bank_select >> 7) & 0x01
         slot = ppu_addr // 0x0400
-        if chr_mode:
-            register_by_slot = [2, 3, 4, 5, 0, 0, 1, 1]
-        else:
-            register_by_slot = [0, 0, 1, 1, 2, 3, 4, 5]
+        register_by_slot = [2, 3, 4, 5, 0, 0, 1, 1] if chr_mode else [0, 0, 1, 1, 2, 3, 4, 5]
         reg = register_by_slot[slot]
         bank = self._regs[reg]
         if reg in (0, 1):

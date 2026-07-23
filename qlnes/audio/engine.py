@@ -148,8 +148,8 @@ class SoundEngine(abc.ABC):
             PyPy interpreter is reachable (via
             `qlnes.audio.in_process._pypy_dispatch.find_pypy`), fork the
             entire pipeline into PyPy. The child runs CPU emulation +
-            ApuEmulator and streams back PCM bytes directly. ~3-4×
-            end-to-end speedup on Alter Ego (the F.2 measurement of 22×
+            ApuEmulator and streams back PCM bytes directly. ~3-4x
+            end-to-end speedup on Alter Ego (the F.2 measurement of 22x
             covered just the CPU loop; ApuEmulator dominates if it
             stays on CPython, so we move both).
           - **CPython slow path** — when already on PyPy, when PyPy is

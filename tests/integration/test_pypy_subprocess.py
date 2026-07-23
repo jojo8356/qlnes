@@ -6,7 +6,7 @@ file is skipped. The test that benchmarks the speedup is also gated on
 the corpus ROM being present.
 
 Verifies AC3 (PyPy result byte-equal to CPython result) and AC7
-(end-to-end speedup ≥ 3× on Alter Ego). AC1/AC2/AC4-AC6 are covered by
+(end-to-end speedup ≥ 3x on Alter Ego). AC1/AC2/AC4-AC6 are covered by
 unit tests (`test_pypy_dispatch.py`).
 """
 from __future__ import annotations
@@ -80,14 +80,14 @@ def test_pypy_pcm_matches_cpython_pcm_on_alter_ego(alter_ego_rom):
     assert pypy_result.sample_rate == 44_100
 
 
-# ---- AC7: end-to-end speedup >= 3× on Alter Ego -------------------------
+# ---- AC7: end-to-end speedup >= 3x on Alter Ego -------------------------
 
 
 def test_pypy_path_is_at_least_3x_faster_than_cpython_on_alter_ego(
     alter_ego_rom, capsys
 ):
     """AC7 — full `render_song_in_process` end-to-end (CPU emu +
-    ApuEmulator + PCM transfer) is ≥ 3× faster on PyPy than on CPython.
+    ApuEmulator + PCM transfer) is ≥ 3x faster on PyPy than on CPython.
 
     Uses 300 frames (5 s of audio) for fast test feedback. Records
     both walltimes via capsys so CI logs preserve the numbers
@@ -129,13 +129,13 @@ def test_pypy_path_is_at_least_3x_faster_than_cpython_on_alter_ego(
         f"\nF.5b benchmark (Alter Ego, 300 frames):\n"
         f"  CPython in-process: {cpython_wall:.2f} s\n"
         f"  PyPy fork:          {pypy_wall:.2f} s\n"
-        f"  speedup:            {speedup:.2f}×"
+        f"  speedup:            {speedup:.2f}x"
     )
     # PCM must still match
     assert cpython_pcm.samples == pypy_pcm.samples
     assert speedup >= 3.0, (
-        f"PyPy path delivered only {speedup:.2f}× speedup; "
-        f"expected ≥ 3× per F.5b AC7"
+        f"PyPy path delivered only {speedup:.2f}x speedup; "
+        f"expected ≥ 3x per F.5b AC7"
     )
 
 
@@ -195,13 +195,13 @@ def test_pypy_fork_does_not_recurse_when_already_on_pypy(monkeypatch):
     if not ROM_PATH.exists():
         pytest.skip("requires Alter Ego")
 
-    from qlnes.audio.engine import _resolve_in_process_pcm
-    from qlnes.audio.in_process import _pypy_dispatch as pd
-
     # Patch sys.implementation.name in a clean way: monkeypatch.setattr
     # on the existing namespace object via a SimpleNamespace proxy.
     import sys
     import types
+
+    from qlnes.audio.engine import _resolve_in_process_pcm
+    from qlnes.audio.in_process import _pypy_dispatch as pd
     fake_impl = types.SimpleNamespace(name="pypy")
     monkeypatch.setattr(sys, "implementation", fake_impl, raising=False)
 

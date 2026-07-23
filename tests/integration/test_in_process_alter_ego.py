@@ -33,7 +33,6 @@ from qlnes.audio.in_process.nmi import NTSC_CYCLES_PER_FRAME
 from qlnes.audio.static.apu_event import ApuWriteEvent
 from qlnes.rom import Rom
 
-
 ROM_SHA = "023ebe61e8a4ba7a439f7fe9f7cbd31b364e5f63853dcbc0f7fa2183f023ef47"
 ROM_PATH = Path(f"corpus/roms/{ROM_SHA}.nes")
 FIXTURE_PATH = (
@@ -168,7 +167,7 @@ def test_ac2a_diverges_at_first_byte_diff(alter_ego_rom):
     fixture_events = _load_fixture_events()
     runner = InProcessRunner(alter_ego_rom)
     live_events = list(runner.run_natural_boot(frames=600))
-    for i, (live, fix) in enumerate(zip(live_events, fixture_events)):
+    for i, (live, fix) in enumerate(zip(live_events, fixture_events, strict=True)):
         assert live == fix, (
             f"first divergence at event #{i}: "
             f"live={live.cpu_cycle},{live.register:#x},{live.value:#x} vs "
@@ -305,7 +304,7 @@ def test_ac5_python_heap_under_10mb(alter_ego_rom):
     Calibration on Linux x86_64 / CPython 3.13.5 (F.3 spike):
       - tracemalloc peak ≈ 1.67 MB
       - 8 475 ApuWriteEvent + py65 mpu state + 64 KB memory map
-    The 10 MB ceiling absorbs 6× headroom for mappers F.8 will land.
+    The 10 MB ceiling absorbs 6x headroom for mappers F.8 will land.
     """
     import gc
     import tracemalloc
@@ -474,7 +473,7 @@ def test_f4_ac4_run_song_byte_diff_diagnostic(alter_ego_rom):
     init, play = _ft_init_play(alter_ego_rom)
     runner = InProcessRunner(alter_ego_rom)
     live_events = list(runner.run_song(init, play, frames=600))
-    for i, (live, fix) in enumerate(zip(live_events, fixture_events)):
+    for i, (live, fix) in enumerate(zip(live_events, fixture_events, strict=True)):
         assert live == fix, (
             f"first divergence at event #{i}: "
             f"live={live.cpu_cycle},{live.register:#x},{live.value:#x} vs "

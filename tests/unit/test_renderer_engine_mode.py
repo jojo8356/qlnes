@@ -9,14 +9,13 @@ ROM or on fceux being installed. Exercises the 3-branch dispatch:
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from qlnes.audio.engine import (
     DetectionResult,
     InProcessUnavailable,
-    LoopBoundary,
     PcmStream,
     SongEntry,
     SoundEngine,
@@ -24,7 +23,6 @@ from qlnes.audio.engine import (
 )
 from qlnes.audio.renderer import RenderResult, render_rom_audio_v2
 from qlnes.io.errors import QlnesError
-from qlnes.rom import Rom
 
 
 def _make_rom(tmp_path: Path) -> Path:
@@ -32,7 +30,7 @@ def _make_rom(tmp_path: Path) -> Path:
     can call Rom.from_file."""
     header = bytearray(16)
     header[0:4] = b"NES\x1a"
-    header[4] = 2   # 2 × 16 KB PRG
+    header[4] = 2   # 2 x 16 KB PRG
     header[5] = 0
     prg = bytearray(0x8000)
     # Reset vector → $8000, NMI vector → $8000 (halt loop at $8000)
