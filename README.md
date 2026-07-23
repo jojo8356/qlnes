@@ -102,7 +102,7 @@ python -m qlnes sprites ROM.nes -o out/sprites --palette 0F,30,16,27
 # Extraire les sprites OAM avec couleurs originales depuis un snapshot PPU/OAM
 python -m qlnes sprites ROM.nes -o out/oam-sprites --snapshot snapshot-ppu-oam.json
 
-# Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/MMC5/AxROM/MMC2/MMC4/Color Dreams/CPROM/Bandai FCG/Jaleco SS88006/Namco 163/VRC6/Irem G-101/Taito TC0190/BNROM/Mapper 42/GxROM/FME-7/Bandai/Camerica/JF-17/Holy Diver/NINA-03-06/J87/JF-10/Namco 108 : capture palette/OAM automatiquement
+# Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/MMC5/AxROM/MMC2/MMC4/Color Dreams/CPROM/Bandai FCG/Jaleco SS88006/Namco 163/VRC2-VRC4/VRC6/Irem G-101/Taito TC0190/BNROM/Mapper 42/GxROM/FME-7/Bandai/Camerica/JF-17/Holy Diver/NINA-03-06/J87/JF-10/Namco 108 : capture palette/OAM automatiquement
 # Inclut les ROMs CHR-RAM simples quand les patterns sont écrits en VRAM au boot.
 python -m qlnes sprites ROM.nes -o out/oam-sprites --runtime-frames 120
 
@@ -239,7 +239,7 @@ qlnes/
 - **Mappers supportés** : 0 (NROM), 1 (MMC1 mode 3), 2 (UxROM), 3 (CNROM),
   4 (MMC3 initial), 5 (MMC5 simple), 7 (AxROM), 9 (MMC2/PxROM), 10 (MMC4/FxROM),
   11 (Color Dreams), 13 (CPROM), 16 (Bandai FCG), 18 (Jaleco SS88006),
-  19 (Namco 129/163), 24/26 (VRC6),
+  19 (Namco 129/163), 21/22/23/25 (VRC2/VRC4), 24/26 (VRC6),
   32 (Irem G-101), 33 (Taito TC0190), 34 (BNROM/NINA),
   42 (FDS conversions), 66 (GxROM/GNROM), 69 (Sunsoft FME-7/5B initial),
   70 (Bandai),
@@ -247,7 +247,7 @@ qlnes/
   87 (J87), 101 (JF-10), 206 (Namco 108)
 - **Discovery dynamique** : nécessite `cynes`, supporté seulement pour mapper 0 (limitation runner actuelle)
 - **Capture sprites runtime** : couvre les cas simples NROM, MMC1/SxROM,
-  UxROM, CNROM, MMC3, MMC5, AxROM, MMC2/PxROM, MMC4/FxROM, Color Dreams, CPROM, Bandai FCG, Jaleco SS88006, Namco 129/163, VRC6, Irem G-101, Taito TC0190, BNROM/NINA, GxROM/GNROM,
+  UxROM, CNROM, MMC3, MMC5, AxROM, MMC2/PxROM, MMC4/FxROM, Color Dreams, CPROM, Bandai FCG, Jaleco SS88006, Namco 129/163, VRC2/VRC4, VRC6, Irem G-101, Taito TC0190, BNROM/NINA, GxROM/GNROM,
   Mapper 42, Sunsoft FME-7/5B, Bandai, Camerica, JF-17, Holy Diver, NINA-03/06, J87, JF-10 et Namco 108. MMC1 et NINA
   couvrent les fenêtres CHR 4 KiB split simples, CPROM couvre la fenêtre
   CHR-RAM 4 KiB switchable, MMC2/MMC4 couvrent les fenêtres CHR-ROM 4 KiB
@@ -256,6 +256,7 @@ qlnes/
   Bandai FCG couvre les fenêtres CHR-ROM 1 KiB et PRG 16 KiB,
   Jaleco SS88006 couvre les fenêtres CHR-ROM 1 KiB et PRG 8 KiB,
   Namco 129/163 couvre les fenêtres CHR-ROM 1 KiB et PRG 8 KiB,
+  VRC2/VRC4 couvre les fenêtres CHR-ROM 1 KiB et PRG 8 KiB,
   VRC6 couvre les fenêtres CHR-ROM 1 KiB et PRG 16/8 KiB,
   Irem G-101 couvre les fenêtres CHR-ROM 1 KiB et PRG 8 KiB,
   Taito TC0190 couvre les fenêtres CHR-ROM 2 KiB/1 KiB et PRG 8 KiB,
