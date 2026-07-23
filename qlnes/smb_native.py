@@ -29,6 +29,13 @@ SMB_GOOMBA_ID = 0x06
 SMB_GOOMBA_GROUPS = {0x37: 2, 0x38: 3, 0x39: 2, 0x3A: 3}
 SMB_KOOPA_GROUPS = {0x3B: 2, 0x3C: 3}
 SMB_NATIVE_ENEMY_RECORD_BYTES = 5
+SMB_SMALL_MARIO_SPRITES = (
+    ("small-stand", "mario_small_stand.rgba"),
+    ("small-walk-1", "mario_small_walk_1.rgba"),
+    ("small-walk-2", "mario_small_walk_2.rgba"),
+    ("small-walk-3", "mario_small_walk_3.rgba"),
+    ("small-jump", "mario_small_jump.rgba"),
+)
 
 
 @dataclass(frozen=True)
@@ -79,11 +86,15 @@ def create_smb_native_port(
 
     level = render_smb_level(rom, build_dir / "levels", stage=stage, max_columns=256)
     characters = render_smb_characters(rom, build_dir / "characters")
-    mario_png = build_dir / "characters" / "players" / "small-stand.png"
+    mario_pngs = {
+        sprite_name: build_dir / "characters" / "players" / f"{sprite_name}.png"
+        for sprite_name, _ in SMB_SMALL_MARIO_SPRITES
+    }
     goomba_png = build_dir / "characters" / "enemies" / "goomba.png"
     koopa_png = build_dir / "characters" / "enemies" / "koopa-troopa-1.png"
-    if not mario_png.exists():
-        raise RuntimeError(f"expected SMB player sprite missing: {mario_png}")
+    for mario_png in mario_pngs.values():
+        if not mario_png.exists():
+            raise RuntimeError(f"expected SMB player sprite missing: {mario_png}")
     if not goomba_png.exists():
         raise RuntimeError(f"expected SMB enemy sprite missing: {goomba_png}")
     if not koopa_png.exists():
@@ -91,13 +102,12 @@ def create_smb_native_port(
 
     level_raw = assets_dir / "level_1_1.rgb"
     collision_raw = assets_dir / "collision_1_1.bin"
-    mario_raw = assets_dir / "mario_small_stand.rgba"
     goomba_raw = assets_dir / "goomba.rgba"
     koopa_raw = assets_dir / "koopa_troopa.rgba"
     enemies_raw = assets_dir / "enemies_1_1.bin"
     _write_rgb(level.png, level_raw)
     collision_size = _write_collision_map(level.png, collision_raw)
-    mario_size = _write_rgba(mario_png, mario_raw)
+    mario_size, mario_assets = _write_mario_frame_assets(mario_pngs, assets_dir)
     goomba_size = _write_rgba(goomba_png, goomba_raw)
     koopa_size = _write_rgba(koopa_png, koopa_raw)
     enemy_spawns = _write_enemy_spawns(rom_bytes, stage, enemies_raw)
@@ -112,6 +122,7 @@ def create_smb_native_port(
             collision_rows=collision_size[1],
             mario_width=mario_size[0],
             mario_height=mario_size[1],
+            mario_frame_count=len(SMB_SMALL_MARIO_SPRITES),
             goomba_width=goomba_size[0],
             goomba_height=goomba_size[1],
             koopa_width=koopa_size[0],
@@ -154,7 +165,7 @@ Terminal=false
         icon,
         level_raw,
         collision_raw,
-        mario_raw,
+        *(assets_dir / asset_name for _, asset_name in SMB_SMALL_MARIO_SPRITES),
         goomba_raw,
         koopa_raw,
         enemies_raw,
@@ -182,10 +193,11 @@ Terminal=false
                     "collision_rows": collision_size[1],
                 },
                 "player": {
-                    "source_png": str(mario_png),
-                    "asset": str(mario_raw.relative_to(out)),
+                    "source_png": str(mario_pngs["small-stand"]),
+                    "asset": "assets/mario_small_stand.rgba",
                     "width": mario_size[0],
                     "height": mario_size[1],
+                    "sprites": mario_assets,
                 },
                 "enemies": [
                     {
@@ -223,6 +235,7 @@ Terminal=false
                     "Controls: arrows or A/D to move, Space/W/Up to jump, Esc to quit.",
                     "Collision is derived from the rendered SMB metatile map at build time.",
                     "Supported enemy spawns are decoded from SMB EnemyData for the selected stage.",
+                    "Small Mario standing, walking, and jumping sprites are normalized from SMB tables.",
                 ],
             },
             indent=2,
@@ -256,6 +269,43 @@ def _write_rgba(source_png: Path, target: Path) -> tuple[int, int]:
     image = Image.open(source_png).convert("RGBA")
     target.write_bytes(image.tobytes())
     return image.size
+
+
+def _write_mario_frame_assets(
+    source_pngs: dict[str, Path],
+    assets_dir: Path,
+) -> tuple[tuple[int, int], list[dict[str, object]]]:
+    images = {
+        sprite_name: Image.open(source_pngs[sprite_name]).convert("RGBA")
+        for sprite_name, _ in SMB_SMALL_MARIO_SPRITES
+    }
+    try:
+        width = max(image.width for image in images.values())
+        height = max(image.height for image in images.values())
+        assets: list[dict[str, object]] = []
+        for sprite_name, asset_name in SMB_SMALL_MARIO_SPRITES:
+            source = images[sprite_name]
+            normalized = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+            x = (width - source.width) // 2
+            y = height - source.height
+            normalized.alpha_composite(source, (x, y))
+            target = assets_dir / asset_name
+            target.write_bytes(normalized.tobytes())
+            assets.append(
+                {
+                    "name": sprite_name,
+                    "source_png": str(source_pngs[sprite_name]),
+                    "asset": f"assets/{asset_name}",
+                    "width": width,
+                    "height": height,
+                    "source_width": source.width,
+                    "source_height": source.height,
+                }
+            )
+        return (width, height), assets
+    finally:
+        for image in images.values():
+            image.close()
 
 
 def _write_collision_map(source_png: Path, target: Path) -> tuple[int, int]:
@@ -443,6 +493,7 @@ def _main_c_source(
     collision_rows: int,
     mario_width: int,
     mario_height: int,
+    mario_frame_count: int,
     goomba_width: int,
     goomba_height: int,
     koopa_width: int,
@@ -466,6 +517,7 @@ def _main_c_source(
 #define COLLISION_ROWS {collision_rows}
 #define MARIO_W {mario_width}
 #define MARIO_H {mario_height}
+#define MARIO_FRAME_COUNT {mario_frame_count}
 #define GOOMBA_W {goomba_width}
 #define GOOMBA_H {goomba_height}
 #define KOOPA_W {koopa_width}
@@ -569,6 +621,20 @@ static const uint8_t *enemy_sprite(const Enemy *enemy, const uint8_t *goomba, co
     return enemy->kind == 0x00 ? koopa : goomba;
 }}
 
+static const uint8_t *mario_sprite(
+    uint8_t **mario_frames,
+    bool on_ground,
+    float vx,
+    uint32_t ticks
+) {{
+    if (!on_ground) return mario_frames[4];
+    if (vx < -1.0f || vx > 1.0f) {{
+        uint32_t frame = (ticks / 90) % 3;
+        return mario_frames[1 + frame];
+    }}
+    return mario_frames[0];
+}}
+
 static void draw_sprite(
     uint32_t *frame,
     const uint8_t *sprite,
@@ -598,31 +664,48 @@ int main(int argc, char **argv) {{
     const char *base = SDL_GetBasePath();
     char level_path[4096];
     char collision_path[4096];
-    char mario_path[4096];
+    char mario_path_0[4096];
+    char mario_path_1[4096];
+    char mario_path_2[4096];
+    char mario_path_3[4096];
+    char mario_path_4[4096];
     char goomba_path[4096];
     char koopa_path[4096];
     char enemies_path[4096];
     snprintf(level_path, sizeof(level_path), "%sassets/level_1_1.rgb", base ? base : "");
     snprintf(collision_path, sizeof(collision_path), "%sassets/collision_1_1.bin", base ? base : "");
-    snprintf(mario_path, sizeof(mario_path), "%sassets/mario_small_stand.rgba", base ? base : "");
+    snprintf(mario_path_0, sizeof(mario_path_0), "%sassets/mario_small_stand.rgba", base ? base : "");
+    snprintf(mario_path_1, sizeof(mario_path_1), "%sassets/mario_small_walk_1.rgba", base ? base : "");
+    snprintf(mario_path_2, sizeof(mario_path_2), "%sassets/mario_small_walk_2.rgba", base ? base : "");
+    snprintf(mario_path_3, sizeof(mario_path_3), "%sassets/mario_small_walk_3.rgba", base ? base : "");
+    snprintf(mario_path_4, sizeof(mario_path_4), "%sassets/mario_small_jump.rgba", base ? base : "");
     snprintf(goomba_path, sizeof(goomba_path), "%sassets/goomba.rgba", base ? base : "");
     snprintf(koopa_path, sizeof(koopa_path), "%sassets/koopa_troopa.rgba", base ? base : "");
     snprintf(enemies_path, sizeof(enemies_path), "%sassets/enemies_1_1.bin", base ? base : "");
 
     uint8_t *level = read_asset(level_path, (size_t)LEVEL_W * LEVEL_H * 3);
     uint8_t *collision = read_asset(collision_path, (size_t)COLLISION_COLS * COLLISION_ROWS);
-    uint8_t *mario = read_asset(mario_path, (size_t)MARIO_W * MARIO_H * 4);
+    uint8_t *mario_frames[MARIO_FRAME_COUNT];
+    mario_frames[0] = read_asset(mario_path_0, (size_t)MARIO_W * MARIO_H * 4);
+    mario_frames[1] = read_asset(mario_path_1, (size_t)MARIO_W * MARIO_H * 4);
+    mario_frames[2] = read_asset(mario_path_2, (size_t)MARIO_W * MARIO_H * 4);
+    mario_frames[3] = read_asset(mario_path_3, (size_t)MARIO_W * MARIO_H * 4);
+    mario_frames[4] = read_asset(mario_path_4, (size_t)MARIO_W * MARIO_H * 4);
     uint8_t *goomba = read_asset(goomba_path, (size_t)GOOMBA_W * GOOMBA_H * 4);
     uint8_t *koopa = read_asset(koopa_path, (size_t)KOOPA_W * KOOPA_H * 4);
     uint8_t *enemy_data = read_asset(enemies_path, (size_t)ENEMY_COUNT * ENEMY_RECORD_BYTES);
-    if (!level || !collision || !mario || !goomba || !koopa || !enemy_data) return 2;
+    bool mario_loaded = true;
+    for (int i = 0; i < MARIO_FRAME_COUNT; i++) {{
+        if (!mario_frames[i]) mario_loaded = false;
+    }}
+    if (!level || !collision || !mario_loaded || !goomba || !koopa || !enemy_data) return 2;
     Enemy enemies[ENEMY_COUNT > 0 ? ENEMY_COUNT : 1];
     load_enemies(enemy_data, enemies);
 
     if (argc > 1 && SDL_strcmp(argv[1], "--self-test") == 0) {{
         free(level);
         free(collision);
-        free(mario);
+        for (int i = 0; i < MARIO_FRAME_COUNT; i++) free(mario_frames[i]);
         free(goomba);
         free(koopa);
         free(enemy_data);
@@ -752,7 +835,15 @@ int main(int argc, char **argv) {{
                 enemy->vx > 0.0f
             );
         }}
-        draw_sprite(frame, mario, MARIO_W, MARIO_H, (int)mario_x - camera, (int)mario_y, facing_left);
+        draw_sprite(
+            frame,
+            mario_sprite(mario_frames, on_ground, vx, now),
+            MARIO_W,
+            MARIO_H,
+            (int)mario_x - camera,
+            (int)mario_y,
+            facing_left
+        );
 
         SDL_UpdateTexture(texture, NULL, frame, SCREEN_W * (int)sizeof(uint32_t));
         SDL_RenderClear(renderer);
@@ -763,7 +854,7 @@ int main(int argc, char **argv) {{
     free(frame);
     free(level);
     free(collision);
-    free(mario);
+    for (int i = 0; i < MARIO_FRAME_COUNT; i++) free(mario_frames[i]);
     free(goomba);
     free(koopa);
     free(enemy_data);
