@@ -283,6 +283,11 @@ Terminal=false
                     "stomp_points": 100,
                     "stage_clear_time_bonus_per_second": 50,
                 },
+                "hud": {
+                    "renderer": "native framebuffer 5x7 glyphs",
+                    "fields": ["MARIO", "COIN", "WORLD", "TIME", "LIVES"],
+                    "asset_files": [],
+                },
                 "interactive_blocks": {
                     "asset": str(blocks_raw.relative_to(out)),
                     "used_block_asset": str(used_block_raw.relative_to(out)),
@@ -356,7 +361,7 @@ Terminal=false
                     "Small and big Mario standing, walking, and jumping sprites are normalized from SMB tables.",
                     "Mario death uses the SMB small-killed metasprite and restarts the native level state.",
                     "Stage clear triggers near the end of the generated level and restarts after a short victory pause.",
-                    "Score and timer are tracked natively in the SDL title bar.",
+                    "Score, coins, world, time and lives are rendered by a native framebuffer HUD.",
                     "Question/item blocks are decoded from SMB metatiles and can be hit natively.",
                 ],
             },
@@ -848,6 +853,86 @@ static void draw_rgb_tile(
                 ((uint32_t)tile[si] << 16) | ((uint32_t)tile[si + 1] << 8) | tile[si + 2];
         }}
     }}
+}}
+
+static void hud_pixel(uint32_t *frame, int x, int y, uint32_t color) {{
+    if (x < 0 || x >= SCREEN_W || y < 0 || y >= SCREEN_H) return;
+    frame[(size_t)y * SCREEN_W + x] = color;
+}}
+
+static uint8_t hud_glyph_row(char ch, int row) {{
+    static const uint8_t digits[10][7] = {{
+        {{0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E}},
+        {{0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E}},
+        {{0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F}},
+        {{0x1E, 0x01, 0x01, 0x0E, 0x01, 0x01, 0x1E}},
+        {{0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02}},
+        {{0x1F, 0x10, 0x10, 0x1E, 0x01, 0x01, 0x1E}},
+        {{0x0E, 0x10, 0x10, 0x1E, 0x11, 0x11, 0x0E}},
+        {{0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08}},
+        {{0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E}},
+        {{0x0E, 0x11, 0x11, 0x0F, 0x01, 0x01, 0x0E}},
+    }};
+    if (ch >= '0' && ch <= '9') return digits[ch - '0'][row];
+    switch (ch) {{
+        case 'A': return (uint8_t[]){{0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}}[row];
+        case 'C': return (uint8_t[]){{0x0F, 0x10, 0x10, 0x10, 0x10, 0x10, 0x0F}}[row];
+        case 'D': return (uint8_t[]){{0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E}}[row];
+        case 'E': return (uint8_t[]){{0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F}}[row];
+        case 'I': return (uint8_t[]){{0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x1F}}[row];
+        case 'L': return (uint8_t[]){{0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F}}[row];
+        case 'M': return (uint8_t[]){{0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11}}[row];
+        case 'O': return (uint8_t[]){{0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}}[row];
+        case 'R': return (uint8_t[]){{0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11}}[row];
+        case 'S': return (uint8_t[]){{0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E}}[row];
+        case 'T': return (uint8_t[]){{0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}}[row];
+        case 'V': return (uint8_t[]){{0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04}}[row];
+        case 'W': return (uint8_t[]){{0x11, 0x11, 0x11, 0x15, 0x15, 0x1B, 0x11}}[row];
+        case '-': return (uint8_t[]){{0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00}}[row];
+        default: return 0x00;
+    }}
+}}
+
+static void draw_hud_char(uint32_t *frame, char ch, int x, int y, uint32_t color) {{
+    for (int row = 0; row < 7; row++) {{
+        uint8_t bits = hud_glyph_row(ch, row);
+        for (int col = 0; col < 5; col++) {{
+            if (bits & (1 << (4 - col))) hud_pixel(frame, x + col, y + row, color);
+        }}
+    }}
+}}
+
+static void draw_hud_text(uint32_t *frame, const char *text, int x, int y, uint32_t color) {{
+    for (int i = 0; text[i] != '\\0'; i++) {{
+        if (text[i] != ' ') draw_hud_char(frame, text[i], x + i * 6, y, color);
+    }}
+}}
+
+static void draw_hud_number(uint32_t *frame, int value, int digits, int x, int y, uint32_t color) {{
+    if (value < 0) value = 0;
+    int divisor = 1;
+    for (int i = 1; i < digits; i++) divisor *= 10;
+    for (int i = 0; i < digits; i++) {{
+        int digit = (value / divisor) % 10;
+        draw_hud_char(frame, (char)('0' + digit), x + i * 6, y, color);
+        divisor /= 10;
+    }}
+}}
+
+static void draw_hud(uint32_t *frame, int score, int coins, int time_left, int lives, bool stage_clear) {{
+    uint32_t shadow = 0xFF000000u;
+    uint32_t color = stage_clear ? 0xFFFFFF40u : 0xFFFFFFFFu;
+    draw_hud_text(frame, "MARIO", 8, 8, shadow);
+    draw_hud_text(frame, "MARIO", 7, 7, color);
+    draw_hud_number(frame, score, 6, 7, 16, color);
+    draw_hud_text(frame, "COIN", 69, 7, color);
+    draw_hud_number(frame, coins, 2, 76, 16, color);
+    draw_hud_text(frame, "WORLD", 124, 7, color);
+    draw_hud_text(frame, "1-1", 132, 16, color);
+    draw_hud_text(frame, "TIME", 196, 7, color);
+    draw_hud_number(frame, time_left, 3, 200, 16, color);
+    draw_hud_text(frame, "LIVES", 8, 28, color);
+    draw_hud_number(frame, lives, 1, 44, 28, color);
 }}
 
 static bool solid_at(const uint8_t *collision, int world_x, int world_y) {{
@@ -1535,6 +1620,7 @@ int main(int argc, char **argv) {{
         if (camera < 0) camera = 0;
         if (camera > LEVEL_W - SCREEN_W) camera = LEVEL_W - SCREEN_W;
         draw_level(frame, level, camera);
+        draw_hud(frame, score, coins, time_left, lives, stage_clear);
         draw_used_blocks(frame, blocks, used_block, camera);
         if (coin_effect.active && now - coin_effect.started_at >= 650) coin_effect.active = false;
         draw_coin_effect(frame, &coin_effect, coin_frames, now, camera);

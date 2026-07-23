@@ -47,6 +47,11 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
         "stomp_points": 100,
         "stage_clear_time_bonus_per_second": 50,
     }
+    assert data["hud"] == {
+        "renderer": "native framebuffer 5x7 glyphs",
+        "fields": ["MARIO", "COIN", "WORLD", "TIME", "LIVES"],
+        "asset_files": [],
+    }
     assert data["interactive_blocks"]["count"] >= 10
     assert data["interactive_blocks"]["record_bytes"] == 5
     assert data["interactive_blocks"]["used_block_asset"] == "assets/used_empty_block.rgb"
@@ -152,6 +157,12 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "STAGE CLEAR" in source
     assert "Score %06d" in source
     assert "Time %03d" in source
+    assert "draw_hud" in source
+    assert "draw_hud_text" in source
+    assert "draw_hud_number" in source
+    assert "hud_glyph_row" in source
+    assert '"MARIO"' in source
+    assert '"WORLD"' in source
     assert "timer_started_at" in source
     assert "score += SCORE_COIN" in source
     assert "score += SCORE_MUSHROOM" in source
