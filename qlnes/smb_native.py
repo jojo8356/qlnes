@@ -270,6 +270,11 @@ Terminal=false
                     "collision_columns": collision_size[0],
                     "collision_rows": collision_size[1],
                 },
+                "stage_clear": {
+                    "trigger_x": max(level.width - 192, 0),
+                    "restart_ms": 2500,
+                    "behavior": "native stage-clear state freezes control and restarts the generated level",
+                },
                 "interactive_blocks": {
                     "asset": str(blocks_raw.relative_to(out)),
                     "used_block_asset": str(used_block_raw.relative_to(out)),
@@ -342,6 +347,7 @@ Terminal=false
                     "Supported enemy spawns are decoded from SMB EnemyData for the selected stage.",
                     "Small and big Mario standing, walking, and jumping sprites are normalized from SMB tables.",
                     "Mario death uses the SMB small-killed metasprite and restarts the native level state.",
+                    "Stage clear triggers near the end of the generated level and restarts after a short victory pause.",
                     "Question/item blocks are decoded from SMB metatiles and can be hit natively.",
                 ],
             },
@@ -728,6 +734,8 @@ def _main_c_source(
 #define MARIO_START_Y 176.0f
 #define STARTING_LIVES 3
 #define DEATH_RESTART_MS 1300
+#define STAGE_CLEAR_X {max(level_width - 192, 0)}
+#define STAGE_CLEAR_RESTART_MS 2500
 
 typedef struct {{
     float x;
@@ -1000,6 +1008,12 @@ static void update_window_title(SDL_Window *window, int coins, int lives) {{
     SDL_SetWindowTitle(window, title);
 }}
 
+static void update_stage_clear_title(SDL_Window *window, int coins, int lives) {{
+    char title[256];
+    snprintf(title, sizeof(title), "%s  STAGE CLEAR  Coins %02d  Lives %d", APP_TITLE, coins, lives);
+    SDL_SetWindowTitle(window, title);
+}}
+
 static void reset_level_state(
     const uint8_t *block_data,
     Block *blocks,
@@ -1013,7 +1027,8 @@ static void reset_level_state(
     float *vy,
     bool *mario_big,
     bool *on_ground,
-    bool *player_dead
+    bool *player_dead,
+    bool *stage_clear
 ) {{
     load_blocks(block_data, blocks);
     load_enemies(enemy_data, enemies);
@@ -1027,6 +1042,7 @@ static void reset_level_state(
     *mario_big = false;
     *on_ground = false;
     *player_dead = false;
+    *stage_clear = false;
 }}
 
 static void begin_death(
@@ -1048,6 +1064,26 @@ static void begin_death(
     *on_ground = false;
     if (*lives > 0) *lives -= 1;
     update_window_title(window, coins, *lives);
+}}
+
+static void begin_stage_clear(
+    bool *stage_clear,
+    uint32_t *stage_clear_started_at,
+    float *vx,
+    float *vy,
+    bool *on_ground,
+    uint32_t now,
+    SDL_Window *window,
+    int coins,
+    int lives
+) {{
+    if (*stage_clear) return;
+    *stage_clear = true;
+    *stage_clear_started_at = now;
+    *vx = 0.0f;
+    *vy = 0.0f;
+    *on_ground = true;
+    update_stage_clear_title(window, coins, lives);
 }}
 
 static void draw_sprite(
@@ -1207,7 +1243,9 @@ int main(int argc, char **argv) {{
     bool on_ground = false;
     bool mario_big = false;
     bool player_dead = false;
+    bool stage_clear = false;
     uint32_t death_started_at = 0;
+    uint32_t stage_clear_started_at = 0;
     int coins = 0;
     int lives = STARTING_LIVES;
     CoinEffect coin_effect = {{false, 0.0f, 0.0f, 0}};
@@ -1225,11 +1263,11 @@ int main(int argc, char **argv) {{
         float move = 0.0f;
         if (keys[SDL_SCANCODE_LEFT] || keys[SDL_SCANCODE_A]) move -= 1.0f;
         if (keys[SDL_SCANCODE_RIGHT] || keys[SDL_SCANCODE_D]) move += 1.0f;
-        if (!player_dead && move < 0) facing_left = true;
-        if (!player_dead && move > 0) facing_left = false;
-        vx = player_dead ? 0.0f : move * 100.0f;
+        if (!player_dead && !stage_clear && move < 0) facing_left = true;
+        if (!player_dead && !stage_clear && move > 0) facing_left = false;
+        vx = (player_dead || stage_clear) ? 0.0f : move * 100.0f;
         bool jump = keys[SDL_SCANCODE_SPACE] || keys[SDL_SCANCODE_UP] || keys[SDL_SCANCODE_W];
-        if (!player_dead && jump && on_ground) vy = -245.0f;
+        if (!player_dead && !stage_clear && jump && on_ground) vy = -245.0f;
 
         uint32_t now = SDL_GetTicks();
         float dt = (float)(now - last) / 1000.0f;
@@ -1259,7 +1297,28 @@ int main(int argc, char **argv) {{
                     &vy,
                     &mario_big,
                     &on_ground,
-                    &player_dead
+                    &player_dead,
+                    &stage_clear
+                );
+                update_window_title(window, coins, lives);
+            }}
+        }} else if (stage_clear) {{
+            if (now - stage_clear_started_at >= STAGE_CLEAR_RESTART_MS) {{
+                reset_level_state(
+                    block_data,
+                    blocks,
+                    enemy_data,
+                    enemies,
+                    &coin_effect,
+                    &powerup,
+                    &mario_x,
+                    &mario_y,
+                    &vx,
+                    &vy,
+                    &mario_big,
+                    &on_ground,
+                    &player_dead,
+                    &stage_clear
                 );
                 update_window_title(window, coins, lives);
             }}
@@ -1312,6 +1371,9 @@ int main(int argc, char **argv) {{
 
         if (mario_y > LEVEL_H + 32.0f) {{
             begin_death(&player_dead, &death_started_at, &lives, &vx, &vy, &on_ground, now, window, coins);
+        }}
+        if (mario_x >= STAGE_CLEAR_X) {{
+            begin_stage_clear(&stage_clear, &stage_clear_started_at, &vx, &vy, &on_ground, now, window, coins, lives);
         }}
 
         for (int i = 0; i < ENEMY_COUNT; i++) {{

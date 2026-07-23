@@ -36,6 +36,9 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert data["level"]["width"] > 256
     assert data["level"]["collision_columns"] == data["level"]["width"] // 16
     assert data["level"]["collision_rows"] == data["level"]["height"] // 16
+    assert data["stage_clear"]["trigger_x"] == data["level"]["width"] - 192
+    assert data["stage_clear"]["restart_ms"] == 2500
+    assert data["stage_clear"]["behavior"].startswith("native stage-clear")
     assert data["interactive_blocks"]["count"] >= 10
     assert data["interactive_blocks"]["record_bytes"] == 5
     assert data["interactive_blocks"]["used_block_asset"] == "assets/used_empty_block.rgb"
@@ -126,8 +129,14 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "DEAD_MARIO_H" in source
     assert "STARTING_LIVES" in source
     assert "bool player_dead" in source
+    assert "bool stage_clear" in source
     assert "reset_level_state" in source
     assert "begin_death" in source
+    assert "begin_stage_clear" in source
+    assert "update_stage_clear_title" in source
+    assert "STAGE_CLEAR_X" in source
+    assert "STAGE_CLEAR_RESTART_MS" in source
+    assert "STAGE CLEAR" in source
     assert "Lives %d" in source
     assert "BLOCK_COUNT" in source
     assert "draw_used_blocks" in source
