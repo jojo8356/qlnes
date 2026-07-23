@@ -75,13 +75,13 @@ sprite-only avec fond transparent.
 Les sprites masques hors ecran (`Y >= 0xEF`) sont ignores par defaut. Ajouter
 `--include-hidden` pour les exporter aussi.
 
-## Mode runtime automatique NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/BNROM/GxROM/FME-7/Camerica/J87
+## Mode runtime automatique NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/BNROM/GxROM/FME-7/Camerica/J87/JF-10
 
 Pour les ROMs mapper 0/NROM, mapper 1/MMC1 simple, mapper 2/UxROM, mapper
 3/CNROM, mapper 4/MMC3 simple, mapper 7/AxROM, mapper 11/Color Dreams et
 mapper 34/BNROM-NINA, mapper 66/GxROM, mapper 69/Sunsoft FME-7/5B, mapper
-71/Camerica et mapper 87/J87 qui initialisent les palettes et OAM par les
-writes PPU classiques, qlnes peut faire le snapshot automatiquement :
+71/Camerica, mapper 87/J87 et mapper 101/JF-10 qui initialisent les palettes et
+OAM par les writes PPU classiques, qlnes peut faire le snapshot automatiquement :
 
 ```bash
 python -m qlnes sprites ROM.nes \
@@ -120,6 +120,8 @@ Ce mode boote la ROM en-process avec `py65`, observe :
   KiB basse, avec la dernière bank fixe en haut.
 - les writes mapper 87/J87 vers `$6000-$7FFF` pour choisir la CHR-ROM 8 KiB
   active avec le bit-order `LH` documenté par NESdev.
+- les writes mapper 101/JF-10 vers `$6000-$7FFF` pour choisir la CHR-ROM 8 KiB
+  active avec le bit-order normal `HL`.
 
 Ensuite il exporte les sprites OAM comme le mode `--snapshot`, avec
 `palette_source: runtime-snapshot` et `snapshot: in-process` dans le manifeste.
@@ -248,7 +250,7 @@ python -m qlnes sprites ROM.nes \
 ## Limite actuelle
 
 La commande sait capturer automatiquement les cas
-NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/BNROM/GxROM/FME-7/Camerica/J87
+NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/BNROM/GxROM/FME-7/Camerica/J87/JF-10
 simples, y compris une partie des ROMs CHR-RAM si les tiles sont ecrites via
 `PPUDATA` pendant la fenetre capturee.
 Elle ne couvre pas encore tous les jeux NES :

@@ -10,7 +10,8 @@ AxROMMemory (mapper 7) supports 32 KiB PRG switching with CHR-RAM captures.
 BNROMNINAMemory (mapper 34) supports BNROM PRG switching and NINA split CHR.
 FME7Memory (mapper 69) supports Sunsoft FME-7/5B PRG and 1 KiB CHR windows.
 CamericaMemory (mapper 71) supports the Codemasters/Camerica UNROM variant.
-J87Memory (mapper 87) supports fixed PRG with switchable 8 KiB CHR-ROM.
+J87Memory (mapper 87) and JF10Memory (mapper 101) support fixed PRG with
+switchable 8 KiB CHR-ROM.
 
 The APU observer lives inside __setitem__: when py65 writes to
 $4000-$4017, we record an ApuWriteEvent. PPU reads/writes go through
@@ -533,6 +534,26 @@ class J87Memory(NROMMemory):
         if 0x6000 <= addr <= 0x7FFF:
             v = value & 0x03
             self.chr_bank = (((v & 0x01) << 1) | ((v & 0x02) >> 1)) % self._chr_bank_count
+            return
+        super().__setitem__(addr, value)
+
+
+class JF10Memory(NROMMemory):
+    """Mapper-101 JF-10 memory.
+
+    Mapper 101 describes a dump variant of the same J87 family, but the
+    CHR-ROM bank bits at $6000-$7FFF are in normal order.
+    """
+
+    def __init__(self, prg: bytes, chr_banks: int) -> None:
+        super().__init__(prg)
+        if chr_banks <= 0:
+            raise ValueError("JF-10 requires at least one CHR bank")
+        self._chr_bank_count = chr_banks
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if 0x6000 <= addr <= 0x7FFF:
+            self.chr_bank = (value & 0xFF) % self._chr_bank_count
             return
         super().__setitem__(addr, value)
 

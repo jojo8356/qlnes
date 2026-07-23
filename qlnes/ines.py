@@ -6,7 +6,7 @@ HEADER_SIZE = 16
 PRG_BANK = 0x4000
 CHR_BANK = 0x2000
 
-SUPPORTED_MAPPERS = (0, 1, 2, 3, 4, 7, 11, 34, 66, 69, 71, 87)
+SUPPORTED_MAPPERS = (0, 1, 2, 3, 4, 7, 11, 34, 66, 69, 71, 87, 101)
 
 
 @dataclass
@@ -192,7 +192,7 @@ def rom_to_images(data: bytes) -> list[tuple[int, bytes]]:
             f"mapper {h.mapper} not supported. Supported: {SUPPORTED_MAPPERS}"
         )
     prg = strip_ines(data)
-    if h.mapper in (0, 3, 87):
+    if h.mapper in (0, 3, 87, 101):
         return _layout_nrom(prg)
     if h.mapper == 2:
         return _layout_uxrom(prg)

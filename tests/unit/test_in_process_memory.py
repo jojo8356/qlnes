@@ -11,6 +11,7 @@ from qlnes.audio.in_process.memory import (
     ColorDreamsMemory,
     FME7Memory,
     GxROMMemory,
+    JF10Memory,
     MMC1Memory,
     MMC3Memory,
     NROMMemory,
@@ -527,6 +528,15 @@ def test_fme7_reset_state_restores_initial_prg_and_chr_mapping():
     m.reset_state()
     assert m[0x8000] == 0
     assert m.ppu_snapshot().pattern_table[0x1000] == 4
+
+
+def test_jf10_mapper101_selects_chr_bank_with_normal_bit_order():
+    m = JF10Memory(_prg32(), chr_banks=4)
+    assert m.ppu_snapshot().chr_bank == 0
+    m[0x6000] = 0x01
+    assert m.ppu_snapshot().chr_bank == 1
+    m[0x7FFF] = 0x02
+    assert m.ppu_snapshot().chr_bank == 2
 
 
 def test_len_is_64k():

@@ -705,6 +705,10 @@ La premiere implementation qlnes suit cette decision :
   bits `LH` où bit 0 = bit CHR haut et bit 1 = bit CHR bas ; qlnes applique ce
   bit-order inversé avant de choisir la CHR bank runtime. Source :
   https://www.nesdev.org/wiki/INES_Mapper_087
+- Pour mapper 101/JF-10, NESdev documente la même famille de board mais avec le
+  bit-order CHR normal `HL` à `$6000-$7FFF`, plus une extension oversize mieux
+  définie. qlnes sélectionne donc directement la valeur écrite comme CHR bank
+  8 KiB runtime. Source : https://www.nesdev.org/wiki/INES_Mapper_101
 - Pour mapper 11/Color Dreams, NESdev documente une fenêtre CPU 32 KiB
   switchable à `$8000-$FFFF`, une fenêtre PPU CHR 8 KiB à `$0000-$1FFF`, et
   un registre `CCCC LLPP` : bits `0-1` pour le PRG bank 32 KiB, bits `4-7`
