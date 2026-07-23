@@ -96,8 +96,12 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert data["interactive_blocks"]["mushroom_asset"] == "assets/mushroom.rgba"
     assert data["interactive_blocks"]["mushroom_width"] > 0
     assert data["interactive_blocks"]["mushroom_height"] > 0
+    assert data["interactive_blocks"]["brick_chunk_asset"] == "assets/brick_chunk.rgba"
+    assert data["interactive_blocks"]["brick_chunk_width"] > 0
+    assert data["interactive_blocks"]["brick_chunk_height"] > 0
     assert data["interactive_blocks"]["breakable_metatiles"] == ["0x51", "0x52"]
     assert data["interactive_blocks"]["break_behavior"].startswith("big Mario breaks")
+    assert "spawns four native brick chunks" in data["interactive_blocks"]["break_behavior"]
     assert any(block["kind"] == "question-block" for block in data["interactive_blocks"]["blocks"])
     assert any(block["kind"] == "breakable-brick" for block in data["interactive_blocks"]["blocks"])
     assert any(block["kind"] == "item-brick" for block in data["interactive_blocks"]["blocks"])
@@ -151,6 +155,7 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert (export.out_dir / "assets" / "jumping_coin_frame_2.rgba").exists()
     assert (export.out_dir / "assets" / "jumping_coin_frame_3.rgba").exists()
     assert (export.out_dir / "assets" / "mushroom.rgba").exists()
+    assert (export.out_dir / "assets" / "brick_chunk.rgba").exists()
     assert (export.out_dir / "assets" / "mario_small_stand.rgba").exists()
     assert (export.out_dir / "assets" / "mario_small_walk_1.rgba").exists()
     assert (export.out_dir / "assets" / "mario_small_walk_2.rgba").exists()
@@ -202,6 +207,8 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "KOOPA_W" in source
     assert "KOOPA_SHELL_KIND" in source
     assert "KOOPA_SHELL_W" in source
+    assert "BRICK_CHUNK_W" in source
+    assert "BRICK_CHUNK_H" in source
     assert "MARIO_FRAME_COUNT" in source
     assert "mario_sprite" in source
     assert "SMALL_MARIO_H" in source
@@ -276,6 +283,12 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "update_window_title" in source
     assert "CoinEffect" in source
     assert "draw_coin_effect" in source
+    assert "BrickChunkEffect" in source
+    assert "draw_brick_chunk_effect" in source
+    assert "brick_effect.active = true" in source
+    assert "brick_effect.started_at = now" in source
+    assert "draw_brick_chunk_effect(frame, &brick_effect, brick_chunk, now, camera)" in source
+    assert "free(brick_chunk)" in source
     assert "Powerup" in source
     assert "spawn_mushroom" in source
     assert "update_powerup" in source
@@ -315,6 +328,7 @@ def test_cli_smb_native_generates_project(tmp_path: Path) -> None:
     assert (out / "assets" / "jumping_coin_frame_0.rgba").exists()
     assert (out / "assets" / "jumping_coin_frame_3.rgba").exists()
     assert (out / "assets" / "mushroom.rgba").exists()
+    assert (out / "assets" / "brick_chunk.rgba").exists()
     assert (out / "assets" / "goomba.rgba").exists()
     assert (out / "assets" / "mario_small_walk_1.rgba").exists()
     assert (out / "assets" / "mario_small_jump.rgba").exists()

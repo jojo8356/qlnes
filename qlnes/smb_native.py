@@ -126,6 +126,7 @@ def create_smb_native_port(
     koopa_png = build_dir / "characters" / "enemies" / "koopa-troopa-1.png"
     koopa_shell_png = build_dir / "characters" / "enemies" / "koopa-shell-1.png"
     mushroom_png = build_dir / "blocks" / "sprites" / "mushroom.png"
+    brick_chunk_png = build_dir / "blocks" / "sprites" / "brick-chunk.png"
     for mario_png in mario_pngs.values():
         if not mario_png.exists():
             raise RuntimeError(f"expected SMB player sprite missing: {mario_png}")
@@ -142,6 +143,8 @@ def create_smb_native_port(
         raise RuntimeError(f"expected SMB enemy shell sprite missing: {koopa_shell_png}")
     if not mushroom_png.exists():
         raise RuntimeError(f"expected SMB power-up sprite missing: {mushroom_png}")
+    if not brick_chunk_png.exists():
+        raise RuntimeError(f"expected SMB brick chunk sprite missing: {brick_chunk_png}")
 
     level_raw = assets_dir / "level_1_1.rgb"
     title_screen_raw = assets_dir / "title_screen.rgb"
@@ -152,6 +155,7 @@ def create_smb_native_port(
         assets_dir / f"jumping_coin_frame_{idx}.rgba" for idx in range(SMB_JUMPING_COIN_FRAME_COUNT)
     ]
     mushroom_raw = assets_dir / "mushroom.rgba"
+    brick_chunk_raw = assets_dir / "brick_chunk.rgba"
     goomba_raw = assets_dir / "goomba.rgba"
     koopa_raw = assets_dir / "koopa_troopa.rgba"
     koopa_shell_raw = assets_dir / "koopa_shell.rgba"
@@ -178,6 +182,7 @@ def create_smb_native_port(
         SMB_BIG_MARIO_SPRITES,
     )
     mushroom_size = _write_rgba(mushroom_png, mushroom_raw)
+    brick_chunk_size = _write_rgba(brick_chunk_png, brick_chunk_raw)
     dead_mario_size = _write_rgba(dead_mario_png, dead_mario_raw)
     goomba_size = _write_rgba(goomba_png, goomba_raw)
     koopa_size = _write_rgba(koopa_png, koopa_raw)
@@ -203,6 +208,8 @@ def create_smb_native_port(
             coin_frame_count=SMB_JUMPING_COIN_FRAME_COUNT,
             mushroom_width=mushroom_size[0],
             mushroom_height=mushroom_size[1],
+            brick_chunk_width=brick_chunk_size[0],
+            brick_chunk_height=brick_chunk_size[1],
             small_mario_width=small_mario_size[0],
             small_mario_height=small_mario_size[1],
             big_mario_width=big_mario_size[0],
@@ -259,6 +266,7 @@ Terminal=false
         used_block_raw,
         *coin_frame_raws,
         mushroom_raw,
+        brick_chunk_raw,
         *(assets_dir / asset_name for _, asset_name in SMB_SMALL_MARIO_SPRITES),
         *(assets_dir / asset_name for _, asset_name in SMB_BIG_MARIO_SPRITES),
         dead_mario_raw,
@@ -349,11 +357,14 @@ Terminal=false
                     "mushroom_asset": str(mushroom_raw.relative_to(out)),
                     "mushroom_width": mushroom_size[0],
                     "mushroom_height": mushroom_size[1],
+                    "brick_chunk_asset": str(brick_chunk_raw.relative_to(out)),
+                    "brick_chunk_width": brick_chunk_size[0],
+                    "brick_chunk_height": brick_chunk_size[1],
                     "record_bytes": SMB_NATIVE_BLOCK_RECORD_BYTES,
                     "breakable_metatiles": [
                         f"0x{metatile:02X}" for metatile in sorted(SMB_BREAKABLE_BRICK_METATILES)
                     ],
-                    "break_behavior": "big Mario breaks empty brick metatiles natively and removes their collision cell",
+                    "break_behavior": "big Mario breaks empty brick metatiles natively, removes their collision cell, and spawns four native brick chunks",
                     "count": len(interactive_blocks),
                     "blocks": interactive_blocks,
                 },
@@ -430,6 +441,7 @@ Terminal=false
                     "Score, coins, world, time and lives are rendered by a native framebuffer HUD.",
                     "Question/item blocks are decoded from SMB metatiles and can be hit natively.",
                     "Breakable brick metatiles are removed from native collision when big Mario hits them.",
+                    "Brick shatter uses the ROM-derived brick chunk sprite as a native visual effect.",
                     "Koopa stomps switch to a native shell state using the ROM-derived shell sprite.",
                     "Stationary Koopa shells can be kicked and moving shells defeat other enemies natively.",
                 ],
@@ -764,6 +776,8 @@ def _main_c_source(
     coin_frame_count: int,
     mushroom_width: int,
     mushroom_height: int,
+    brick_chunk_width: int,
+    brick_chunk_height: int,
     small_mario_width: int,
     small_mario_height: int,
     big_mario_width: int,
@@ -805,6 +819,8 @@ def _main_c_source(
 #define COIN_FRAME_COUNT {coin_frame_count}
 #define MUSHROOM_W {mushroom_width}
 #define MUSHROOM_H {mushroom_height}
+#define BRICK_CHUNK_W {brick_chunk_width}
+#define BRICK_CHUNK_H {brick_chunk_height}
 #define SMALL_MARIO_W {small_mario_width}
 #define SMALL_MARIO_H {small_mario_height}
 #define BIG_MARIO_W {big_mario_width}
@@ -882,6 +898,13 @@ typedef struct {{
     float y;
     uint32_t started_at;
 }} CoinEffect;
+
+typedef struct {{
+    bool active;
+    float x;
+    float y;
+    uint32_t started_at;
+}} BrickChunkEffect;
 
 typedef struct {{
     bool active;
@@ -1322,6 +1345,28 @@ static void draw_coin_effect(
     );
 }}
 
+static void draw_brick_chunk_effect(
+    uint32_t *frame,
+    const BrickChunkEffect *brick_effect,
+    const uint8_t *brick_chunk,
+    uint32_t now,
+    int camera_x
+) {{
+    if (!brick_effect->active) return;
+    uint32_t elapsed = now - brick_effect->started_at;
+    if (elapsed >= 700) return;
+    float t = (float)elapsed / 1000.0f;
+    static const float vx[4] = {{-74.0f, -42.0f, 42.0f, 74.0f}};
+    static const float vy[4] = {{-165.0f, -118.0f, -118.0f, -165.0f}};
+    static const float ox[4] = {{0.0f, 7.0f, 1.0f, 8.0f}};
+    static const float oy[4] = {{0.0f, 1.0f, 8.0f, 9.0f}};
+    for (int i = 0; i < 4; i++) {{
+        float px = brick_effect->x + ox[i] + vx[i] * t;
+        float py = brick_effect->y + oy[i] + vy[i] * t + 360.0f * t * t;
+        draw_sprite(frame, brick_chunk, BRICK_CHUNK_W, BRICK_CHUNK_H, (int)px - camera_x, (int)py, i >= 2);
+    }}
+}}
+
 static void spawn_mushroom(Powerup *powerup, const Block *block) {{
     powerup->active = true;
     powerup->emerging = true;
@@ -1448,6 +1493,7 @@ static void reset_level_state(
     const uint8_t *enemy_data,
     Enemy *enemies,
     CoinEffect *coin_effect,
+    BrickChunkEffect *brick_effect,
     Powerup *powerup,
     float *mario_x,
     float *mario_y,
@@ -1464,6 +1510,7 @@ static void reset_level_state(
     load_blocks(block_data, blocks);
     load_enemies(enemy_data, enemies);
     coin_effect->active = false;
+    brick_effect->active = false;
     powerup->active = false;
     powerup->emerging = false;
     *mario_x = MARIO_START_X;
@@ -1563,6 +1610,7 @@ int main(int argc, char **argv) {{
     char coin_path_2[4096];
     char coin_path_3[4096];
     char mushroom_path[4096];
+    char brick_chunk_path[4096];
     char mario_path_0[4096];
     char mario_path_1[4096];
     char mario_path_2[4096];
@@ -1588,6 +1636,7 @@ int main(int argc, char **argv) {{
     snprintf(coin_path_2, sizeof(coin_path_2), "%sassets/jumping_coin_frame_2.rgba", base ? base : "");
     snprintf(coin_path_3, sizeof(coin_path_3), "%sassets/jumping_coin_frame_3.rgba", base ? base : "");
     snprintf(mushroom_path, sizeof(mushroom_path), "%sassets/mushroom.rgba", base ? base : "");
+    snprintf(brick_chunk_path, sizeof(brick_chunk_path), "%sassets/brick_chunk.rgba", base ? base : "");
     snprintf(mario_path_0, sizeof(mario_path_0), "%sassets/mario_small_stand.rgba", base ? base : "");
     snprintf(mario_path_1, sizeof(mario_path_1), "%sassets/mario_small_walk_1.rgba", base ? base : "");
     snprintf(mario_path_2, sizeof(mario_path_2), "%sassets/mario_small_walk_2.rgba", base ? base : "");
@@ -1615,6 +1664,7 @@ int main(int argc, char **argv) {{
     coin_frames[2] = read_asset(coin_path_2, (size_t)COIN_W * COIN_H * 4);
     coin_frames[3] = read_asset(coin_path_3, (size_t)COIN_W * COIN_H * 4);
     uint8_t *mushroom = read_asset(mushroom_path, (size_t)MUSHROOM_W * MUSHROOM_H * 4);
+    uint8_t *brick_chunk = read_asset(brick_chunk_path, (size_t)BRICK_CHUNK_W * BRICK_CHUNK_H * 4);
     uint8_t *small_mario_frames[MARIO_FRAME_COUNT];
     small_mario_frames[0] = read_asset(mario_path_0, (size_t)SMALL_MARIO_W * SMALL_MARIO_H * 4);
     small_mario_frames[1] = read_asset(mario_path_1, (size_t)SMALL_MARIO_W * SMALL_MARIO_H * 4);
@@ -1640,7 +1690,7 @@ int main(int argc, char **argv) {{
     for (int i = 0; i < COIN_FRAME_COUNT; i++) {{
         if (!coin_frames[i]) coins_loaded = false;
     }}
-    if (!level || !title_screen || !collision || !block_data || !used_block || !coins_loaded || !mushroom || !mario_loaded || !dead_mario || !goomba || !koopa || !koopa_shell || !enemy_data) return 2;
+    if (!level || !title_screen || !collision || !block_data || !used_block || !coins_loaded || !mushroom || !brick_chunk || !mario_loaded || !dead_mario || !goomba || !koopa || !koopa_shell || !enemy_data) return 2;
     Block blocks[BLOCK_COUNT > 0 ? BLOCK_COUNT : 1];
     Enemy enemies[ENEMY_COUNT > 0 ? ENEMY_COUNT : 1];
     load_blocks(block_data, blocks);
@@ -1654,6 +1704,7 @@ int main(int argc, char **argv) {{
         free(used_block);
         for (int i = 0; i < COIN_FRAME_COUNT; i++) free(coin_frames[i]);
         free(mushroom);
+        free(brick_chunk);
         for (int i = 0; i < MARIO_FRAME_COUNT; i++) {{
             free(small_mario_frames[i]);
             free(big_mario_frames[i]);
@@ -1704,6 +1755,7 @@ int main(int argc, char **argv) {{
     int lives = STARTING_LIVES;
     uint32_t invulnerable_until = 0;
     CoinEffect coin_effect = {{false, 0.0f, 0.0f, 0}};
+    BrickChunkEffect brick_effect = {{false, 0.0f, 0.0f, 0}};
     Powerup powerup = {{false, false, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}};
     uint32_t last = SDL_GetTicks();
     update_title_screen_window_title(window);
@@ -1797,6 +1849,7 @@ int main(int argc, char **argv) {{
                     enemy_data,
                     enemies,
                     &coin_effect,
+                    &brick_effect,
                     &powerup,
                     &mario_x,
                     &mario_y,
@@ -1821,6 +1874,7 @@ int main(int argc, char **argv) {{
                     enemy_data,
                     enemies,
                     &coin_effect,
+                    &brick_effect,
                     &powerup,
                     &mario_x,
                     &mario_y,
@@ -1858,6 +1912,10 @@ int main(int argc, char **argv) {{
                 if (block_is_breakable(hit) && mario_big) {{
                     hit->broken = true;
                     score += SCORE_BRICK;
+                    brick_effect.active = true;
+                    brick_effect.x = (float)hit->x;
+                    brick_effect.y = (float)hit->y;
+                    brick_effect.started_at = now;
                     trigger_sfx(audio_device, &audio_state, SFX_BRICK);
                     update_window_title(window, score, coins, time_left, lives);
                 }} else if (!block_is_breakable(hit)) {{
@@ -2038,7 +2096,9 @@ int main(int argc, char **argv) {{
         draw_broken_blocks(frame, blocks, level, camera);
         draw_used_blocks(frame, blocks, used_block, camera);
         if (coin_effect.active && now - coin_effect.started_at >= 650) coin_effect.active = false;
+        if (brick_effect.active && now - brick_effect.started_at >= 700) brick_effect.active = false;
         draw_coin_effect(frame, &coin_effect, coin_frames, now, camera);
+        draw_brick_chunk_effect(frame, &brick_effect, brick_chunk, now, camera);
         if (powerup.active) {{
             draw_sprite(frame, mushroom, MUSHROOM_W, MUSHROOM_H, (int)powerup.x - camera, (int)powerup.y, false);
         }}
@@ -2094,6 +2154,7 @@ int main(int argc, char **argv) {{
     free(used_block);
     for (int i = 0; i < COIN_FRAME_COUNT; i++) free(coin_frames[i]);
     free(mushroom);
+    free(brick_chunk);
     for (int i = 0; i < MARIO_FRAME_COUNT; i++) {{
         free(small_mario_frames[i]);
         free(big_mario_frames[i]);
