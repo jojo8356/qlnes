@@ -307,6 +307,7 @@ Terminal=false
                     "sample_rate": 44100,
                     "format": "AUDIO_F32SYS stereo",
                     "modes": ["title", "gameplay", "stage-clear", "death"],
+                    "sfx": ["jump", "coin", "stomp", "power-up", "shell-kick"],
                     "behavior": "native procedural chiptune-style audio; no NSF, MP3, ROM or emulator is loaded at runtime",
                 },
                 "scoring": {
@@ -822,6 +823,15 @@ enum {{
     AUDIO_MODE_DEATH = 3
 }};
 
+enum {{
+    SFX_NONE = 0,
+    SFX_JUMP = 1,
+    SFX_COIN = 2,
+    SFX_STOMP = 3,
+    SFX_POWERUP = 4,
+    SFX_SHELL_KICK = 5
+}};
+
 typedef struct {{
     float x;
     float y;
@@ -860,6 +870,9 @@ typedef struct {{
     uint64_t sample_clock;
     double melody_phase;
     double bass_phase;
+    double sfx_phase;
+    uint64_t sfx_clock;
+    int sfx_kind;
     int mode;
 }} AudioState;
 
@@ -911,6 +924,34 @@ static double triangle_sample(AudioState *state, double *phase, double hz) {{
     return p * 4.0 - 4.0;
 }}
 
+static double sfx_sample(AudioState *state) {{
+    if (state->sfx_kind == SFX_NONE) return 0.0;
+    uint64_t duration = (uint64_t)(state->sample_rate / 5);
+    if (state->sfx_clock >= duration) {{
+        state->sfx_kind = SFX_NONE;
+        state->sfx_clock = 0;
+        return 0.0;
+    }}
+    double t = (double)state->sfx_clock / (double)duration;
+    double hz = 0.0;
+    double volume = (1.0 - t) * 0.16;
+    if (state->sfx_kind == SFX_JUMP) {{
+        hz = 420.0 + 520.0 * t;
+    }} else if (state->sfx_kind == SFX_COIN) {{
+        hz = state->sfx_clock < duration / 2 ? 988.0 : 1318.0;
+    }} else if (state->sfx_kind == SFX_STOMP) {{
+        hz = 180.0 - 70.0 * t;
+        volume = (1.0 - t) * 0.20;
+    }} else if (state->sfx_kind == SFX_POWERUP) {{
+        hz = 659.0 + 659.0 * t;
+    }} else if (state->sfx_kind == SFX_SHELL_KICK) {{
+        hz = state->sfx_clock < duration / 3 ? 262.0 : 523.0;
+        volume = (1.0 - t) * 0.18;
+    }}
+    state->sfx_clock++;
+    return square_sample(state, &state->sfx_phase, hz) * volume;
+}}
+
 static void audio_callback(void *userdata, uint8_t *stream, int len) {{
     AudioState *state = (AudioState *)userdata;
     float *out = (float *)stream;
@@ -945,6 +986,7 @@ static void audio_callback(void *userdata, uint8_t *stream, int len) {{
 
         double sample = square_sample(state, &state->melody_phase, (double)melody_hz) * volume;
         sample += triangle_sample(state, &state->bass_phase, (double)bass_hz) * 0.035;
+        sample += sfx_sample(state);
         out[i * 2] = (float)sample;
         out[i * 2 + 1] = (float)sample;
         state->sample_clock++;
@@ -979,6 +1021,15 @@ static void set_audio_mode(SDL_AudioDeviceID device, AudioState *state, int mode
     state->sample_clock = 0;
     state->melody_phase = 0.0;
     state->bass_phase = 0.0;
+    SDL_UnlockAudioDevice(device);
+}}
+
+static void trigger_sfx(SDL_AudioDeviceID device, AudioState *state, int kind) {{
+    if (!device) return;
+    SDL_LockAudioDevice(device);
+    state->sfx_kind = kind;
+    state->sfx_clock = 0;
+    state->sfx_phase = 0.0;
     SDL_UnlockAudioDevice(device);
 }}
 
@@ -1560,7 +1611,7 @@ int main(int argc, char **argv) {{
         fprintf(stderr, "SDL setup failed: %s\\n", SDL_GetError());
         return 4;
     }}
-    AudioState audio_state = {{AUDIO_RATE, 0, 0.0, 0.0, AUDIO_MODE_TITLE}};
+    AudioState audio_state = {{AUDIO_RATE, 0, 0.0, 0.0, 0.0, 0, SFX_NONE, AUDIO_MODE_TITLE}};
     SDL_AudioDeviceID audio_device = open_native_audio(&audio_state);
 
     float mario_x = MARIO_START_X;
@@ -1626,7 +1677,10 @@ int main(int argc, char **argv) {{
         if (!player_dead && !stage_clear && move > 0) facing_left = false;
         vx = (player_dead || stage_clear) ? 0.0f : move * 100.0f;
         bool jump = keys[SDL_SCANCODE_SPACE] || keys[SDL_SCANCODE_UP] || keys[SDL_SCANCODE_W];
-        if (!player_dead && !stage_clear && jump && on_ground) vy = -245.0f;
+        if (!player_dead && !stage_clear && jump && on_ground) {{
+            vy = -245.0f;
+            trigger_sfx(audio_device, &audio_state, SFX_JUMP);
+        }}
         if (!player_dead && !stage_clear) {{
             int elapsed_seconds = (int)((now - timer_started_at) / 1000);
             int next_time_left = STARTING_TIME - elapsed_seconds;
@@ -1732,6 +1786,7 @@ int main(int argc, char **argv) {{
                 }} else {{
                     score += SCORE_COIN;
                     coins += 1;
+                    trigger_sfx(audio_device, &audio_state, SFX_COIN);
                     coin_effect.active = true;
                     coin_effect.x = (float)hit->x + 4.0f;
                     coin_effect.y = (float)hit->y - 8.0f;
@@ -1752,6 +1807,7 @@ int main(int argc, char **argv) {{
             }}
             score += SCORE_MUSHROOM;
             coins += 10;
+            trigger_sfx(audio_device, &audio_state, SFX_POWERUP);
             update_window_title(window, score, coins, time_left, lives);
         }}
         player_w = mario_width(mario_big);
@@ -1832,6 +1888,7 @@ int main(int argc, char **argv) {{
                         enemy->alive = false;
                     }}
                     score += SCORE_STOMP;
+                    trigger_sfx(audio_device, &audio_state, SFX_STOMP);
                     update_window_title(window, score, coins, time_left, lives);
                     vy = -160.0f;
                 }} else if (shell_stationary) {{
@@ -1842,6 +1899,7 @@ int main(int argc, char **argv) {{
                         mario_x = enemy->x + (float)ew + 1.0f;
                     }}
                     score += SCORE_SHELL_KICK;
+                    trigger_sfx(audio_device, &audio_state, SFX_SHELL_KICK);
                     update_window_title(window, score, coins, time_left, lives);
                 }} else if (mario_big) {{
                     mario_big = false;
@@ -1879,6 +1937,7 @@ int main(int argc, char **argv) {{
                 if (rects_overlap(shell->x, shell->y, sw, sh, target->x, target->y, tw, th)) {{
                     target->alive = false;
                     score += SCORE_SHELL_HIT;
+                    trigger_sfx(audio_device, &audio_state, SFX_STOMP);
                     update_window_title(window, score, coins, time_left, lives);
                 }}
             }}

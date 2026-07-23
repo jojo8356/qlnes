@@ -52,6 +52,7 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
         "sample_rate": 44100,
         "format": "AUDIO_F32SYS stereo",
         "modes": ["title", "gameplay", "stage-clear", "death"],
+        "sfx": ["jump", "coin", "stomp", "power-up", "shell-kick"],
         "behavior": "native procedural chiptune-style audio; no NSF, MP3, ROM or emulator is loaded at runtime",
     }
     assert data["scoring"] == {
@@ -159,10 +160,17 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "audio_callback" in source
     assert "open_native_audio" in source
     assert "set_audio_mode" in source
+    assert "trigger_sfx" in source
+    assert "sfx_sample" in source
     assert "AUDIO_MODE_TITLE" in source
     assert "AUDIO_MODE_GAMEPLAY" in source
     assert "AUDIO_MODE_STAGE_CLEAR" in source
     assert "AUDIO_MODE_DEATH" in source
+    assert "SFX_JUMP" in source
+    assert "SFX_COIN" in source
+    assert "SFX_STOMP" in source
+    assert "SFX_POWERUP" in source
+    assert "SFX_SHELL_KICK" in source
     assert "AUDIO_F32SYS" in source
     assert "--self-test" in source
     assert "TITLE_SCREEN_W" in source
@@ -217,6 +225,11 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "score += SCORE_STOMP" in source
     assert "score += SCORE_SHELL_KICK" in source
     assert "score += SCORE_SHELL_HIT" in source
+    assert "trigger_sfx(audio_device, &audio_state, SFX_JUMP)" in source
+    assert "trigger_sfx(audio_device, &audio_state, SFX_COIN)" in source
+    assert "trigger_sfx(audio_device, &audio_state, SFX_STOMP)" in source
+    assert "trigger_sfx(audio_device, &audio_state, SFX_POWERUP)" in source
+    assert "trigger_sfx(audio_device, &audio_state, SFX_SHELL_KICK)" in source
     assert "enemy->kind = KOOPA_SHELL_KIND" in source
     assert "shell_is_moving" in source
     assert "bool shell_stationary" in source
