@@ -56,6 +56,7 @@ Sources principales :
 - NESdev, PPU pattern tables : https://www.nesdev.org/wiki/PPU_pattern_tables
 - NESdev, PPU palettes : https://www.nesdev.org/wiki/PPU_palettes
 - NESdev, PPU OAM : https://www.nesdev.org/wiki/PPU_OAM
+- NESdev, INES Mapper 042 : https://www.nesdev.org/wiki/INES_Mapper_042
 - NESdev, PPU programmer reference : https://www.nesdev.org/wiki/PPU_programmer_reference
 - NESdev, PPU rendering : https://www.nesdev.org/wiki/PPU_rendering
 - NESdev, CHR-ROM vs CHR-RAM : https://www.nesdev.org/wiki/CHR-ROM_vs_CHR-RAM
@@ -78,6 +79,28 @@ Verification web faite le 2026-07-23. Les points importants confirmes :
   palette mid-frame demandent un choix de scanline ou un rendu PPU plus fin ;
 - le Code/Data Logger de FCEUX ne peut masquer les tiles utilisees que pour
   CHR-ROM, car il observe les acces CHR-ROM, pas les copies dynamiques CHR-RAM.
+
+## Chemin exact "ROM NES -> PNG sprites couleurs"
+
+Le chemin fiable n'est pas un convertisseur direct de fichier `.nes` vers
+`sprites.png`. C'est un pipeline d'observation :
+
+1. Parser l'en-tete iNES pour connaitre PRG, CHR et mapper.
+2. Booter la ROM ou charger un snapshot externe pour obtenir l'etat PPU/OAM.
+3. Reconstituer la pattern table visible `$0000-$1FFF` :
+   - CHR-ROM fixe : lire la banque CHR du fichier ;
+   - CHR-ROM bankswitchee : appliquer les registres mapper captures ;
+   - CHR-RAM : utiliser les bytes ecrits a runtime par `PPUDATA`.
+4. Lire OAM pour savoir quels sprites sont visibles, leur tile, palette,
+   position, priorite et flips.
+5. Lire palette RAM `$3F10-$3F1F` pour les quatre sous-palettes sprite.
+6. Decoder chaque tile 2bpp : index `0` transparent, index `1..3` opaques.
+7. Convertir les valeurs palette PPU 6 bits en RGBA avec un profil declare.
+8. Ecrire PNG + JSON de provenance.
+
+La transparence ne vient donc pas d'un canal alpha stocke dans la ROM. Elle
+vient de la convention PPU : pour les sprites, le pixel CHR d'index `0` ne
+dessine rien. qlnes mappe cet index vers alpha `0` dans les PNG.
 
 ## Ce que qlnes fait aujourd'hui
 
@@ -725,6 +748,14 @@ La premiere implementation qlnes suit cette decision :
   KiB à droite. qlnes ignore donc les bits hauts de `$8000` et exporte les
   sprites depuis la pattern table CHR mappée dans le snapshot. Source :
   https://www.nesdev.org/wiki/INES_Mapper_206
+- Pour mapper 42, NESdev documente les conversions FDS en cartouche : CPU
+  `$8000-$FFFF` est fixe sur les derniers 32 KiB de PRG-ROM, CPU
+  `$6000-$7FFF` expose une fenêtre PRG-ROM 8 KiB switchable par `$E000`, et PPU
+  `$0000-$1FFF` expose une fenêtre CHR-ROM 8 KiB switchable par `$8000`.
+  qlnes capture donc les writes `$8000` pour choisir la CHR bank runtime qui
+  colore les sprites exportes, et modele `$E000` pour que le boot puisse lire
+  du code ou des donnees dans la fenêtre `$6000`. Source :
+  https://www.nesdev.org/wiki/INES_Mapper_042
 - Pour mapper 11/Color Dreams, NESdev documente une fenêtre CPU 32 KiB
   switchable à `$8000-$FFFF`, une fenêtre PPU CHR 8 KiB à `$0000-$1FFF`, et
   un registre `CCCC LLPP` : bits `0-1` pour le PRG bank 32 KiB, bits `4-7`

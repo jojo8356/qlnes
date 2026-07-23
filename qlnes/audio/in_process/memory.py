@@ -15,6 +15,7 @@ J87Memory (mapper 87) and JF10Memory (mapper 101) support fixed PRG with
 switchable 8 KiB CHR-ROM.
 HolyDiverMemory (mapper 78) supports switchable 16 KiB PRG and 8 KiB CHR-ROM.
 Namco108Memory (mapper 206) supports MMC3-like PRG/CHR banking without mode bits.
+Mapper42Memory supports fixed high PRG with switchable 8 KiB PRG/CHR-ROM.
 
 The APU observer lives inside __setitem__: when py65 writes to
 $4000-$4017, we record an ApuWriteEvent. PPU reads/writes go through
@@ -388,6 +389,47 @@ class ColorDreamsMemory(NROMMemory):
     def reset_state(self) -> None:
         super().reset_state()
         self._prg_bank = 0
+
+
+class Mapper42Memory(NROMMemory):
+    """Mapper-42 FDS conversion memory.
+
+    CPU $8000-$FFFF is fixed to the last 32 KiB of PRG-ROM. CPU $6000-$7FFF is
+    a switchable 8 KiB PRG-ROM window. PPU $0000-$1FFF selects one 8 KiB
+    CHR-ROM bank through register $8000.
+    """
+
+    def __init__(self, prg: bytes, chr_banks: int) -> None:
+        if len(prg) % 0x2000 != 0 or len(prg) < 0x8000:
+            raise ValueError("Mapper 42 PRG must contain at least four 8 KiB banks")
+        super().__init__(prg[-0x8000:])
+        if chr_banks <= 0:
+            raise ValueError("Mapper 42 requires at least one CHR bank")
+        self._prg_banks = [prg[i : i + 0x2000] for i in range(0, len(prg), 0x2000)]
+        self._prg_6000_bank = 0
+        self._chr_bank_count = chr_banks
+
+    def __getitem__(self, addr: int) -> int:
+        if 0x6000 <= addr < 0x8000:
+            return self._prg_banks[self._prg_6000_bank][addr - 0x6000]
+        return super().__getitem__(addr)
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        reg = addr & 0xE003
+        if reg == 0x8000:
+            self.chr_bank = (value & 0x0F) % self._chr_bank_count
+            return
+        if reg == 0xE000:
+            self._prg_6000_bank = (value & 0x0F) % len(self._prg_banks)
+            return
+        if addr >= 0x8000:
+            return
+        super().__setitem__(addr, value)
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        self._prg_6000_bank = 0
+        self.chr_bank = 0
 
 
 class AxROMMemory(NROMMemory):

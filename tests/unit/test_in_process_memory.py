@@ -16,6 +16,7 @@ from qlnes.audio.in_process.memory import (
     JF10Memory,
     MMC1Memory,
     MMC3Memory,
+    Mapper42Memory,
     Namco108Memory,
     NROMMemory,
     UxROMMemory,
@@ -413,6 +414,22 @@ def test_mapper34_reset_state_restores_initial_prg_chr_and_prg_ram():
     assert m[0x7FFD] == 0x00
     assert m[0x8000] == 0
     assert m.ppu_snapshot().pattern_table[0x1000] == 1
+
+
+def test_mapper42_switches_prg_6000_window_and_chr_bank():
+    banks = [bytes([bank_id] * 0x2000) for bank_id in range(8)]
+    m = Mapper42Memory(b"".join(banks), chr_banks=4)
+    assert m[0x6000] == 0
+    assert m[0x8000] == 4
+    assert m[0xE000] == 7
+    assert m.ppu_snapshot().chr_bank == 0
+    m[0xE000] = 0x03
+    assert m[0x6000] == 3
+    m[0x8000] = 0x02
+    assert m.ppu_snapshot().chr_bank == 2
+    m.reset_state()
+    assert m[0x6000] == 0
+    assert m.ppu_snapshot().chr_bank == 0
 
 
 def test_camerica_mapper71_switches_prg_only_from_c000_ffff():

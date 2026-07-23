@@ -6,7 +6,7 @@ HEADER_SIZE = 16
 PRG_BANK = 0x4000
 CHR_BANK = 0x2000
 
-SUPPORTED_MAPPERS = (0, 1, 2, 3, 4, 7, 11, 13, 34, 66, 69, 71, 78, 87, 101, 206)
+SUPPORTED_MAPPERS = (0, 1, 2, 3, 4, 7, 11, 13, 34, 42, 66, 69, 71, 78, 87, 101, 206)
 
 
 @dataclass
@@ -172,6 +172,18 @@ def _layout_fme7_initial(prg: bytes) -> list[tuple[int, bytes]]:
     return [(0, bytes(image))]
 
 
+def _layout_mapper42_initial(prg: bytes) -> list[tuple[int, bytes]]:
+    # Mapper 42: fixed last 32 KiB at $8000-$FFFF and an 8 KiB switchable
+    # PRG-ROM window at $6000-$7FFF. Runtime bank writes are modeled by the
+    # in-process runner; this image exposes the reset-safe fixed region.
+    if len(prg) % 0x2000 != 0 or len(prg) < 0x8000:
+        raise ValueError(f"Mapper 42 PRG size {len(prg):#x} must be at least 32K")
+    image = bytearray(0x10000)
+    image[0x6000:0x8000] = prg[:0x2000]
+    image[0x8000:0x10000] = prg[-0x8000:]
+    return [(0, bytes(image))]
+
+
 def _fixed_only(last: bytes) -> bytes:
     image = bytearray(0x10000)
     image[0x8000:0xC000] = last
@@ -206,6 +218,8 @@ def rom_to_images(data: bytes) -> list[tuple[int, bytes]]:
         return _layout_colordreams(prg)
     if h.mapper == 34:
         return _layout_bnrom(prg)
+    if h.mapper == 42:
+        return _layout_mapper42_initial(prg)
     if h.mapper == 66:
         return _layout_gxrom(prg)
     if h.mapper == 69:
