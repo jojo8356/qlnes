@@ -16,7 +16,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import IO
+from typing import IO, cast
 
 import ulog
 
@@ -88,7 +88,7 @@ def setup_logging(
 
 def get_logger(name: str = "qlnes") -> logging.Logger:
     """Convenience for modules that want `logger = get_logger(__name__)`."""
-    return ulog.get_logger(name)
+    return cast(logging.Logger, ulog.get_logger(name))
 
 
 def default_log_db_path() -> Path:
