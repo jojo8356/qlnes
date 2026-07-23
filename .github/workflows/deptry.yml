@@ -33,4 +33,9 @@ jobs:
           pip install deptry
 
       - name: Run deptry
-        run: deptry qlnes --requirements-files requirements.txt
+        run: |
+          deptry qlnes \
+            --requirements-files requirements.txt \
+            --known-first-party qlnes \
+            --package-module-name-map "ucolor-python=ucolor,ulog-python[storage,web]=ulog" \
+            --per-rule-ignores "DEP002=ucolor-python|django-lucide"
