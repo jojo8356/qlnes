@@ -53,13 +53,23 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert any(block["kind"] == "question-block" for block in data["interactive_blocks"]["blocks"])
     assert any(block["kind"] == "item-brick" for block in data["interactive_blocks"]["blocks"])
     assert data["player"]["width"] > 0
-    assert [sprite["name"] for sprite in data["player"]["sprites"]] == [
+    assert data["player"]["big_height"] > data["player"]["small_height"]
+    assert data["player"]["big_width"] >= data["player"]["small_width"]
+    assert [sprite["name"] for sprite in data["player"]["small_sprites"]] == [
         "small-stand",
         "small-walk-1",
         "small-walk-2",
         "small-walk-3",
         "small-jump",
     ]
+    assert [sprite["name"] for sprite in data["player"]["big_sprites"]] == [
+        "big-stand",
+        "big-walk-1",
+        "big-walk-2",
+        "big-walk-3",
+        "big-jump",
+    ]
+    assert data["player"]["sprites"] == data["player"]["small_sprites"]
     assert data["enemies"][0]["name"] == "goomba"
     assert data["enemies"][0]["spawn_count"] >= 8
     assert data["enemies"][1]["name"] == "koopa-troopa"
@@ -85,6 +95,11 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert (export.out_dir / "assets" / "mario_small_walk_2.rgba").exists()
     assert (export.out_dir / "assets" / "mario_small_walk_3.rgba").exists()
     assert (export.out_dir / "assets" / "mario_small_jump.rgba").exists()
+    assert (export.out_dir / "assets" / "mario_big_stand.rgba").exists()
+    assert (export.out_dir / "assets" / "mario_big_walk_1.rgba").exists()
+    assert (export.out_dir / "assets" / "mario_big_walk_2.rgba").exists()
+    assert (export.out_dir / "assets" / "mario_big_walk_3.rgba").exists()
+    assert (export.out_dir / "assets" / "mario_big_jump.rgba").exists()
     assert (export.out_dir / "assets" / "goomba.rgba").exists()
     assert (export.out_dir / "assets" / "koopa_troopa.rgba").exists()
     assert (export.out_dir / "assets" / "enemies_1_1.bin").exists()
@@ -99,6 +114,10 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "KOOPA_W" in source
     assert "MARIO_FRAME_COUNT" in source
     assert "mario_sprite" in source
+    assert "SMALL_MARIO_H" in source
+    assert "BIG_MARIO_H" in source
+    assert "bool mario_big" in source
+    assert "mario_width(mario_big)" in source
     assert "BLOCK_COUNT" in source
     assert "draw_used_blocks" in source
     assert "update_window_title" in source
@@ -145,6 +164,8 @@ def test_cli_smb_native_generates_project(tmp_path: Path) -> None:
     assert (out / "assets" / "goomba.rgba").exists()
     assert (out / "assets" / "mario_small_walk_1.rgba").exists()
     assert (out / "assets" / "mario_small_jump.rgba").exists()
+    assert (out / "assets" / "mario_big_walk_1.rgba").exists()
+    assert (out / "assets" / "mario_big_jump.rgba").exists()
     assert (out / "assets" / "koopa_troopa.rgba").exists()
     assert (out / "assets" / "enemies_1_1.bin").exists()
     assert not list(out.rglob("*.nes"))

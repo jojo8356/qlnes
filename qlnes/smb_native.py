@@ -48,6 +48,13 @@ SMB_SMALL_MARIO_SPRITES = (
     ("small-walk-3", "mario_small_walk_3.rgba"),
     ("small-jump", "mario_small_jump.rgba"),
 )
+SMB_BIG_MARIO_SPRITES = (
+    ("big-stand", "mario_big_stand.rgba"),
+    ("big-walk-1", "mario_big_walk_1.rgba"),
+    ("big-walk-2", "mario_big_walk_2.rgba"),
+    ("big-walk-3", "mario_big_walk_3.rgba"),
+    ("big-jump", "mario_big_jump.rgba"),
+)
 
 
 @dataclass(frozen=True)
@@ -103,12 +110,19 @@ def create_smb_native_port(
         sprite_name: build_dir / "characters" / "players" / f"{sprite_name}.png"
         for sprite_name, _ in SMB_SMALL_MARIO_SPRITES
     }
+    big_mario_pngs = {
+        sprite_name: build_dir / "characters" / "players" / f"{sprite_name}.png"
+        for sprite_name, _ in SMB_BIG_MARIO_SPRITES
+    }
     goomba_png = build_dir / "characters" / "enemies" / "goomba.png"
     koopa_png = build_dir / "characters" / "enemies" / "koopa-troopa-1.png"
     mushroom_png = build_dir / "blocks" / "sprites" / "mushroom.png"
     for mario_png in mario_pngs.values():
         if not mario_png.exists():
             raise RuntimeError(f"expected SMB player sprite missing: {mario_png}")
+    for mario_png in big_mario_pngs.values():
+        if not mario_png.exists():
+            raise RuntimeError(f"expected SMB big player sprite missing: {mario_png}")
     if not goomba_png.exists():
         raise RuntimeError(f"expected SMB enemy sprite missing: {goomba_png}")
     if not koopa_png.exists():
@@ -136,7 +150,16 @@ def create_smb_native_port(
         used_block_raw,
     )
     coin_frame_size = _write_coin_frame_assets(build_dir / "blocks" / "sprites", coin_frame_raws)
-    mario_size, mario_assets = _write_mario_frame_assets(mario_pngs, assets_dir)
+    small_mario_size, small_mario_assets = _write_mario_frame_assets(
+        mario_pngs,
+        assets_dir,
+        SMB_SMALL_MARIO_SPRITES,
+    )
+    big_mario_size, big_mario_assets = _write_mario_frame_assets(
+        big_mario_pngs,
+        assets_dir,
+        SMB_BIG_MARIO_SPRITES,
+    )
     mushroom_size = _write_rgba(mushroom_png, mushroom_raw)
     goomba_size = _write_rgba(goomba_png, goomba_raw)
     koopa_size = _write_rgba(koopa_png, koopa_raw)
@@ -159,8 +182,10 @@ def create_smb_native_port(
             coin_frame_count=SMB_JUMPING_COIN_FRAME_COUNT,
             mushroom_width=mushroom_size[0],
             mushroom_height=mushroom_size[1],
-            mario_width=mario_size[0],
-            mario_height=mario_size[1],
+            small_mario_width=small_mario_size[0],
+            small_mario_height=small_mario_size[1],
+            big_mario_width=big_mario_size[0],
+            big_mario_height=big_mario_size[1],
             mario_frame_count=len(SMB_SMALL_MARIO_SPRITES),
             goomba_width=goomba_size[0],
             goomba_height=goomba_size[1],
@@ -209,6 +234,7 @@ Terminal=false
         *coin_frame_raws,
         mushroom_raw,
         *(assets_dir / asset_name for _, asset_name in SMB_SMALL_MARIO_SPRITES),
+        *(assets_dir / asset_name for _, asset_name in SMB_BIG_MARIO_SPRITES),
         goomba_raw,
         koopa_raw,
         enemies_raw,
@@ -251,9 +277,15 @@ Terminal=false
                 "player": {
                     "source_png": str(mario_pngs["small-stand"]),
                     "asset": "assets/mario_small_stand.rgba",
-                    "width": mario_size[0],
-                    "height": mario_size[1],
-                    "sprites": mario_assets,
+                    "width": small_mario_size[0],
+                    "height": small_mario_size[1],
+                    "small_width": small_mario_size[0],
+                    "small_height": small_mario_size[1],
+                    "big_width": big_mario_size[0],
+                    "big_height": big_mario_size[1],
+                    "small_sprites": small_mario_assets,
+                    "big_sprites": big_mario_assets,
+                    "sprites": small_mario_assets,
                 },
                 "enemies": [
                     {
@@ -292,7 +324,7 @@ Terminal=false
                     "Controls: arrows or A/D to move, Space/W/Up to jump, Esc to quit.",
                     "Collision is derived from the rendered SMB metatile map at build time.",
                     "Supported enemy spawns are decoded from SMB EnemyData for the selected stage.",
-                    "Small Mario standing, walking, and jumping sprites are normalized from SMB tables.",
+                    "Small and big Mario standing, walking, and jumping sprites are normalized from SMB tables.",
                     "Question/item blocks are decoded from SMB metatiles and can be hit natively.",
                 ],
             },
@@ -332,16 +364,17 @@ def _write_rgba(source_png: Path, target: Path) -> tuple[int, int]:
 def _write_mario_frame_assets(
     source_pngs: dict[str, Path],
     assets_dir: Path,
+    sprites: tuple[tuple[str, str], ...],
 ) -> tuple[tuple[int, int], list[dict[str, object]]]:
     images = {
         sprite_name: Image.open(source_pngs[sprite_name]).convert("RGBA")
-        for sprite_name, _ in SMB_SMALL_MARIO_SPRITES
+        for sprite_name, _ in sprites
     }
     try:
         width = max(image.width for image in images.values())
         height = max(image.height for image in images.values())
         assets: list[dict[str, object]] = []
-        for sprite_name, asset_name in SMB_SMALL_MARIO_SPRITES:
+        for sprite_name, asset_name in sprites:
             source = images[sprite_name]
             normalized = Image.new("RGBA", (width, height), (0, 0, 0, 0))
             x = (width - source.width) // 2
@@ -623,8 +656,10 @@ def _main_c_source(
     coin_frame_count: int,
     mushroom_width: int,
     mushroom_height: int,
-    mario_width: int,
-    mario_height: int,
+    small_mario_width: int,
+    small_mario_height: int,
+    big_mario_width: int,
+    big_mario_height: int,
     mario_frame_count: int,
     goomba_width: int,
     goomba_height: int,
@@ -656,8 +691,10 @@ def _main_c_source(
 #define COIN_FRAME_COUNT {coin_frame_count}
 #define MUSHROOM_W {mushroom_width}
 #define MUSHROOM_H {mushroom_height}
-#define MARIO_W {mario_width}
-#define MARIO_H {mario_height}
+#define SMALL_MARIO_W {small_mario_width}
+#define SMALL_MARIO_H {small_mario_height}
+#define BIG_MARIO_W {big_mario_width}
+#define BIG_MARIO_H {big_mario_height}
 #define MARIO_FRAME_COUNT {mario_frame_count}
 #define GOOMBA_W {goomba_width}
 #define GOOMBA_H {goomba_height}
@@ -908,17 +945,28 @@ static const uint8_t *enemy_sprite(const Enemy *enemy, const uint8_t *goomba, co
 }}
 
 static const uint8_t *mario_sprite(
-    uint8_t **mario_frames,
+    uint8_t **small_mario_frames,
+    uint8_t **big_mario_frames,
+    bool mario_big,
     bool on_ground,
     float vx,
     uint32_t ticks
 ) {{
-    if (!on_ground) return mario_frames[4];
+    uint8_t **frames = mario_big ? big_mario_frames : small_mario_frames;
+    if (!on_ground) return frames[4];
     if (vx < -1.0f || vx > 1.0f) {{
         uint32_t frame = (ticks / 90) % 3;
-        return mario_frames[1 + frame];
+        return frames[1 + frame];
     }}
-    return mario_frames[0];
+    return frames[0];
+}}
+
+static int mario_width(bool mario_big) {{
+    return mario_big ? BIG_MARIO_W : SMALL_MARIO_W;
+}}
+
+static int mario_height(bool mario_big) {{
+    return mario_big ? BIG_MARIO_H : SMALL_MARIO_H;
 }}
 
 static void update_window_title(SDL_Window *window, int coins) {{
@@ -968,6 +1016,11 @@ int main(int argc, char **argv) {{
     char mario_path_2[4096];
     char mario_path_3[4096];
     char mario_path_4[4096];
+    char big_mario_path_0[4096];
+    char big_mario_path_1[4096];
+    char big_mario_path_2[4096];
+    char big_mario_path_3[4096];
+    char big_mario_path_4[4096];
     char goomba_path[4096];
     char koopa_path[4096];
     char enemies_path[4096];
@@ -985,6 +1038,11 @@ int main(int argc, char **argv) {{
     snprintf(mario_path_2, sizeof(mario_path_2), "%sassets/mario_small_walk_2.rgba", base ? base : "");
     snprintf(mario_path_3, sizeof(mario_path_3), "%sassets/mario_small_walk_3.rgba", base ? base : "");
     snprintf(mario_path_4, sizeof(mario_path_4), "%sassets/mario_small_jump.rgba", base ? base : "");
+    snprintf(big_mario_path_0, sizeof(big_mario_path_0), "%sassets/mario_big_stand.rgba", base ? base : "");
+    snprintf(big_mario_path_1, sizeof(big_mario_path_1), "%sassets/mario_big_walk_1.rgba", base ? base : "");
+    snprintf(big_mario_path_2, sizeof(big_mario_path_2), "%sassets/mario_big_walk_2.rgba", base ? base : "");
+    snprintf(big_mario_path_3, sizeof(big_mario_path_3), "%sassets/mario_big_walk_3.rgba", base ? base : "");
+    snprintf(big_mario_path_4, sizeof(big_mario_path_4), "%sassets/mario_big_jump.rgba", base ? base : "");
     snprintf(goomba_path, sizeof(goomba_path), "%sassets/goomba.rgba", base ? base : "");
     snprintf(koopa_path, sizeof(koopa_path), "%sassets/koopa_troopa.rgba", base ? base : "");
     snprintf(enemies_path, sizeof(enemies_path), "%sassets/enemies_1_1.bin", base ? base : "");
@@ -999,18 +1057,24 @@ int main(int argc, char **argv) {{
     coin_frames[2] = read_asset(coin_path_2, (size_t)COIN_W * COIN_H * 4);
     coin_frames[3] = read_asset(coin_path_3, (size_t)COIN_W * COIN_H * 4);
     uint8_t *mushroom = read_asset(mushroom_path, (size_t)MUSHROOM_W * MUSHROOM_H * 4);
-    uint8_t *mario_frames[MARIO_FRAME_COUNT];
-    mario_frames[0] = read_asset(mario_path_0, (size_t)MARIO_W * MARIO_H * 4);
-    mario_frames[1] = read_asset(mario_path_1, (size_t)MARIO_W * MARIO_H * 4);
-    mario_frames[2] = read_asset(mario_path_2, (size_t)MARIO_W * MARIO_H * 4);
-    mario_frames[3] = read_asset(mario_path_3, (size_t)MARIO_W * MARIO_H * 4);
-    mario_frames[4] = read_asset(mario_path_4, (size_t)MARIO_W * MARIO_H * 4);
+    uint8_t *small_mario_frames[MARIO_FRAME_COUNT];
+    small_mario_frames[0] = read_asset(mario_path_0, (size_t)SMALL_MARIO_W * SMALL_MARIO_H * 4);
+    small_mario_frames[1] = read_asset(mario_path_1, (size_t)SMALL_MARIO_W * SMALL_MARIO_H * 4);
+    small_mario_frames[2] = read_asset(mario_path_2, (size_t)SMALL_MARIO_W * SMALL_MARIO_H * 4);
+    small_mario_frames[3] = read_asset(mario_path_3, (size_t)SMALL_MARIO_W * SMALL_MARIO_H * 4);
+    small_mario_frames[4] = read_asset(mario_path_4, (size_t)SMALL_MARIO_W * SMALL_MARIO_H * 4);
+    uint8_t *big_mario_frames[MARIO_FRAME_COUNT];
+    big_mario_frames[0] = read_asset(big_mario_path_0, (size_t)BIG_MARIO_W * BIG_MARIO_H * 4);
+    big_mario_frames[1] = read_asset(big_mario_path_1, (size_t)BIG_MARIO_W * BIG_MARIO_H * 4);
+    big_mario_frames[2] = read_asset(big_mario_path_2, (size_t)BIG_MARIO_W * BIG_MARIO_H * 4);
+    big_mario_frames[3] = read_asset(big_mario_path_3, (size_t)BIG_MARIO_W * BIG_MARIO_H * 4);
+    big_mario_frames[4] = read_asset(big_mario_path_4, (size_t)BIG_MARIO_W * BIG_MARIO_H * 4);
     uint8_t *goomba = read_asset(goomba_path, (size_t)GOOMBA_W * GOOMBA_H * 4);
     uint8_t *koopa = read_asset(koopa_path, (size_t)KOOPA_W * KOOPA_H * 4);
     uint8_t *enemy_data = read_asset(enemies_path, (size_t)ENEMY_COUNT * ENEMY_RECORD_BYTES);
     bool mario_loaded = true;
     for (int i = 0; i < MARIO_FRAME_COUNT; i++) {{
-        if (!mario_frames[i]) mario_loaded = false;
+        if (!small_mario_frames[i] || !big_mario_frames[i]) mario_loaded = false;
     }}
     bool coins_loaded = true;
     for (int i = 0; i < COIN_FRAME_COUNT; i++) {{
@@ -1029,7 +1093,10 @@ int main(int argc, char **argv) {{
         free(used_block);
         for (int i = 0; i < COIN_FRAME_COUNT; i++) free(coin_frames[i]);
         free(mushroom);
-        for (int i = 0; i < MARIO_FRAME_COUNT; i++) free(mario_frames[i]);
+        for (int i = 0; i < MARIO_FRAME_COUNT; i++) {{
+            free(small_mario_frames[i]);
+            free(big_mario_frames[i]);
+        }}
         free(goomba);
         free(koopa);
         free(enemy_data);
@@ -1059,6 +1126,7 @@ int main(int argc, char **argv) {{
     bool running = true;
     bool facing_left = false;
     bool on_ground = false;
+    bool mario_big = false;
     int coins = 0;
     CoinEffect coin_effect = {{false, 0.0f, 0.0f, 0}};
     Powerup powerup = {{false, false, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}};
@@ -1087,21 +1155,23 @@ int main(int argc, char **argv) {{
         last = now;
 
         vy += 620.0f * dt;
+        int player_w = mario_width(mario_big);
+        int player_h = mario_height(mario_big);
         float next_x = mario_x + vx * dt;
-        if (!rect_hits_solid(collision, next_x, mario_y, MARIO_W, MARIO_H)) {{
+        if (!rect_hits_solid(collision, next_x, mario_y, player_w, player_h)) {{
             mario_x = next_x;
         }}
         float next_y = mario_y + vy * dt;
         on_ground = false;
-        if (!rect_hits_solid(collision, mario_x, next_y, MARIO_W, MARIO_H)) {{
+        if (!rect_hits_solid(collision, mario_x, next_y, player_w, player_h)) {{
             mario_y = next_y;
         }} else if (vy > 0.0f) {{
-            int tile_y = ((int)(mario_y + MARIO_H + vy * dt)) / TILE_SIZE;
-            mario_y = (float)(tile_y * TILE_SIZE - MARIO_H);
+            int tile_y = ((int)(mario_y + player_h + vy * dt)) / TILE_SIZE;
+            mario_y = (float)(tile_y * TILE_SIZE - player_h);
             vy = 0.0f;
             on_ground = true;
         }} else {{
-            Block *hit = block_at(blocks, (int)(mario_x + MARIO_W / 2), (int)next_y);
+            Block *hit = block_at(blocks, (int)(mario_x + player_w / 2), (int)next_y);
             if (hit && !hit->used) {{
                 hit->used = true;
                 if (hit->metatile == 0x57) {{
@@ -1118,13 +1188,19 @@ int main(int argc, char **argv) {{
             vy = 0.0f;
         }}
         if (mario_x < 0.0f) mario_x = 0.0f;
-        if (mario_x > LEVEL_W - MARIO_W) mario_x = LEVEL_W - MARIO_W;
+        if (mario_x > LEVEL_W - player_w) mario_x = LEVEL_W - player_w;
         update_powerup(&powerup, collision, dt);
-        if (powerup.active && rects_overlap(mario_x, mario_y, MARIO_W, MARIO_H, powerup.x, powerup.y, MUSHROOM_W, MUSHROOM_H)) {{
+        if (powerup.active && rects_overlap(mario_x, mario_y, player_w, player_h, powerup.x, powerup.y, MUSHROOM_W, MUSHROOM_H)) {{
             powerup.active = false;
+            if (!mario_big) {{
+                mario_y -= (float)(BIG_MARIO_H - SMALL_MARIO_H);
+                mario_big = true;
+            }}
             coins += 10;
             update_window_title(window, coins);
         }}
+        player_w = mario_width(mario_big);
+        player_h = mario_height(mario_big);
 
         for (int i = 0; i < ENEMY_COUNT; i++) {{
             Enemy *enemy = &enemies[i];
@@ -1153,10 +1229,13 @@ int main(int argc, char **argv) {{
             if (!solid_at(collision, probe_x, foot_y)) {{
                 enemy->vx = -enemy->vx;
             }}
-            if (rects_overlap(mario_x, mario_y, MARIO_W, MARIO_H, enemy->x, enemy->y, ew, eh)) {{
-                if (vy > 40.0f && mario_y + MARIO_H - 4.0f < enemy->y + 8.0f) {{
+            if (rects_overlap(mario_x, mario_y, player_w, player_h, enemy->x, enemy->y, ew, eh)) {{
+                if (vy > 40.0f && mario_y + player_h - 4.0f < enemy->y + 8.0f) {{
                     enemy->alive = false;
                     vy = -160.0f;
+                }} else if (mario_big) {{
+                    mario_big = false;
+                    mario_y += (float)(BIG_MARIO_H - SMALL_MARIO_H);
                 }} else {{
                     mario_x = 48.0f;
                     mario_y = 176.0f;
@@ -1191,9 +1270,9 @@ int main(int argc, char **argv) {{
         }}
         draw_sprite(
             frame,
-            mario_sprite(mario_frames, on_ground, vx, now),
-            MARIO_W,
-            MARIO_H,
+            mario_sprite(small_mario_frames, big_mario_frames, mario_big, on_ground, vx, now),
+            mario_width(mario_big),
+            mario_height(mario_big),
             (int)mario_x - camera,
             (int)mario_y,
             facing_left
@@ -1212,7 +1291,10 @@ int main(int argc, char **argv) {{
     free(used_block);
     for (int i = 0; i < COIN_FRAME_COUNT; i++) free(coin_frames[i]);
     free(mushroom);
-    for (int i = 0; i < MARIO_FRAME_COUNT; i++) free(mario_frames[i]);
+    for (int i = 0; i < MARIO_FRAME_COUNT; i++) {{
+        free(small_mario_frames[i]);
+        free(big_mario_frames[i]);
+    }}
     free(goomba);
     free(koopa);
     free(enemy_data);
