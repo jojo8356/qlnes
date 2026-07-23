@@ -31,6 +31,7 @@ from qlnes.audio.in_process.memory import (
     NROMMemory,
     Taito33Memory,
     UxROMMemory,
+    VRC6Memory,
 )
 
 
@@ -550,6 +551,39 @@ def test_mapper5_mmc5_switches_prg_and_1k_chr_windows():
     snap = m.ppu_snapshot()
     assert snap.pattern_table[0x1000] == 27
     assert snap.pattern_table[0x13FF] == 27
+
+
+def test_mapper24_vrc6_switches_prg_and_1k_chr_windows():
+    banks = [bytes([bank_id] * 0x2000) for bank_id in range(8)]
+    chr_data = b"".join(bytes([bank_id] * 0x0400) for bank_id in range(32))
+    m = VRC6Memory(b"".join(banks), chr_data=chr_data, mapper=24)
+    assert m[0x8000] == 0
+    assert m[0xA000] == 1
+    assert m[0xC000] == 0
+    assert m[0xE000] == 7
+
+    m[0x8000] = 0x02
+    m[0xC000] = 0x06
+    assert m[0x8000] == 4
+    assert m[0xA000] == 5
+    assert m[0xC000] == 6
+    assert m[0xE000] == 7
+
+    m[0xE000] = 0x1B
+    snap = m.ppu_snapshot()
+    assert snap.pattern_table[0x1000] == 27
+    assert snap.pattern_table[0x13FF] == 27
+
+
+def test_mapper26_vrc6_swaps_a0_a1_register_decode():
+    banks = [bytes([bank_id] * 0x2000) for bank_id in range(8)]
+    chr_data = b"".join(bytes([bank_id] * 0x0400) for bank_id in range(32))
+    m = VRC6Memory(b"".join(banks), chr_data=chr_data, mapper=26)
+
+    m[0xE002] = 0x1B
+    snap = m.ppu_snapshot()
+    assert snap.pattern_table[0x1400] == 27
+    assert snap.pattern_table[0x17FF] == 27
 
 
 def test_mapper32_irem_g101_switches_prg_mode_and_1k_chr_windows():
