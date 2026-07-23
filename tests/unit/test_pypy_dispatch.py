@@ -9,6 +9,7 @@ Exercises each branch of the resolution chain via monkeypatching:
 Doesn't actually spawn a PyPy subprocess; that lives in the
 gated integration test (test_pypy_subprocess.py).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -91,6 +92,7 @@ def test_find_pypy_uses_default_repo_root_if_none_passed(monkeypatch, tmp_path):
 def test_decode_pcm_round_trips_a_synthetic_payload():
     """Build the exact protocol the child writes; assert decoder matches."""
     import struct
+
     pcm_bytes = b"\x01\x00\x02\x00\x03\x00"  # 6 bytes of PCM
     sample_rate = 48000
     raw = struct.pack("<II", len(pcm_bytes), sample_rate) + pcm_bytes
@@ -107,6 +109,7 @@ def test_decode_pcm_rejects_truncated_header():
 def test_decode_pcm_rejects_size_mismatch():
     """Header says 100 bytes of PCM, payload only has 5 → ValueError."""
     import struct
+
     raw = struct.pack("<II", 100, 44100) + b"\x00" * 5
     with pytest.raises(ValueError, match="length"):
         _decode_pcm(raw)

@@ -71,7 +71,9 @@ def write_audio_bilan(
     fmt: str,
     frames: int,
 ) -> None:
-    atomic_write_bytes(path, canonical_json_bytes(build_audio_bilan(result, fmt=fmt, frames=frames)))
+    atomic_write_bytes(
+        path, canonical_json_bytes(build_audio_bilan(result, fmt=fmt, frames=frames))
+    )
 
 
 def _encoder_block(fmt: str) -> dict[str, object] | None:

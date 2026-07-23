@@ -17,6 +17,7 @@ Covers F.3 acceptance criteria:
         RSS-delta sanity bound < 30 MB
 - AC6 — two consecutive runs produce byte-identical output (NFR-REL-1)
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -46,18 +47,14 @@ FIXTURE_PATH = (
 # Recompute and replace this value if the runner output legitimately
 # changes (and update the fixture file). Drift without an explanation
 # means a regression in the runner.
-REFERENCE_TRACE_SHA256 = (
-    "07d28dbb60880317facefec4c14e90ae773e7e50955ab1332880d29ed5c43672"
-)
+REFERENCE_TRACE_SHA256 = "07d28dbb60880317facefec4c14e90ae773e7e50955ab1332880d29ed5c43672"
 RUN_SONG_FIXTURE_PATH = (
     Path(__file__).resolve().parent.parent
     / "fixtures"
     / "in_process"
     / "alter_ego_run_song_600fr.tsv"
 )
-RUN_SONG_TRACE_SHA256 = (
-    "ea062dba9752a5ef9ba0175addca895f36eac253e0b4e7eca5ac6d3806694baa"
-)
+RUN_SONG_TRACE_SHA256 = "ea062dba9752a5ef9ba0175addca895f36eac253e0b4e7eca5ac6d3806694baa"
 
 
 pytestmark = pytest.mark.skipif(
@@ -67,9 +64,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def _trace_to_bytes(events) -> bytes:
-    return b"\n".join(
-        f"{e.cpu_cycle}\t{e.register}\t{e.value}".encode() for e in events
-    )
+    return b"\n".join(f"{e.cpu_cycle}\t{e.register}\t{e.value}".encode() for e in events)
 
 
 def _load_fixture_events() -> list[ApuWriteEvent]:
@@ -79,11 +74,7 @@ def _load_fixture_events() -> list[ApuWriteEvent]:
         if not line or line.startswith("#"):
             continue
         cyc_s, reg_s, val_s = line.split("\t")
-        events.append(
-            ApuWriteEvent(
-                cpu_cycle=int(cyc_s), register=int(reg_s), value=int(val_s)
-            )
-        )
+        events.append(ApuWriteEvent(cpu_cycle=int(cyc_s), register=int(reg_s), value=int(val_s)))
     return events
 
 
@@ -181,9 +172,7 @@ def test_ac2b_apu_register_range_valid(alter_ego_rom):
     runner = InProcessRunner(alter_ego_rom)
     events = list(runner.run_natural_boot(frames=600))
     for e in events:
-        assert 0x4000 <= e.register <= 0x4017, (
-            f"register {e.register:#x} out of APU range"
-        )
+        assert 0x4000 <= e.register <= 0x4017, f"register {e.register:#x} out of APU range"
         assert 0 <= e.value <= 0xFF, f"value {e.value} out of byte range"
 
 
@@ -193,9 +182,7 @@ def test_ac2b_cycles_monotonic_non_decreasing(alter_ego_rom):
     events = list(runner.run_natural_boot(frames=600))
     prev = -1
     for e in events:
-        assert e.cpu_cycle >= prev, (
-            f"cycle went backwards at {e!r} (prev={prev})"
-        )
+        assert e.cpu_cycle >= prev, f"cycle went backwards at {e!r} (prev={prev})"
         prev = e.cpu_cycle
 
 
@@ -209,9 +196,7 @@ def test_ac2b_init_signature_dpcm_disable_first(alter_ego_rom):
     runner = InProcessRunner(alter_ego_rom)
     events = list(runner.run_natural_boot(frames=600))
     first = events[0]
-    assert first.register == 0x4010, (
-        f"first write should be DPCM-disable at $4010; got {first!r}"
-    )
+    assert first.register == 0x4010, f"first write should be DPCM-disable at $4010; got {first!r}"
     assert first.value == 0x00
     # And it should be cycle-cheap: somewhere in the first hundred cycles
     assert first.cpu_cycle < 200
@@ -270,9 +255,11 @@ def test_ac2b_density_consistent_with_60hz_driver(alter_ego_rom):
 def test_ac3_no_subprocess_spawned(alter_ego_rom):
     """The runner must not spawn any subprocess (architecture step 20.0)."""
     runner = InProcessRunner(alter_ego_rom)
-    with patch("subprocess.run") as mock_run, \
-         patch("subprocess.Popen") as mock_popen, \
-         patch("os.fork", create=True) as mock_fork:
+    with (
+        patch("subprocess.run") as mock_run,
+        patch("subprocess.Popen") as mock_popen,
+        patch("os.fork", create=True) as mock_fork,
+    ):
         events = list(runner.run_natural_boot(frames=10))
     assert mock_run.call_count == 0
     assert mock_popen.call_count == 0
@@ -317,9 +304,7 @@ def test_ac5_python_heap_under_10mb(alter_ego_rom):
     tracemalloc.stop()
 
     peak_mb = peak_bytes / 1024 / 1024
-    assert peak_mb < 10.0, (
-        f"Python heap peak during render = {peak_mb:.2f} MB, exceeds 10 MB"
-    )
+    assert peak_mb < 10.0, f"Python heap peak during render = {peak_mb:.2f} MB, exceeds 10 MB"
     # Anchor: keep events alive so they don't get GC'd before measurement
     assert len(events) > 0
 
@@ -345,7 +330,7 @@ def test_ac5_rss_delta_diagnostic(alter_ego_rom):
     delta_mb = (rss_after_kb - rss_before_kb) / 1024
     assert delta_mb < 30.0, (
         f"RSS delta during render = {delta_mb:.2f} MB; "
-        f"baseline {rss_before_kb/1024:.1f} MB → peak {rss_after_kb/1024:.1f} MB"
+        f"baseline {rss_before_kb / 1024:.1f} MB → peak {rss_after_kb / 1024:.1f} MB"
     )
     assert len(events) > 0
 
@@ -466,9 +451,7 @@ def test_f4_ac4_run_song_byte_diff_diagnostic(alter_ego_rom):
             continue
         cyc_s, reg_s, val_s = line.split("\t")
         fixture_events.append(
-            ApuWriteEvent(
-                cpu_cycle=int(cyc_s), register=int(reg_s), value=int(val_s)
-            )
+            ApuWriteEvent(cpu_cycle=int(cyc_s), register=int(reg_s), value=int(val_s))
         )
     init, play = _ft_init_play(alter_ego_rom)
     runner = InProcessRunner(alter_ego_rom)

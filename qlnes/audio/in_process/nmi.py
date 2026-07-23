@@ -22,6 +22,7 @@ Two helpers:
   ROM's NMI vector at $FFFA-$FFFB. Used by `run_natural_boot` where
   we trust the ROM to have set up a valid NMI handler.
 """
+
 from __future__ import annotations
 
 NMI_VECTOR_LO = 0xFFFA

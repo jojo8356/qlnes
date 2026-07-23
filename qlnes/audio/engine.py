@@ -80,9 +80,7 @@ class InProcessUnavailable(NotImplementedError):
     """
 
     def __init__(self, engine_name: str) -> None:
-        super().__init__(
-            f"engine {engine_name!r} does not support in-process rendering"
-        )
+        super().__init__(f"engine {engine_name!r} does not support in-process rendering")
         self.meta: dict[str, str] = {
             "class": "in_process_unavailable",
             "engine": engine_name,
@@ -137,9 +135,7 @@ class SoundEngine(abc.ABC):
         """CPU address ($8000-$FFFF) of the per-frame play routine."""
         raise InProcessUnavailable(self.name)
 
-    def render_song_in_process(
-        self, rom: Rom, song: SongEntry, *, frames: int = 600
-    ) -> PcmStream:
+    def render_song_in_process(self, rom: Rom, song: SongEntry, *, frames: int = 600) -> PcmStream:
         """Render `song` via the v0.6 in-process pipeline (F.3 + F.4 + F.5).
 
         Default impl: call `init_addr` and `play_addr` to get the music
@@ -197,18 +193,14 @@ def _resolve_in_process_pcm(
         pypy = find_pypy()
         if pypy is not None:
             try:
-                result = render_song_via_pypy(
-                    pypy, rom.path, init_addr, play_addr, frames=frames
-                )
+                result = render_song_via_pypy(pypy, rom.path, init_addr, play_addr, frames=frames)
                 if result.sample_rate != 44_100:
                     raise ValueError(
                         f"PyPy child returned unexpected sample_rate "
                         f"{result.sample_rate}; expected 44100"
                     )
                 return result.pcm, result.sample_rate
-            except (subprocess.CalledProcessError,
-                    subprocess.TimeoutExpired,
-                    ValueError) as e:
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError) as e:
                 # PyPy was tried but the render failed cleanly. Emit a
                 # warning so the user can investigate (vs the previous
                 # behavior which silently degraded to slow path), then
@@ -222,8 +214,7 @@ def _resolve_in_process_pcm(
                     "pypy_render_failed",
                     f"PyPy subprocess render failed ({type(e).__name__}); "
                     f"falling back to CPython in-process path",
-                    hint=("Check `PYPY_BIN` points at a working PyPy 3.11 "
-                          "with py65 installed."),
+                    hint=("Check `PYPY_BIN` points at a working PyPy 3.11 with py65 installed."),
                     extra={
                         "exception": type(e).__name__,
                         "stderr_excerpt": stderr_excerpt,

@@ -3,6 +3,7 @@
 These tests use synthetic 32 KB ROMs so they don't depend on the corpus.
 The Alter Ego full-render test lives under tests/integration/.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -49,7 +50,10 @@ def test_constructor_rejects_unsupported_mapper():
         raw = b"\x00" * 0x8000
 
     rom = UnsupportedMapperRom()
-    with pytest.raises(ValueError, match="supports mapper 0, 1, 2, 3, 4, 5, 7, 9, 10, 11, 13, 16, 18, 19, 21, 22, 23, 24, 25, 26, 32, 33, 34, 42, 64, 66, 69, 70, 71, 72, 75, 78, 79, 85, 87, 101 and 206 only"):
+    with pytest.raises(
+        ValueError,
+        match="supports mapper 0, 1, 2, 3, 4, 5, 7, 9, 10, 11, 13, 16, 18, 19, 21, 22, 23, 24, 25, 26, 32, 33, 34, 42, 64, 66, 69, 70, 71, 72, 75, 78, 79, 85, 87, 101 and 206 only",
+    ):
         InProcessRunner(rom)
 
 
@@ -164,5 +168,6 @@ def test_run_song_back_to_back_on_same_runner_is_deterministic():
     e2 = list(runner.run_song(0x8000, 0x8000, frames=3))
     # Cycle stamps should match exactly because mpu.reset() puts
     # processorCycles back to 0
-    assert [(e.cpu_cycle, e.register, e.value) for e in e1] == \
-           [(e.cpu_cycle, e.register, e.value) for e in e2]
+    assert [(e.cpu_cycle, e.register, e.value) for e in e1] == [
+        (e.cpu_cycle, e.register, e.value) for e in e2
+    ]

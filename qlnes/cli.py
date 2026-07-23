@@ -26,6 +26,7 @@ def _root_callback() -> None:
     `--log-level` / `--quiet` / `--debug` flags.
     """
     from .io.log import setup_logging
+
     setup_logging(level="INFO", use_color=sys.stderr.isatty())
 
 
@@ -102,9 +103,7 @@ def _resolve_runtime_sample_frames(
     listed = _parse_frame_list(frame_list)
     ranged = _parse_frame_range(frame_range)
     if listed is not None and ranged is not None:
-        raise typer.BadParameter(
-            "--runtime-sample-frames et --runtime-sample-range sont exclusifs"
-        )
+        raise typer.BadParameter("--runtime-sample-frames et --runtime-sample-range sont exclusifs")
     return listed if listed is not None else ranged
 
 
@@ -153,6 +152,7 @@ def analyze(
 ) -> None:
     """Analyse une ROM NES."""
     from .io.log import get_logger
+
     _resolve_log_level(quiet, log_level="INFO", color="auto")
     logger = get_logger(__name__)
 
@@ -218,7 +218,9 @@ def analyze(
                 bank_path.write_text(content, encoding="utf-8")
                 logger.info(
                     "✓ ASM annoté écrit : %s (bank %d/%d)",
-                    bank_path, i, len(profile.bank_asms) - 1,
+                    bank_path,
+                    i,
+                    len(profile.bank_asms) - 1,
                 )
         else:
             asm.write_text(profile.annotated_asm + chr_block, encoding="utf-8")
@@ -246,6 +248,7 @@ def recompile(
 ) -> None:
     """Re-assemble la ROM depuis le désassemblage annoté."""
     from .io.log import get_logger
+
     _resolve_log_level(quiet, log_level="INFO", color="auto")
     logger = get_logger(__name__)
 
@@ -269,6 +272,7 @@ def verify(
 ) -> None:
     """Compare deux ROM byte-pour-byte (ou round-trip si recompiled absent)."""
     from .io.log import get_logger
+
     _resolve_log_level(quiet, log_level="INFO", color="auto")
     logger = get_logger(__name__)
 
@@ -638,14 +642,14 @@ def sprites(
     logger = get_logger(__name__)
     sample_frames = _resolve_runtime_sample_frames(runtime_sample_frames, runtime_sample_range)
     if runtime_frames is not None and sample_frames is not None:
-        raise typer.BadParameter(
-            "--runtime-frames est exclusif avec les options runtime sample"
-        )
+        raise typer.BadParameter("--runtime-frames est exclusif avec les options runtime sample")
     if runtime_input is not None and runtime_frames is None and sample_frames is None:
         raise typer.BadParameter("--runtime-input demande --runtime-frames ou --runtime-sample-*")
     controller1_frames = None
     if runtime_input is not None:
-        controller_frame_count = runtime_frames if runtime_frames is not None else max(sample_frames or (1,))
+        controller_frame_count = (
+            runtime_frames if runtime_frames is not None else max(sample_frames or (1,))
+        )
         controller1_frames = parse_runtime_input_script(runtime_input, controller_frame_count)
 
     if snapshot is not None:
@@ -831,14 +835,14 @@ def sprites_batch(
     palette_source = "user" if palette_values is not None else "preview"
     sample_frames = _resolve_runtime_sample_frames(runtime_sample_frames, runtime_sample_range)
     if runtime_frames is not None and sample_frames is not None:
-        raise typer.BadParameter(
-            "--runtime-frames est exclusif avec les options runtime sample"
-        )
+        raise typer.BadParameter("--runtime-frames est exclusif avec les options runtime sample")
     if runtime_input is not None and runtime_frames is None and sample_frames is None:
         raise typer.BadParameter("--runtime-input demande --runtime-frames ou --runtime-sample-*")
     controller1_frames = None
     if runtime_input is not None:
-        controller_frame_count = runtime_frames if runtime_frames is not None else max(sample_frames or (1,))
+        controller_frame_count = (
+            runtime_frames if runtime_frames is not None else max(sample_frames or (1,))
+        )
         controller1_frames = parse_runtime_input_script(runtime_input, controller_frame_count)
     manifest = export_sprite_batch(
         input_path,
@@ -1058,7 +1062,10 @@ def nsf(
     )
     logger.info(
         "✓ NSF écrit : %s  (load=$%04X, init=$%04X, play=$%04X)",
-        output, build.load_addr, build.init_addr, build.play_addr,
+        output,
+        build.load_addr,
+        build.init_addr,
+        build.play_addr,
     )
     if build.note:
         logger.info("%s", build.note)
@@ -1078,7 +1085,9 @@ def smb_nsf(
     ] = None,
     fade_seconds: Annotated[
         float,
-        typer.Option("--fade-seconds", help="Fade appliqué en fin de MP3, sans dépasser la durée réelle"),
+        typer.Option(
+            "--fade-seconds", help="Fade appliqué en fin de MP3, sans dépasser la durée réelle"
+        ),
     ] = 2.0,
     bitrate: Annotated[str, typer.Option("--bitrate", help="Bitrate ffmpeg/libmp3lame")] = "192k",
     title: Annotated[
@@ -1259,6 +1268,7 @@ def main(argv: list[str] | None = None) -> int:
     # paths below. The @app.callback() also calls setup_logging, but if
     # typer raises a UsageError on argv parsing the callback never fires.
     from .io.log import get_logger, setup_logging
+
     setup_logging(level="INFO", use_color=sys.stderr.isatty())
     logger = get_logger(__name__)
     try:

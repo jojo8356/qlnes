@@ -15,6 +15,7 @@ both turns it into ~6 s.
 If PyPy isn't found, the renderer's caller falls back to the
 in-process CPython path with no behavior change (just slower).
 """
+
 from __future__ import annotations
 
 import os
@@ -30,6 +31,7 @@ _HEADER = struct.Struct("<II")  # PCM byte count + sample rate
 @dataclass(frozen=True)
 class PypyRenderResult:
     """Bytes-level PCM produced by the PyPy child + sample rate."""
+
     pcm: bytes
     sample_rate: int
 
@@ -117,6 +119,6 @@ def _decode_pcm(raw: bytes) -> PypyRenderResult:
             f"declared PCM size {pcm_len} (expected {expected_total} bytes)"
         )
     return PypyRenderResult(
-        pcm=raw[_HEADER.size:],
+        pcm=raw[_HEADER.size :],
         sample_rate=sample_rate,
     )

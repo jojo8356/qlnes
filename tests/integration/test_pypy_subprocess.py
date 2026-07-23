@@ -9,6 +9,7 @@ Verifies AC3 (PyPy result byte-equal to CPython result) and AC7
 (end-to-end speedup ≥ 3x on Alter Ego). AC1/AC2/AC4-AC6 are covered by
 unit tests (`test_pypy_dispatch.py`).
 """
+
 from __future__ import annotations
 
 import os
@@ -54,9 +55,7 @@ def test_pypy_pcm_matches_cpython_pcm_on_alter_ego(alter_ego_rom):
     play = e.play_addr(alter_ego_rom, song)
 
     # PyPy path
-    pypy_result = render_song_via_pypy(
-        _PYPY, alter_ego_rom.path, init, play, frames=300
-    )
+    pypy_result = render_song_via_pypy(_PYPY, alter_ego_rom.path, init, play, frames=300)
 
     # CPython in-process path (force by hiding PyPy from the resolver).
     # We construct the in-process result directly using the same code
@@ -83,9 +82,7 @@ def test_pypy_pcm_matches_cpython_pcm_on_alter_ego(alter_ego_rom):
 # ---- AC7: end-to-end speedup >= 3x on Alter Ego -------------------------
 
 
-def test_pypy_path_is_at_least_3x_faster_than_cpython_on_alter_ego(
-    alter_ego_rom, capsys
-):
+def test_pypy_path_is_at_least_3x_faster_than_cpython_on_alter_ego(alter_ego_rom, capsys):
     """AC7 — full `render_song_in_process` end-to-end (CPU emu +
     ApuEmulator + PCM transfer) is ≥ 3x faster on PyPy than on CPython.
 
@@ -103,13 +100,12 @@ def test_pypy_path_is_at_least_3x_faster_than_cpython_on_alter_ego(
         # can't easily strip PATH for an in-process call, so we
         # monkeypatch find_pypy via the env strip + a saved copy.
         from qlnes.audio.in_process import _pypy_dispatch as pd
+
         original_find = pd.find_pypy
         pd.find_pypy = lambda **kw: None
         try:
             t0 = time.perf_counter()
-            cpython_pcm = e.render_song_in_process(
-                alter_ego_rom, song, frames=300
-            )
+            cpython_pcm = e.render_song_in_process(alter_ego_rom, song, frames=300)
             cpython_wall = time.perf_counter() - t0
         finally:
             pd.find_pypy = original_find
@@ -134,8 +130,7 @@ def test_pypy_path_is_at_least_3x_faster_than_cpython_on_alter_ego(
     # PCM must still match
     assert cpython_pcm.samples == pypy_pcm.samples
     assert speedup >= 3.0, (
-        f"PyPy path delivered only {speedup:.2f}x speedup; "
-        f"expected ≥ 3x per F.5b AC7"
+        f"PyPy path delivered only {speedup:.2f}x speedup; expected ≥ 3x per F.5b AC7"
     )
 
 
@@ -202,6 +197,7 @@ def test_pypy_fork_does_not_recurse_when_already_on_pypy(monkeypatch):
 
     from qlnes.audio.engine import _resolve_in_process_pcm
     from qlnes.audio.in_process import _pypy_dispatch as pd
+
     fake_impl = types.SimpleNamespace(name="pypy")
     monkeypatch.setattr(sys, "implementation", fake_impl, raising=False)
 

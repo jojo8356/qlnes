@@ -1,4 +1,5 @@
 """Unit tests for qlnes.audio.in_process.memory.NROMMemory."""
+
 from __future__ import annotations
 
 import pytest
@@ -242,7 +243,7 @@ def test_reset_capture_does_not_touch_ram_or_flags():
     """reset_capture is a NARROW reset — RAM, NMI, vblank stay put."""
     m = NROMMemory(_prg32())
     m[0x0123] = 0xAB
-    m[0x2000] = 0x80   # set nmi_enabled
+    m[0x2000] = 0x80  # set nmi_enabled
     m.vbl_flag = True
     m.reset_capture()
     assert m[0x0123] == 0xAB
@@ -258,10 +259,10 @@ def test_reset_state_clears_ram_and_flags_and_capture():
     # Pollute everything
     m[0x0123] = 0xAB
     m[0x07FF] = 0xCC
-    m[0x2000] = 0x80   # set nmi_enabled
+    m[0x2000] = 0x80  # set nmi_enabled
     m.vbl_flag = True
     m.cpu_cycles = 12345
-    m[0x4000] = 0x30   # capture an event
+    m[0x4000] = 0x30  # capture an event
     assert len(m.apu_writes) == 1
     # Now reset everything
     m.reset_state()

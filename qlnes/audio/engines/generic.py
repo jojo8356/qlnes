@@ -60,9 +60,7 @@ class GenericFallbackEngine(SoundEngine):
     ) -> PcmStream:
         return self.render_song_in_process(rom, song, frames=frames)
 
-    def render_song_in_process(
-        self, rom: Rom, song: SongEntry, *, frames: int = 600
-    ) -> PcmStream:
+    def render_song_in_process(self, rom: Rom, song: SongEntry, *, frames: int = 600) -> PcmStream:
         runner = InProcessRunner(rom)
         events = list(runner.run_natural_boot(frames=frames))
         emu = ApuEmulator()

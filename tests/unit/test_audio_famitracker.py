@@ -54,7 +54,7 @@ def _embedded_nsf_header(song_count: int = 3) -> bytes:
     header[0x08:0x0A] = (0x8000).to_bytes(2, "little")
     header[0x0A:0x0C] = (0x8123).to_bytes(2, "little")
     header[0x0C:0x0E] = (0x8456).to_bytes(2, "little")
-    header[0x0E:0x0E + 8] = b"Demo OST"
+    header[0x0E : 0x0E + 8] = b"Demo OST"
     return bytes(header)
 
 
@@ -94,7 +94,7 @@ def test_detect_no_signature_low_confidence():
 
 def test_detect_apu_writes_without_signature_stays_below_threshold():
     eng = FamiTrackerEngine()
-    sta_apu_pulse1 = b"\x8D\x00\x40"
+    sta_apu_pulse1 = b"\x8d\x00\x40"
     prg = sta_apu_pulse1 * 32
     r = eng.detect(_FakeRom(mapper=0, prg=prg))
     assert r.confidence < 0.6

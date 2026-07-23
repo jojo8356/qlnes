@@ -46,6 +46,7 @@ def _emit_line(level: int, prefix: str, msg: str, *, color: bool = False) -> Non
         line = ansi + prefix + "\033[0m" + msg
     sys.stderr.write(line + "\n")
 
+
 EXIT_CODES: dict[str, int] = {
     "usage_error": 64,
     "bad_format_arg": 64,
@@ -70,8 +71,7 @@ DEFAULT_HINTS: dict[str, str | None] = {
     "cant_create": "Add --force, or pick a different --output path.",
     "io_error": "Check disk space and permissions.",
     "unsupported_mapper": "Run `qlnes coverage` for the support matrix.",
-    "in_process_unavailable":
-        "Try `--engine-mode auto` to fall back to oracle, or `qlnes coverage` for the support matrix.",
+    "in_process_unavailable": "Try `--engine-mode auto` to fall back to oracle, or `qlnes coverage` for the support matrix.",
     "equivalence_failed": "Re-run with --debug to dump the divergence frame.",
     "missing_reference": "Generate the reference: see corpus/README.md.",
     "interrupted": None,

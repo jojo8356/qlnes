@@ -175,34 +175,68 @@ def _build_wrapper_bank(
         0xAA,  # TAX
         0x78,  # SEI
         0xD8,  # CLD
-        0xA9, 0x00,  # LDA #$00
+        0xA9,
+        0x00,  # LDA #$00
         0xA8,  # TAY
         # clear_loop:
-        0x99, 0x00, 0x00,  # STA $0000,Y
-        0x99, 0x00, 0x01,  # STA $0100,Y
-        0x99, 0x00, 0x02,  # STA $0200,Y
-        0x99, 0x00, 0x03,  # STA $0300,Y
-        0x99, 0x00, 0x04,  # STA $0400,Y
-        0x99, 0x00, 0x05,  # STA $0500,Y
-        0x99, 0x00, 0x06,  # STA $0600,Y
-        0x99, 0x00, 0x07,  # STA $0700,Y
+        0x99,
+        0x00,
+        0x00,  # STA $0000,Y
+        0x99,
+        0x00,
+        0x01,  # STA $0100,Y
+        0x99,
+        0x00,
+        0x02,  # STA $0200,Y
+        0x99,
+        0x00,
+        0x03,  # STA $0300,Y
+        0x99,
+        0x00,
+        0x04,  # STA $0400,Y
+        0x99,
+        0x00,
+        0x05,  # STA $0500,Y
+        0x99,
+        0x00,
+        0x06,  # STA $0600,Y
+        0x99,
+        0x00,
+        0x07,  # STA $0700,Y
         0xC8,  # INY
-        0xD0, 0xE5,  # BNE clear_loop
-        0xA9, 0x01,  # LDA #$01
-        0x8D, 0x70, 0x07,  # STA $0770 ; OperMode != title
+        0xD0,
+        0xE5,  # BNE clear_loop
+        0xA9,
+        0x01,  # LDA #$01
+        0x8D,
+        0x70,
+        0x07,  # STA $0770 ; OperMode != title
         0x8A,  # TXA
-        0xC9, len(tracks),  # CMP #track_count
-        0x90, 0x02,  # BCC valid
-        0xA9, 0x00,  # LDA #$00
+        0xC9,
+        len(tracks),  # CMP #track_count
+        0x90,
+        0x02,  # BCC valid
+        0xA9,
+        0x00,  # LDA #$00
         # valid:
         0xAA,  # TAX
-        0xBD, 0x60, 0x80,  # LDA queue_addr_lo,X
-        0x85, 0x00,  # STA $00
-        0xBD, 0x80, 0x80,  # LDA queue_addr_hi,X
-        0x85, 0x01,  # STA $01
-        0xBD, 0xA0, 0x80,  # LDA queue_value,X
-        0xA0, 0x00,  # LDY #$00
-        0x91, 0x00,  # STA ($00),Y
+        0xBD,
+        0x60,
+        0x80,  # LDA queue_addr_lo,X
+        0x85,
+        0x00,  # STA $00
+        0xBD,
+        0x80,
+        0x80,  # LDA queue_addr_hi,X
+        0x85,
+        0x01,  # STA $01
+        0xBD,
+        0xA0,
+        0x80,  # LDA queue_value,X
+        0xA0,
+        0x00,  # LDY #$00
+        0x91,
+        0x00,  # STA ($00),Y
         0x60,  # RTS
     ]
     code[0 : len(init)] = init
@@ -405,10 +439,7 @@ def _square2_duration_for_header_y(
     header_addr = SMB_MUSIC_HEADER_DATA_ADDR + header_offset
     note_len_lookup_offset = _cpu_read(prg, header_addr)
     music_data_addr = _cpu_read_word(prg, header_addr + 1)
-    lengths = [
-        _cpu_read(prg, SMB_MUSIC_LENGTH_LOOKUP_ADDR + i)
-        for i in range(48)
-    ]
+    lengths = [_cpu_read(prg, SMB_MUSIC_LENGTH_LOOKUP_ADDR + i) for i in range(48)]
 
     frames = 0
     current_note_len = 0
@@ -425,9 +456,7 @@ def _square2_duration_for_header_y(
         if byte >= 0x80:
             lookup_index = (byte & 0x07) + note_len_lookup_offset + note_length_adder
             if lookup_index >= len(lengths):
-                raise ValueError(
-                    f"SMB note length lookup out of range: {lookup_index}"
-                )
+                raise ValueError(f"SMB note length lookup out of range: {lookup_index}")
             current_note_len = lengths[lookup_index]
             # The engine immediately fetches the following note/rest byte after
             # a length byte; it does not treat a zero here as EndOfMusicData.

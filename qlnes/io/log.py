@@ -9,6 +9,7 @@ the rest of qlnes calls into, and threads in the v0.6-default SQL
 handler so every render persists logs to a SQLite file inspectable by
 `ulog-web` (see `qlnes/io/log.py::DEFAULT_LOG_DB`).
 """
+
 from __future__ import annotations
 
 import logging

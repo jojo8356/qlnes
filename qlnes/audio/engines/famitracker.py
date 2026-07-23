@@ -327,7 +327,11 @@ def _songs_from_embedded_nsf_header(rom: Rom) -> list[SongEntry]:
     init_addr = metadata["init_addr"]
     play_addr = metadata["play_addr"]
     name = metadata.get("name")
-    if not isinstance(count, int) or not isinstance(init_addr, int) or not isinstance(play_addr, int):
+    if (
+        not isinstance(count, int)
+        or not isinstance(init_addr, int)
+        or not isinstance(play_addr, int)
+    ):
         return []
     label_prefix = name if isinstance(name, str) and name else "nsf"
     return [
@@ -421,8 +425,7 @@ def _render_famitone2_static(rom: Rom, song: SongEntry, *, frames: int) -> PcmSt
     )
     max_rows = max(1, (frames // 2) + 8)
     channel_rows = [
-        read_channel_rows(prg, ft_song, channel=channel, max_rows=max_rows)
-        for channel in range(4)
+        read_channel_rows(prg, ft_song, channel=channel, max_rows=max_rows) for channel in range(4)
     ]
     emu = ApuEmulator()
     row_frames = max(1, channel_rows[0].speed if channel_rows else 6)
@@ -458,9 +461,7 @@ def _render_famitone2_static(rom: Rom, song: SongEntry, *, frames: int) -> PcmSt
     )
 
 
-def _write_channel_note(
-    emu: ApuEmulator, channel: int, note_code: int, cycle: int
-) -> int:
+def _write_channel_note(emu: ApuEmulator, channel: int, note_code: int, cycle: int) -> int:
     if channel in (0, 1):
         return _write_pulse_note(emu, channel, note_code, cycle)
     elif channel == 2:
@@ -572,10 +573,7 @@ def _read_le16_at_cpu(rom: Rom, cpu_addr: int) -> int:
     [0x8000, 0xFFFF].
     """
     if not 0x8000 <= cpu_addr <= 0xFFFE:
-        raise ValueError(
-            f"cpu_addr {cpu_addr:#x} out of NROM PRG range "
-            f"$8000-$FFFE (need 2 bytes)"
-        )
+        raise ValueError(f"cpu_addr {cpu_addr:#x} out of NROM PRG range $8000-$FFFE (need 2 bytes)")
     prg = rom.prg if rom.header is not None else rom.raw
     if len(prg) == 0x4000:
         # NROM-128: 16 KB PRG mirrored. Both $8xxx and $Cxxx map to same offset.

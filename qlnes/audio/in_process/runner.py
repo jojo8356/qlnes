@@ -20,6 +20,7 @@ Two run shapes are exposed:
   60 Hz cadence. Used when no engine handler implements init/play
   (the F.2 spike path; works for Alter Ego).
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
@@ -84,9 +85,7 @@ class InProcessRunner:
     def __init__(self, rom: Rom, *, cpu_backend: str = "py65") -> None:
         if cpu_backend != "py65":
             # F.11 may add "native" via a Cython port or cynes-fork; not now.
-            raise ValueError(
-                f"unknown cpu_backend {cpu_backend!r}; only 'py65' is implemented"
-            )
+            raise ValueError(f"unknown cpu_backend {cpu_backend!r}; only 'py65' is implemented")
         self.rom = rom
         self._cpu_backend = cpu_backend
         self._mem = self._build_memory(rom)
@@ -97,7 +96,46 @@ class InProcessRunner:
     @staticmethod
     def _build_memory(rom: Rom) -> Memory:
         mapper = rom.mapper
-        if mapper not in (0, 1, 2, 3, 4, 5, 7, 9, 10, 11, 13, 16, 18, 19, 21, 22, 23, 24, 25, 26, 32, 33, 34, 42, 64, 66, 69, 70, 71, 72, 75, 78, 79, 85, 87, 101, 206, None):
+        if mapper not in (
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            7,
+            9,
+            10,
+            11,
+            13,
+            16,
+            18,
+            19,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            32,
+            33,
+            34,
+            42,
+            64,
+            66,
+            69,
+            70,
+            71,
+            72,
+            75,
+            78,
+            79,
+            85,
+            87,
+            101,
+            206,
+            None,
+        ):
             raise ValueError(
                 f"InProcessRunner currently supports mapper 0, 1, 2, 3, 4, 5, 7, 9, 10, 11, 13, 16, 18, 19, 21, 22, 23, 24, 25, 26, 32, 33, 34, 42, 64, 66, 69, 70, 71, 72, 75, 78, 79, 85, 87, 101 and 206 only; "
                 f"got mapper {mapper}."
@@ -336,9 +374,7 @@ class InProcessRunner:
         return snap()
 
 
-def render_rom(
-    rom_path: Path | str, *, frames: int = 600
-) -> list[ApuWriteEvent]:
+def render_rom(rom_path: Path | str, *, frames: int = 600) -> list[ApuWriteEvent]:
     """Convenience: load ROM from path and run natural boot. Returns a list."""
     rom = Rom.from_file(rom_path)
     runner = InProcessRunner(rom)

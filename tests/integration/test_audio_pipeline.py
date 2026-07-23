@@ -209,9 +209,7 @@ def _build_synthetic_nrom_with_famitone2_table() -> bytes:
         base = table + 5 + song * 14
         for channel in range(5):
             pointer = 0x8500 + song * 0x100 + channel * 0x10
-            prg[base + channel * 2 : base + channel * 2 + 2] = pointer.to_bytes(
-                2, "little"
-            )
+            prg[base + channel * 2 : base + channel * 2 + 2] = pointer.to_bytes(2, "little")
             stream = pointer - 0x8000
             if channel == 0:
                 prg[stream : stream + 4] = bytes(
@@ -438,10 +436,7 @@ def test_rendered_music_is_longer_than_one_second_and_matches_expected_frequency
         sample_rate = wf.getframerate()
         frame_count = wf.getnframes()
         raw = wf.readframes(frame_count)
-    samples = [
-        int.from_bytes(raw[i : i + 2], "little", signed=True)
-        for i in range(0, len(raw), 2)
-    ]
+    samples = [int.from_bytes(raw[i : i + 2], "little", signed=True) for i in range(0, len(raw), 2)]
     duration = frame_count / sample_rate
     peak_to_peak = max(samples) - min(samples)
     measured_hz = _dominant_frequency(samples[sample_rate // 10 :], sample_rate)
@@ -474,8 +469,7 @@ def test_metadata_song_table_renders_all_songs_with_distinct_expected_frequencie
             frame_count = wf.getnframes()
             raw = wf.readframes(frame_count)
         samples = [
-            int.from_bytes(raw[i : i + 2], "little", signed=True)
-            for i in range(0, len(raw), 2)
+            int.from_bytes(raw[i : i + 2], "little", signed=True) for i in range(0, len(raw), 2)
         ]
         assert frame_count / sample_rate > 1.0
         assert max(samples) - min(samples) > 1000
@@ -510,8 +504,7 @@ def test_famitone2_table_renders_all_detected_songs_with_expected_frequencies(
             frame_count = wf.getnframes()
             raw = wf.readframes(frame_count)
         samples = [
-            int.from_bytes(raw[i : i + 2], "little", signed=True)
-            for i in range(0, len(raw), 2)
+            int.from_bytes(raw[i : i + 2], "little", signed=True) for i in range(0, len(raw), 2)
         ]
         assert frame_count / sample_rate > 1.0
         assert max(samples) - min(samples) > 1000
@@ -535,10 +528,7 @@ def test_famitone2_static_render_follows_note_changes(
         sample_rate = wf.getframerate()
         frame_count = wf.getnframes()
         raw = wf.readframes(frame_count)
-    samples = [
-        int.from_bytes(raw[i : i + 2], "little", signed=True)
-        for i in range(0, len(raw), 2)
-    ]
+    samples = [int.from_bytes(raw[i : i + 2], "little", signed=True) for i in range(0, len(raw), 2)]
     first_segment = samples[int(sample_rate * 0.15) : int(sample_rate * 0.45)]
     second_segment = samples[int(sample_rate * 0.75) : int(sample_rate * 1.25)]
 
@@ -561,10 +551,7 @@ def test_famitone2_static_render_uses_pulse2_when_pulse1_is_silent(
         sample_rate = wf.getframerate()
         frame_count = wf.getnframes()
         raw = wf.readframes(frame_count)
-    samples = [
-        int.from_bytes(raw[i : i + 2], "little", signed=True)
-        for i in range(0, len(raw), 2)
-    ]
+    samples = [int.from_bytes(raw[i : i + 2], "little", signed=True) for i in range(0, len(raw), 2)]
 
     assert frame_count / sample_rate > 1.0
     assert max(samples) - min(samples) > 1000
@@ -591,10 +578,7 @@ def test_famitone2_static_render_uses_triangle_when_pulses_are_silent(
         sample_rate = wf.getframerate()
         frame_count = wf.getnframes()
         raw = wf.readframes(frame_count)
-    samples = [
-        int.from_bytes(raw[i : i + 2], "little", signed=True)
-        for i in range(0, len(raw), 2)
-    ]
+    samples = [int.from_bytes(raw[i : i + 2], "little", signed=True) for i in range(0, len(raw), 2)]
 
     assert frame_count / sample_rate > 1.0
     assert max(samples) - min(samples) > 1000

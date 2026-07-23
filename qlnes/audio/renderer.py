@@ -131,8 +131,7 @@ def render_rom_audio_v2(
     if engine_mode not in ENGINE_MODE_VALUES:
         raise QlnesError(
             "usage_error",
-            f"--engine-mode {engine_mode!r} not recognized; "
-            f"valid: {', '.join(ENGINE_MODE_VALUES)}",
+            f"--engine-mode {engine_mode!r} not recognized; valid: {', '.join(ENGINE_MODE_VALUES)}",
             extra={"engine_mode": engine_mode, "valid": list(ENGINE_MODE_VALUES)},
         )
     rom_path = Path(rom_path)
@@ -226,7 +225,12 @@ def render_rom_audio_v2(
     try:
         for song, target in zip(songs, targets, strict=True):
             stream, song_mode, oracle = _render_one(
-                engine, rom, song, frames, engine_mode, oracle=oracle,
+                engine,
+                rom,
+                song,
+                frames,
+                engine_mode,
+                oracle=oracle,
             )
             if song_mode == "oracle":
                 used_mode = "oracle"

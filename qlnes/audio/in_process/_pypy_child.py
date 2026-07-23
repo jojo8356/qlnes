@@ -18,6 +18,7 @@ Stderr is left available for child diagnostics; the parent ignores it
 unless `subprocess.run` returns non-zero (CalledProcessError surfaces
 stderr in its message).
 """
+
 from __future__ import annotations
 
 import struct
@@ -27,9 +28,7 @@ from pathlib import Path
 
 def main() -> int:
     if len(sys.argv) != 5:
-        sys.stderr.write(
-            f"usage: {sys.argv[0]} <rom_path> <init_hex> <play_hex> <frames>\n"
-        )
+        sys.stderr.write(f"usage: {sys.argv[0]} <rom_path> <init_hex> <play_hex> <frames>\n")
         return 2
 
     # Make the qlnes package importable from the child. The child sits

@@ -11,6 +11,7 @@ These tests do NOT require fceux to be installed:
   (AC2's full oracle render is in test_cli_audio.py with explicit
   --engine-mode oracle, gated on fceux being installed).
 """
+
 from __future__ import annotations
 
 import json
@@ -65,9 +66,12 @@ def test_cli_in_process_succeeds_without_fceux(tmp_path):
     r = _run_qlnes(
         "audio",
         str(ROM_PATH),
-        "--output", str(out),
-        "--frames", "60",  # 1 second of audio for fast test
-        "--engine-mode", "in-process",
+        "--output",
+        str(out),
+        "--frames",
+        "60",  # 1 second of audio for fast test
+        "--engine-mode",
+        "in-process",
     )
     assert r.returncode == 0, f"stderr:\n{r.stderr}"
     wavs = list(out.glob("*.wav"))
@@ -91,8 +95,10 @@ def test_cli_auto_default_picks_in_process(tmp_path):
     r = _run_qlnes(
         "audio",
         str(ROM_PATH),
-        "--output", str(out),
-        "--frames", "60",
+        "--output",
+        str(out),
+        "--frames",
+        "60",
         # No --engine-mode → defaults to auto
     )
     assert r.returncode == 0, f"stderr:\n{r.stderr}"
@@ -112,9 +118,12 @@ def test_cli_explicit_auto_matches_default(tmp_path):
     r = _run_qlnes(
         "audio",
         str(ROM_PATH),
-        "--output", str(out),
-        "--frames", "60",
-        "--engine-mode", "auto",
+        "--output",
+        str(out),
+        "--frames",
+        "60",
+        "--engine-mode",
+        "auto",
     )
     assert r.returncode == 0, f"stderr:\n{r.stderr}"
     assert "mode=in-process" in r.stderr
@@ -148,9 +157,12 @@ def test_cli_in_process_unrecognized_engine_exits_100(tmp_path):
     r = _run_qlnes(
         "audio",
         str(rom),
-        "--output", str(out),
-        "--frames", "10",
-        "--engine-mode", "in-process",
+        "--output",
+        str(out),
+        "--frames",
+        "10",
+        "--engine-mode",
+        "in-process",
     )
     assert r.returncode == 100, f"got {r.returncode}, stderr:\n{r.stderr}"
     payload = _last_json_line(r.stderr)
@@ -174,14 +186,18 @@ def test_cli_oracle_mode_emits_deprecation_warning(tmp_path):
     # preflight runs before the warning. So we need fceux on PATH for
     # the deprecation warning to be observable. Skip if it's missing.
     import shutil
+
     if shutil.which("fceux") is None:
         pytest.skip("fceux not on PATH; oracle preflight blocks before deprecation warning fires")
     r = _run_qlnes(
         "audio",
         str(rom),
-        "--output", str(out),
-        "--frames", "10",
-        "--engine-mode", "oracle",
+        "--output",
+        str(out),
+        "--frames",
+        "10",
+        "--engine-mode",
+        "oracle",
     )
     assert "oracle_path_deprecated" in r.stderr
 
@@ -191,6 +207,7 @@ def test_cli_oracle_mode_without_fceux_blocks_in_preflight(tmp_path):
     preflight raises before any render — clean exit code, structured
     error payload."""
     import shutil
+
     if shutil.which("fceux") is not None:
         pytest.skip("fceux IS on PATH; this test only runs when it's missing")
     rom = tmp_path / "synth.nes"
@@ -199,9 +216,12 @@ def test_cli_oracle_mode_without_fceux_blocks_in_preflight(tmp_path):
     r = _run_qlnes(
         "audio",
         str(rom),
-        "--output", str(out),
-        "--frames", "10",
-        "--engine-mode", "oracle",
+        "--output",
+        str(out),
+        "--frames",
+        "10",
+        "--engine-mode",
+        "oracle",
     )
     assert r.returncode != 0
     # The preflight reports as `internal_error` per existing
@@ -225,8 +245,10 @@ def test_cli_no_flag_works_for_in_process_engine(tmp_path):
     r = _run_qlnes(
         "audio",
         str(ROM_PATH),
-        "--output", str(out),
-        "--frames", "60",
+        "--output",
+        str(out),
+        "--frames",
+        "60",
     )
     assert r.returncode == 0
     assert (out / f"{ROM_SHA}.00.famitracker.wav").exists()
@@ -243,8 +265,10 @@ def test_cli_engine_mode_bad_value_exits_64(tmp_path):
     r = _run_qlnes(
         "audio",
         str(rom),
-        "--output", str(out),
-        "--engine-mode", "bogus",
+        "--output",
+        str(out),
+        "--engine-mode",
+        "bogus",
     )
     assert r.returncode == 64
     payload = _last_json_line(r.stderr)

@@ -408,7 +408,9 @@ class _SmbLevelRuntime:
                 yield self.read(addr)
                 addr += 1
 
-    def render_metatile(self, metatile: int, palettes: tuple[tuple[tuple[int, int, int], ...], ...]):
+    def render_metatile(
+        self, metatile: int, palettes: tuple[tuple[tuple[int, int, int], ...], ...]
+    ):
         from PIL import Image
 
         palette_id = (metatile >> 6) & 0x03
@@ -721,7 +723,9 @@ def render_smb_title_assets(rom_path: Path, out_dir: Path) -> SmbTitleAssetExpor
             "font-small contient les chiffres, lettres HUD/message et ponctuation courante de SMB",
         ],
     }
-    manifest_json.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    manifest_json.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
     return SmbTitleAssetExport(
         rom=rom_path,
         out_dir=out_dir,
@@ -762,8 +766,7 @@ def render_smb_blocks(rom_path: Path, out_dir: Path) -> SmbBlockExport:
     for area_type, area_name in AREA_TYPE_NAMES.items():
         palettes = runtime.load_background_palette_for_area_type(area_type)
         all_metatiles = [
-            (f"{value:02X}", runtime.render_metatile(value, palettes))
-            for value in range(0x100)
+            (f"{value:02X}", runtime.render_metatile(value, palettes)) for value in range(0x100)
         ]
         sheet = metatile_dir / f"{area_name}-all-metatiles.png"
         _write_image_grid(all_metatiles, sheet, columns=16, padding=1)
@@ -895,7 +898,9 @@ def render_smb_blocks(rom_path: Path, out_dir: Path) -> SmbBlockExport:
             "sprites: objets OAM lies aux blocs, dont piece sautante, brique bondissante et power-ups",
         ],
     }
-    manifest_json.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    manifest_json.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
     return SmbBlockExport(
         rom=rom_path,
         out_dir=out_dir,
@@ -996,7 +1001,9 @@ def render_smb_characters(rom_path: Path, out_dir: Path) -> SmbCharacterExport:
             "index couleur 0 rendu transparent; $FC traite comme tile vide SMB",
         ],
     }
-    manifest_json.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    manifest_json.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
     return SmbCharacterExport(
         rom=rom_path,
         out_dir=out_dir,
@@ -1031,10 +1038,7 @@ def render_smb_level(
         raise RuntimeError("SMB level parser returned no columns")
     palettes = runtime.load_background_palette()
     unique = sorted({metatile for column in columns for metatile in column})
-    metatile_images = {
-        metatile: runtime.render_metatile(metatile, palettes)
-        for metatile in unique
-    }
+    metatile_images = {metatile: runtime.render_metatile(metatile, palettes) for metatile in unique}
 
     rows = 13
     image = Image.new("RGB", (len(columns) * 16, rows * 16))
@@ -1071,7 +1075,9 @@ def render_smb_level(
             "rendu par le parser de niveau original SMB appele via py65",
         ],
     }
-    manifest_json.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    manifest_json.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
 
     return SmbLevelExport(
         rom=rom_path,
@@ -1146,7 +1152,9 @@ def render_smb_level_batch(
         ],
     }
     out_dir.mkdir(parents=True, exist_ok=True)
-    manifest_json.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    manifest_json.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
     if errors and not allow_failures:
         first_stage, first_error = next(iter(errors.items()))
         raise RuntimeError(f"SMB batch stopped at {first_stage}: {first_error}")

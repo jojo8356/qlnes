@@ -6,6 +6,7 @@ ROM or on fceux being installed. Exercises the 3-branch dispatch:
   - oracle: only render_song called, oracle constructed lazily
   - auto: in-process first; on InProcessUnavailable falls back to oracle
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -30,7 +31,7 @@ def _make_rom(tmp_path: Path) -> Path:
     can call Rom.from_file."""
     header = bytearray(16)
     header[0:4] = b"NES\x1a"
-    header[4] = 2   # 2 x 16 KB PRG
+    header[4] = 2  # 2 x 16 KB PRG
     header[5] = 0
     prg = bytearray(0x8000)
     # Reset vector → $8000, NMI vector → $8000 (halt loop at $8000)
@@ -103,9 +104,9 @@ def _register_test_engine(
 def test_engine_mode_in_process_calls_render_song_in_process_only(tmp_path):
     in_log: list = []
     or_log: list = []
-    _register_test_engine(in_process_supported=True,
-                          in_process_call_log=in_log,
-                          oracle_call_log=or_log)
+    _register_test_engine(
+        in_process_supported=True, in_process_call_log=in_log, oracle_call_log=or_log
+    )
     rom_path = _make_rom(tmp_path)
     out = tmp_path / "out"
     result = render_rom_audio_v2(rom_path, out, engine_mode="in-process", frames=10)
@@ -117,16 +118,14 @@ def test_engine_mode_in_process_calls_render_song_in_process_only(tmp_path):
 def test_engine_mode_oracle_calls_render_song_only(tmp_path):
     in_log: list = []
     or_log: list = []
-    _register_test_engine(in_process_supported=True,
-                          in_process_call_log=in_log,
-                          oracle_call_log=or_log)
+    _register_test_engine(
+        in_process_supported=True, in_process_call_log=in_log, oracle_call_log=or_log
+    )
     # Oracle must be passed in (real FceuxOracle would shell out to fceux)
     fake_oracle = MagicMock()
     rom_path = _make_rom(tmp_path)
     out = tmp_path / "out"
-    result = render_rom_audio_v2(
-        rom_path, out, engine_mode="oracle", frames=10, oracle=fake_oracle
-    )
+    result = render_rom_audio_v2(rom_path, out, engine_mode="oracle", frames=10, oracle=fake_oracle)
     assert len(in_log) == 0
     assert len(or_log) == 1
     assert or_log[0][2] is fake_oracle
@@ -137,14 +136,12 @@ def test_engine_mode_oracle_emits_deprecation_warning(tmp_path, capsys):
     """AC6: --engine-mode oracle prints `warning: oracle_path_deprecated` on stderr."""
     in_log: list = []
     or_log: list = []
-    _register_test_engine(in_process_supported=True,
-                          in_process_call_log=in_log,
-                          oracle_call_log=or_log)
+    _register_test_engine(
+        in_process_supported=True, in_process_call_log=in_log, oracle_call_log=or_log
+    )
     rom_path = _make_rom(tmp_path)
     out = tmp_path / "out"
-    render_rom_audio_v2(
-        rom_path, out, engine_mode="oracle", frames=10, oracle=MagicMock()
-    )
+    render_rom_audio_v2(rom_path, out, engine_mode="oracle", frames=10, oracle=MagicMock())
     captured = capsys.readouterr()
     assert "oracle_path_deprecated" in captured.err
 
@@ -152,9 +149,9 @@ def test_engine_mode_oracle_emits_deprecation_warning(tmp_path, capsys):
 def test_engine_mode_auto_prefers_in_process_when_available(tmp_path):
     in_log: list = []
     or_log: list = []
-    _register_test_engine(in_process_supported=True,
-                          in_process_call_log=in_log,
-                          oracle_call_log=or_log)
+    _register_test_engine(
+        in_process_supported=True, in_process_call_log=in_log, oracle_call_log=or_log
+    )
     rom_path = _make_rom(tmp_path)
     out = tmp_path / "out"
     result = render_rom_audio_v2(rom_path, out, engine_mode="auto", frames=10)
@@ -167,17 +164,15 @@ def test_engine_mode_auto_falls_back_on_in_process_unavailable(tmp_path, capsys)
     """AC3: auto with engine missing in-process support → oracle path + warning."""
     in_log: list = []
     or_log: list = []
-    _register_test_engine(in_process_supported=False,
-                          in_process_call_log=in_log,
-                          oracle_call_log=or_log)
+    _register_test_engine(
+        in_process_supported=False, in_process_call_log=in_log, oracle_call_log=or_log
+    )
     rom_path = _make_rom(tmp_path)
     out = tmp_path / "out"
     fake_oracle = MagicMock()
-    result = render_rom_audio_v2(
-        rom_path, out, engine_mode="auto", frames=10, oracle=fake_oracle
-    )
-    assert len(in_log) == 1   # tried first
-    assert len(or_log) == 1   # then fell back
+    result = render_rom_audio_v2(rom_path, out, engine_mode="auto", frames=10, oracle=fake_oracle)
+    assert len(in_log) == 1  # tried first
+    assert len(or_log) == 1  # then fell back
     assert result.engine_mode_used == "oracle"
     captured = capsys.readouterr()
     assert "in_process_low_confidence" in captured.err
@@ -187,9 +182,9 @@ def test_engine_mode_in_process_raises_qlnes_error_for_unavailable_engine(tmp_pa
     """AC4: --engine-mode in-process on engine without addresses → exit 100."""
     in_log: list = []
     or_log: list = []
-    _register_test_engine(in_process_supported=False,
-                          in_process_call_log=in_log,
-                          oracle_call_log=or_log)
+    _register_test_engine(
+        in_process_supported=False, in_process_call_log=in_log, oracle_call_log=or_log
+    )
     rom_path = _make_rom(tmp_path)
     out = tmp_path / "out"
     with pytest.raises(QlnesError) as exc_info:
@@ -204,9 +199,9 @@ def test_render_result_carries_engine_mode_used(tmp_path):
     """AC8: RenderResult.engine_mode_used set per branch."""
     in_log: list = []
     or_log: list = []
-    _register_test_engine(in_process_supported=True,
-                          in_process_call_log=in_log,
-                          oracle_call_log=or_log)
+    _register_test_engine(
+        in_process_supported=True, in_process_call_log=in_log, oracle_call_log=or_log
+    )
     rom_path = _make_rom(tmp_path)
     out = tmp_path / "out"
     r1 = render_rom_audio_v2(rom_path, out, engine_mode="in-process", frames=10)
@@ -214,9 +209,7 @@ def test_render_result_carries_engine_mode_used(tmp_path):
     assert r1.engine_mode_used == "in-process"
 
     out2 = tmp_path / "out2"
-    r2 = render_rom_audio_v2(
-        rom_path, out2, engine_mode="oracle", frames=10, oracle=MagicMock()
-    )
+    r2 = render_rom_audio_v2(rom_path, out2, engine_mode="oracle", frames=10, oracle=MagicMock())
     assert r2.engine_mode_used == "oracle"
 
 
@@ -224,9 +217,9 @@ def test_engine_mode_invalid_value_raises_usage_error(tmp_path):
     """Bad --engine-mode value → QlnesError(usage_error)."""
     in_log: list = []
     or_log: list = []
-    _register_test_engine(in_process_supported=True,
-                          in_process_call_log=in_log,
-                          oracle_call_log=or_log)
+    _register_test_engine(
+        in_process_supported=True, in_process_call_log=in_log, oracle_call_log=or_log
+    )
     rom_path = _make_rom(tmp_path)
     out = tmp_path / "out"
     with pytest.raises(QlnesError) as exc_info:
@@ -238,9 +231,9 @@ def test_render_rom_audio_v2_default_engine_mode_is_auto(tmp_path):
     """AC7: missing engine_mode keyword → defaults to 'auto'."""
     in_log: list = []
     or_log: list = []
-    _register_test_engine(in_process_supported=True,
-                          in_process_call_log=in_log,
-                          oracle_call_log=or_log)
+    _register_test_engine(
+        in_process_supported=True, in_process_call_log=in_log, oracle_call_log=or_log
+    )
     rom_path = _make_rom(tmp_path)
     out = tmp_path / "out"
     result = render_rom_audio_v2(rom_path, out, frames=10)

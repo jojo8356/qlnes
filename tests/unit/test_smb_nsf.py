@@ -136,9 +136,7 @@ def test_smb_square2_duration_stops_at_zero_marker():
     prg[header_addr + 2 - 0x8000] = data_addr >> 8
     prg[SMB_MUSIC_LENGTH_LOOKUP_ADDR - 0x8000] = 5
     prg[SMB_MUSIC_LENGTH_LOOKUP_ADDR + 1 - 0x8000] = 9
-    prg[data_addr - 0x8000 : data_addr + 5 - 0x8000] = bytes(
-        [0x80, 0x2C, 0x81, 0x2E, 0x00]
-    )
+    prg[data_addr - 0x8000 : data_addr + 5 - 0x8000] = bytes([0x80, 0x2C, 0x81, 0x2E, 0x00])
 
     assert _square2_duration_for_header_y(bytes(prg), 1) == 14
 

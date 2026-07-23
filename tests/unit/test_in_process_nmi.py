@@ -1,4 +1,5 @@
 """Unit tests for qlnes.audio.in_process.nmi.trigger_nmi / trigger_nmi_to."""
+
 from __future__ import annotations
 
 from qlnes.audio.in_process.memory import NROMMemory

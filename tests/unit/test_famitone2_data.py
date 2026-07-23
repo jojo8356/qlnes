@@ -18,9 +18,7 @@ def test_scan_famitone2_table_from_synthetic_prg():
         base = table + 5 + song * 14
         for channel in range(5):
             pointer = 0x8500 + song * 0x100 + channel * 0x10
-            prg[base + channel * 2 : base + channel * 2 + 2] = pointer.to_bytes(
-                2, "little"
-            )
+            prg[base + channel * 2 : base + channel * 2 + 2] = pointer.to_bytes(2, "little")
             prg[pointer - 0x8000] = 0x84
         prg[base + 10 : base + 12] = (307).to_bytes(2, "little")
         prg[base + 12 : base + 14] = (256).to_bytes(2, "little")
@@ -53,9 +51,7 @@ def test_read_channel_rows_decodes_notes_repeats_speed_loop_and_reference():
     base = table + 5
     prg[base : base + 2] = (0x8500).to_bytes(2, "little")
     for channel in range(1, 5):
-        prg[base + channel * 2 : base + channel * 2 + 2] = (0x8600).to_bytes(
-            2, "little"
-        )
+        prg[base + channel * 2 : base + channel * 2 + 2] = (0x8600).to_bytes(2, "little")
         prg[0x0600] = 0
     prg[base + 10 : base + 12] = (307).to_bytes(2, "little")
     prg[base + 12 : base + 14] = (256).to_bytes(2, "little")

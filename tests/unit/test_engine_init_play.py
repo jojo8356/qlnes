@@ -5,6 +5,7 @@ Covers:
 - AC1, AC2 — FamiTrackerEngine reads reset/NMI vectors.
 - AC6 — for Alter Ego, init_addr ≠ play_addr.
 """
+
 from __future__ import annotations
 
 import pytest

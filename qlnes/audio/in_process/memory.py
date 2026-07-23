@@ -38,6 +38,7 @@ $4000-$4017, we record an ApuWriteEvent. PPU reads/writes go through
 a deliberately minimal stub (vblank=1 always, PPUCTRL bit 7 → NMI
 enable) — see arch step 20.7.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -91,9 +92,7 @@ class NROMMemory(Memory):
 
     def __init__(self, prg: bytes) -> None:
         if len(prg) not in (0x4000, 0x8000):
-            raise ValueError(
-                f"NROM PRG must be 16 or 32 KB; got {len(prg)} bytes"
-            )
+            raise ValueError(f"NROM PRG must be 16 or 32 KB; got {len(prg)} bytes")
         self._ram = bytearray(0x800)  # $0000-$07FF, mirrored to $1FFF
         self._prg_ram = bytearray(0x2000)  # $6000-$7FFF cartridge RAM window
         if len(prg) == 0x4000:
@@ -187,9 +186,7 @@ class NROMMemory(Memory):
                 for i in range(256):
                     self._oam[(self._oam_addr + i) & 0xFF] = self[page + i]
                 self._oam_addr = (self._oam_addr + 256) & 0xFF
-            self.apu_writes.append(
-                ApuWriteEvent(cpu_cycle=self.cpu_cycles, register=addr, value=v)
-            )
+            self.apu_writes.append(ApuWriteEvent(cpu_cycle=self.cpu_cycles, register=addr, value=v))
             return
         if 0x6000 <= addr < 0x8000:
             self._prg_ram[addr - 0x6000] = v
@@ -399,9 +396,7 @@ class ColorDreamsMemory(NROMMemory):
 
     def __init__(self, prg: bytes, chr_banks: int) -> None:
         if len(prg) % 0x8000 != 0 or len(prg) == 0:
-            raise ValueError(
-                "Color Dreams PRG must contain at least one 32 KiB bank"
-            )
+            raise ValueError("Color Dreams PRG must contain at least one 32 KiB bank")
         super().__init__(prg[:0x8000])
         self._banks = [prg[i : i + 0x8000] for i in range(0, len(prg), 0x8000)]
         self._prg_bank = 0
@@ -543,7 +538,9 @@ class MMC2Memory(NROMMemory):
         if len(prg) % 0x2000 != 0 or len(prg) < 0x8000:
             raise ValueError("MMC2 PRG must contain at least four 8 KiB banks")
         self._prg_banks = [prg[i : i + 0x2000] for i in range(0, len(prg), 0x2000)]
-        initial = self._prg_banks[0] + self._prg_banks[-3] + self._prg_banks[-2] + self._prg_banks[-1]
+        initial = (
+            self._prg_banks[0] + self._prg_banks[-3] + self._prg_banks[-2] + self._prg_banks[-1]
+        )
         super().__init__(initial)
         if not chr_data:
             raise ValueError("MMC2 requires CHR-ROM data")
@@ -970,13 +967,17 @@ class MMC5Memory(NROMMemory):
         if mode == 1:
             if addr < 0xC000:
                 base = ((self._prg_regs[1] & 0x7F) & ~0x01) % len(self._prg_banks)
-                return self._read_prg_bank(base + ((addr - 0x8000) // 0x2000), (addr - 0x8000) & 0x1FFF)
+                return self._read_prg_bank(
+                    base + ((addr - 0x8000) // 0x2000), (addr - 0x8000) & 0x1FFF
+                )
             base = ((self._prg_regs[3] & 0x7F) & ~0x01) % len(self._prg_banks)
             return self._read_prg_bank(base + ((addr - 0xC000) // 0x2000), (addr - 0xC000) & 0x1FFF)
         if mode == 2:
             if addr < 0xC000:
                 base = ((self._prg_regs[1] & 0x7F) & ~0x01) % len(self._prg_banks)
-                return self._read_prg_bank(base + ((addr - 0x8000) // 0x2000), (addr - 0x8000) & 0x1FFF)
+                return self._read_prg_bank(
+                    base + ((addr - 0x8000) // 0x2000), (addr - 0x8000) & 0x1FFF
+                )
             if addr < 0xE000:
                 return self._read_prg_bank(self._prg_regs[2] & 0x7F, addr - 0xC000)
             return self._read_prg_bank(self._prg_regs[3] & 0x7F, addr - 0xE000)

@@ -162,7 +162,8 @@ def test_audio_no_fceux_exits_70(tmp_path):
         str(rom),
         "-o",
         str(tmp_path / "out"),
-        "--engine-mode", "oracle",
+        "--engine-mode",
+        "oracle",
         env_extra={"PATH": str(tmp_path)},
     )
     assert res.returncode == 70
@@ -179,7 +180,8 @@ def test_audio_no_hints_strips_hint_under_internal_error(tmp_path):
         str(rom),
         "-o",
         str(tmp_path / "out"),
-        "--engine-mode", "oracle",  # F.5: trigger fceux preflight
+        "--engine-mode",
+        "oracle",  # F.5: trigger fceux preflight
         "--no-hints",
         env_extra={"PATH": str(tmp_path)},
     )

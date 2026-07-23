@@ -284,10 +284,9 @@ class RomProfile:
                 merged = dict(self.static_report.names)
                 merged.update(extra)
                 merged.update(result.names())
-                self.annotated_asm = (
-                    format_symbol_notation(merged, self.static_report)
-                    + rewrite_asm(asm, merged)
-                )
+                self.annotated_asm = format_symbol_notation(
+                    merged, self.static_report
+                ) + rewrite_asm(asm, merged)
                 self.static_report.subroutines = {
                     **self.static_report.subroutines,
                     **extra,
