@@ -6,7 +6,7 @@ HEADER_SIZE = 16
 PRG_BANK = 0x4000
 CHR_BANK = 0x2000
 
-SUPPORTED_MAPPERS = (0, 1, 2, 3, 4, 7, 11, 66)
+SUPPORTED_MAPPERS = (0, 1, 2, 3, 4, 7, 11, 66, 69)
 
 
 @dataclass
@@ -143,6 +143,22 @@ def _layout_mmc3_initial(prg: bytes) -> list[tuple[int, bytes]]:
     return [(0, bytes(image))]
 
 
+def _layout_fme7_initial(prg: bytes) -> list[tuple[int, bytes]]:
+    # Mapper 69 (Sunsoft FME-7/5B): CPU PRG windows are 8 KiB at
+    # $8000/$A000/$C000 and the last 8 KiB bank is fixed at $E000-$FFFF.
+    # This static image is the reset-safe view; runtime mapper writes are
+    # modeled by the in-process runner for sprite capture.
+    if len(prg) % 0x2000 != 0 or len(prg) < 0x8000:
+        raise ValueError(f"FME-7 PRG size {len(prg):#x} must be at least 32K")
+    banks = [prg[i : i + 0x2000] for i in range(0, len(prg), 0x2000)]
+    image = bytearray(0x10000)
+    image[0x8000:0xA000] = banks[0]
+    image[0xA000:0xC000] = banks[1]
+    image[0xC000:0xE000] = banks[2]
+    image[0xE000:0x10000] = banks[-1]
+    return [(0, bytes(image))]
+
+
 def _fixed_only(last: bytes) -> bytes:
     image = bytearray(0x10000)
     image[0x8000:0xC000] = last
@@ -177,6 +193,8 @@ def rom_to_images(data: bytes) -> list[tuple[int, bytes]]:
         return _layout_colordreams(prg)
     if h.mapper == 66:
         return _layout_gxrom(prg)
+    if h.mapper == 69:
+        return _layout_fme7_initial(prg)
     raise NotImplementedError(f"mapper {h.mapper} unhandled")
 
 

@@ -7,6 +7,7 @@ from qlnes.audio.in_process.memory import (
     AxROMMemory,
     CNROMMemory,
     ColorDreamsMemory,
+    FME7Memory,
     GxROMMemory,
     MMC1Memory,
     MMC3Memory,
@@ -398,6 +399,47 @@ def test_mmc3_bank_select_maps_chr_windows_into_snapshot_pattern_table():
     snap = m.ppu_snapshot()
     assert snap.pattern_table[0x1000] == 7
     assert snap.pattern_table[0x13FF] == 7
+
+
+def test_fme7_command_register_switches_prg_windows_and_chr_1k_banks():
+    banks = [bytes([bank_id] * 0x2000) for bank_id in range(8)]
+    chr_data = b"".join(bytes([bank_id] * 0x0400) for bank_id in range(16))
+    m = FME7Memory(b"".join(banks), chr_data=chr_data)
+    assert m[0x8000] == 0
+    assert m[0xA000] == 1
+    assert m[0xC000] == 2
+    assert m[0xE000] == 7
+
+    m[0x8000] = 0x09
+    m[0xA000] = 0x04
+    m[0x8000] = 0x0A
+    m[0xA000] = 0x05
+    m[0x8000] = 0x0B
+    m[0xA000] = 0x06
+    assert m[0x8000] == 4
+    assert m[0xA000] == 5
+    assert m[0xC000] == 6
+
+    m[0x8000] = 0x04
+    m[0xA000] = 0x07
+    snap = m.ppu_snapshot()
+    assert snap.pattern_table[0x1000] == 7
+    assert snap.pattern_table[0x13FF] == 7
+
+
+def test_fme7_reset_state_restores_initial_prg_and_chr_mapping():
+    banks = [bytes([bank_id] * 0x2000) for bank_id in range(8)]
+    chr_data = b"".join(bytes([bank_id] * 0x0400) for bank_id in range(16))
+    m = FME7Memory(b"".join(banks), chr_data=chr_data)
+    m[0x8000] = 0x09
+    m[0xA000] = 0x04
+    m[0x8000] = 0x04
+    m[0xA000] = 0x07
+    assert m[0x8000] == 4
+    assert m.ppu_snapshot().pattern_table[0x1000] == 7
+    m.reset_state()
+    assert m[0x8000] == 0
+    assert m.ppu_snapshot().pattern_table[0x1000] == 4
 
 
 def test_len_is_64k():

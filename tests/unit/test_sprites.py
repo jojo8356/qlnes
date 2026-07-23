@@ -487,6 +487,53 @@ def _runtime_mmc3_sprite_test_rom() -> bytes:
     return ines_header(4, 2, 4) + b"".join(bytes(bank) for bank in banks) + bytes(chr_data)
 
 
+def _runtime_fme7_sprite_test_rom() -> bytes:
+    banks = [bytearray([0xEA] * 0x2000) for _ in range(8)]
+
+    code = [
+        0x78,  # SEI
+        0xD8,  # CLD
+        0xA2, 0x00,
+        0xA9, 0xF8,
+        0x9D, 0x00, 0x02,
+        0xE8,
+        0xD0, 0xFA,
+        0xA9, 0x14, 0x8D, 0x00, 0x02,
+        0xA9, 0x00, 0x8D, 0x01, 0x02,
+        0xA9, 0x00, 0x8D, 0x02, 0x02,
+        0xA9, 0x0C, 0x8D, 0x03, 0x02,
+        0xA9, 0x00, 0x8D, 0x03, 0x20,
+        0xA9, 0x02, 0x8D, 0x14, 0x40,
+        0xAD, 0x02, 0x20,
+        0xA9, 0x3F, 0x8D, 0x06, 0x20,
+        0xA9, 0x10, 0x8D, 0x06, 0x20,
+    ]
+    for value in (0x0F, 0x30, 0x16, 0x27):
+        code.extend([0xA9, value, 0x8D, 0x07, 0x20])
+    code.extend([0xA9, 0x88, 0x8D, 0x00, 0x20])
+    loop_addr = 0x8000 + len(code)
+    code.extend([0x4C, loop_addr & 0xFF, loop_addr >> 8])
+    banks[1][: len(code)] = bytes(code)
+
+    reset = [
+        0xA9, 0x04, 0x8D, 0x00, 0x80,  # FME-7 command 4: CHR slot $1000-$13FF
+        0xA9, 0x07, 0x8D, 0x00, 0xA0,  # map CHR 1 KiB bank 7 there
+        0xA9, 0x09, 0x8D, 0x00, 0x80,  # FME-7 command 9: PRG window $8000-$9FFF
+        0xA9, 0x01, 0x8D, 0x00, 0xA0,  # switch PRG bank 1 there
+        0x4C, 0x00, 0x80,
+    ]
+    banks[-1][: len(reset)] = bytes(reset)
+    banks[-1][0x0100] = 0x40
+    banks[-1][0x1FFA:0x1FFC] = (0xE100).to_bytes(2, "little")
+    banks[-1][0x1FFC:0x1FFE] = (0xE000).to_bytes(2, "little")
+    banks[-1][0x1FFE:0x2000] = (0xE100).to_bytes(2, "little")
+
+    chr_data = bytearray(0x4000)
+    rows = [[0, 1, 2, 3, 0, 1, 2, 3] for _ in range(8)]
+    chr_data[7 * 0x0400 : 7 * 0x0400 + 0x10] = _encode_tile(rows)
+    return ines_header(4, 2, 69) + b"".join(bytes(bank) for bank in banks) + bytes(chr_data)
+
+
 class TestSpritePalettes(unittest.TestCase):
     def test_parse_palette_values_accepts_hex_style(self):
         self.assertEqual(parse_palette_values("0F,30,16,27"), (0x0F, 0x30, 0x16, 0x27))
@@ -1033,6 +1080,24 @@ class TestSpriteExport(unittest.TestCase):
             data = json.loads((out_dir / "sprites-manifest.json").read_text())
             self.assertEqual(data["chr_source"], "snapshot")
             self.assertEqual(data["snapshot"], "in-process")
+
+    def test_in_process_runtime_export_runs_fme7_and_uses_mapped_chr_windows(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "runtime-fme7.nes"
+            rom_path.write_bytes(_runtime_fme7_sprite_test_rom())
+            out_dir = Path(td) / "auto-fme7"
+
+            manifest = export_in_process_runtime_sprites(rom_path, out_dir, frames=1)
+
+            self.assertEqual(manifest.chr_bank, 0)
+            sprite = out_dir / "oam" / "sprite-00-tile-00-pal0.png"
+            img = Image.open(sprite).convert("RGBA")
+            self.assertEqual(img.getpixel((0, 0))[3], 0)
+            self.assertEqual(img.getpixel((1, 0)), (0xFC, 0xFC, 0xFC, 255))
+            data = json.loads((out_dir / "sprites-manifest.json").read_text())
+            self.assertEqual(data["chr_source"], "snapshot")
+            self.assertEqual(data["snapshot"], "in-process")
+            self.assertEqual(data["sprites"][0]["palette_ppu"], ["0x0F", "0x30", "0x16", "0x27"])
 
     def test_runtime_snapshot_exports_oam_sprites_with_original_palette(self):
         with tempfile.TemporaryDirectory() as td:

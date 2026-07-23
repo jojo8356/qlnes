@@ -102,7 +102,7 @@ python -m qlnes sprites ROM.nes -o out/sprites --palette 0F,30,16,27
 # Extraire les sprites OAM avec couleurs originales depuis un snapshot PPU/OAM
 python -m qlnes sprites ROM.nes -o out/oam-sprites --snapshot snapshot-ppu-oam.json
 
-# Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/GxROM : capture palette/OAM automatiquement
+# Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/GxROM/FME-7 : capture palette/OAM automatiquement
 python -m qlnes sprites ROM.nes -o out/oam-sprites --runtime-frames 120
 
 # Capturer plusieurs frames runtime pour récupérer plus d'états OAM/palettes
@@ -233,13 +233,15 @@ qlnes/
 ## Limites connues
 
 - **Mappers supportés** : 0 (NROM), 1 (MMC1 mode 3), 2 (UxROM), 3 (CNROM),
-  4 (MMC3 initial), 7 (AxROM), 11 (Color Dreams), 66 (GxROM/GNROM)
+  4 (MMC3 initial), 7 (AxROM), 11 (Color Dreams), 66 (GxROM/GNROM),
+  69 (Sunsoft FME-7/5B initial)
 - **Discovery dynamique** : nécessite `cynes`, supporté seulement pour mapper 0 (limitation runner actuelle)
 - **Capture sprites runtime** : couvre les cas simples NROM, MMC1/SxROM,
-  UxROM, CNROM, MMC3, AxROM, Color Dreams et GxROM/GNROM.
-  MMC1 couvre aussi les fenêtres CHR 4 KiB split simples. Les variantes mapper
-  complexes, les IRQ/raster effects et les changements mid-frame demandent
-  encore un snapshot externe ou un observateur PPU plus complet.
+  UxROM, CNROM, MMC3, AxROM, Color Dreams, GxROM/GNROM et Sunsoft FME-7/5B.
+  MMC1 couvre aussi les fenêtres CHR 4 KiB split simples, et FME-7 couvre les
+  fenêtres CHR 1 KiB simples. Les variantes mapper complexes, les IRQ/raster
+  effects et les changements mid-frame demandent encore un snapshot externe ou
+  un observateur PPU plus complet.
 - **Détection éditeur** : pas de signature pour les moteurs sonores propriétaires sans string identifiable
 - **PPU stub** : pas implémenté nous-mêmes, on délègue à cynes (qui fait le full-NES)
 - **NSF générique** : fiable surtout pour NROM avec adresses INIT/PLAY simples.

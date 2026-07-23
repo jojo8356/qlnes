@@ -32,6 +32,7 @@ from .memory import (
     AxROMMemory,
     CNROMMemory,
     ColorDreamsMemory,
+    FME7Memory,
     GxROMMemory,
     MMC1Memory,
     MMC3Memory,
@@ -73,9 +74,9 @@ class InProcessRunner:
     @staticmethod
     def _build_memory(rom: Rom) -> Memory:
         mapper = rom.mapper
-        if mapper not in (0, 1, 2, 3, 4, 7, 11, 66, None):
+        if mapper not in (0, 1, 2, 3, 4, 7, 11, 66, 69, None):
             raise ValueError(
-                f"InProcessRunner currently supports mapper 0, 1, 2, 3, 4, 7, 11 and 66 only; "
+                f"InProcessRunner currently supports mapper 0, 1, 2, 3, 4, 7, 11, 66 and 69 only; "
                 f"got mapper {mapper}."
             )
         prg = rom.prg if rom.header is not None else rom.raw
@@ -93,6 +94,8 @@ class InProcessRunner:
             return ColorDreamsMemory(prg, rom.header.chr_banks)
         if mapper == 66 and rom.header is not None:
             return GxROMMemory(prg, rom.header.chr_banks)
+        if mapper == 69 and rom.header is not None:
+            return FME7Memory(prg, InProcessRunner._chr_rom(rom))
         return NROMMemory(prg)
 
     @staticmethod

@@ -10,7 +10,7 @@ class TestMapperHeader(unittest.TestCase):
         self.assertIsNone(parse_header(b"NOPE" + bytes(20)))
 
     def test_mapper_extraction(self):
-        for m in (0, 1, 2, 3, 4, 7, 11, 66):
+        for m in (0, 1, 2, 3, 4, 7, 11, 66, 69):
             h = parse_header(ines_header(1, 1, m))
             self.assertEqual(h.mapper, m, f"mapper={m}")
 
@@ -107,6 +107,19 @@ class TestMMC3InitialLayout(unittest.TestCase):
         self.assertEqual(len(image), 0x10000)
         self.assertEqual(image[0x8000], 0)
         self.assertEqual(image[0xC000], 1)
+
+
+class TestFME7InitialLayout(unittest.TestCase):
+    def test_fme7_builds_initial_fixed_bank_view(self):
+        prg = b"".join(bytes([bank_id] * 0x2000) for bank_id in range(4))
+        images = rom_to_images(ines_header(2, 0, 69) + prg)
+        self.assertEqual(len(images), 1)
+        _, image = images[0]
+        self.assertEqual(len(image), 0x10000)
+        self.assertEqual(image[0x8000], 0)
+        self.assertEqual(image[0xA000], 1)
+        self.assertEqual(image[0xC000], 2)
+        self.assertEqual(image[0xE000], 3)
 
 
 class TestRom(unittest.TestCase):

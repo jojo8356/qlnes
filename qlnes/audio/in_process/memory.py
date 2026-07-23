@@ -7,6 +7,7 @@ ships NROMMemory (mapper 0), UxROMMemory (mapper 2), CNROMMemory
 and a conservative MMC1Memory (mapper 1). MMC3Memory (mapper 4) supports
 enough PRG/CHR banking for runtime sprite capture on simple boot snapshots.
 AxROMMemory (mapper 7) supports 32 KiB PRG switching with CHR-RAM captures.
+FME7Memory (mapper 69) supports Sunsoft FME-7/5B PRG and 1 KiB CHR windows.
 
 The APU observer lives inside __setitem__: when py65 writes to
 $4000-$4017, we record an ApuWriteEvent. PPU reads/writes go through
@@ -565,3 +566,87 @@ class MMC3Memory(NROMMemory):
         super().reset_state()
         self._bank_select = 0
         self._regs = [0, 2, 4, 5, 6, 7, 0, 1]
+
+
+class FME7Memory(NROMMemory):
+    """Mapper-69 Sunsoft FME-7/5B memory for runtime sprite capture.
+
+    The mapper uses a command register at $8000-$9FFF and a parameter register
+    at $A000-$BFFF. Commands 0-7 select eight independent 1 KiB CHR windows;
+    commands 9-B select the 8 KiB PRG windows at $8000, $A000 and $C000.
+    IRQs, mirroring and 5B expansion audio registers are outside this sprite
+    snapshot path.
+    """
+
+    def __init__(self, prg: bytes, chr_data: bytes) -> None:
+        if len(prg) % 0x2000 != 0 or len(prg) < 0x8000:
+            raise ValueError("FME-7 PRG must contain at least four 8 KiB banks")
+        initial = prg[:0x6000] + prg[-0x2000:]
+        super().__init__(initial)
+        self._prg_banks = [prg[i : i + 0x2000] for i in range(0, len(prg), 0x2000)]
+        self._chr_rom = bytes(chr_data)
+        self._chr_1k_count = max(len(self._chr_rom) // 0x0400, 1)
+        self._command = 0
+        self._chr_regs = list(range(8))
+        self._prg_regs = [0, 1, 2]
+
+    def _read_prg(self, addr: int) -> int:
+        if addr < 0xA000:
+            bank = self._prg_regs[0] % len(self._prg_banks)
+            return self._prg_banks[bank][addr - 0x8000]
+        if addr < 0xC000:
+            bank = self._prg_regs[1] % len(self._prg_banks)
+            return self._prg_banks[bank][addr - 0xA000]
+        if addr < 0xE000:
+            bank = self._prg_regs[2] % len(self._prg_banks)
+            return self._prg_banks[bank][addr - 0xC000]
+        return self._prg_banks[-1][addr - 0xE000]
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if 0x8000 <= addr <= 0x9FFF:
+            self._command = value & 0x0F
+            return
+        if 0xA000 <= addr <= 0xBFFF:
+            self._write_mapper_parameter(value & 0xFF)
+            return
+        super().__setitem__(addr, value)
+
+    def _write_mapper_parameter(self, value: int) -> None:
+        if 0 <= self._command <= 7:
+            self._chr_regs[self._command] = value
+            self.chr_bank = self._dominant_chr_8k_bank()
+            return
+        if 0x09 <= self._command <= 0x0B:
+            self._prg_regs[self._command - 0x09] = value & 0x3F
+
+    def _mapped_chr_pattern_table(self) -> bytes:
+        if not self._chr_rom:
+            return bytes(self._pattern_table)
+        out = bytearray(0x2000)
+        for slot, reg in enumerate(self._chr_regs):
+            bank = reg % self._chr_1k_count
+            start = bank * 0x0400
+            out[slot * 0x0400 : (slot + 1) * 0x0400] = self._chr_rom[start : start + 0x0400]
+        return bytes(out)
+
+    def _dominant_chr_8k_bank(self) -> int:
+        if self._chr_1k_count < 8:
+            return 0
+        return (self._chr_regs[0] % self._chr_1k_count) // 8
+
+    def ppu_snapshot(self) -> PpuSnapshot:
+        snap = super().ppu_snapshot()
+        return PpuSnapshot(
+            ppuctrl=snap.ppuctrl,
+            ppumask=snap.ppumask,
+            palette_ram=snap.palette_ram,
+            oam=snap.oam,
+            pattern_table=self._mapped_chr_pattern_table(),
+            chr_bank=self._dominant_chr_8k_bank(),
+        )
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        self._command = 0
+        self._chr_regs = list(range(8))
+        self._prg_regs = [0, 1, 2]
