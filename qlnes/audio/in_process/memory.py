@@ -61,7 +61,10 @@ class NROMMemory(Memory):
     """Mapper-0 (NROM) memory. PRG is 16 or 32 KB at $8000-$FFFF.
 
     16 KB PRG mirrors at $8000 and $C000; 32 KB occupies the full bank.
-    No PRG-RAM at $6000-$7FFF (rare for NROM; we stub as zeros).
+    Provides zero-initialized 8 KiB cartridge RAM at $6000-$7FFF. Some NROM
+    boards do not physically have PRG-RAM, but many supported mappers do; a
+    writable default improves runtime sprite capture for init code that stages
+    palette/OAM data there before DMA.
     """
 
     def __init__(self, prg: bytes) -> None:
@@ -70,6 +73,7 @@ class NROMMemory(Memory):
                 f"NROM PRG must be 16 or 32 KB; got {len(prg)} bytes"
             )
         self._ram = bytearray(0x800)  # $0000-$07FF, mirrored to $1FFF
+        self._prg_ram = bytearray(0x2000)  # $6000-$7FFF cartridge RAM window
         if len(prg) == 0x4000:
             # 16 KB PRG: mirror so $8000 and $C000 both read it
             self._rom = bytearray(prg) + bytearray(prg)
@@ -118,7 +122,7 @@ class NROMMemory(Memory):
         if addr < 0x6000:
             return 0  # cartridge expansion (unused in NROM)
         if addr < 0x8000:
-            return 0  # PRG-RAM stub
+            return self._prg_ram[addr - 0x6000]
         return self._read_prg(addr)
 
     def _read_prg(self, addr: int) -> int:
@@ -162,6 +166,9 @@ class NROMMemory(Memory):
             self.apu_writes.append(
                 ApuWriteEvent(cpu_cycle=self.cpu_cycles, register=addr, value=v)
             )
+            return
+        if 0x6000 <= addr < 0x8000:
+            self._prg_ram[addr - 0x6000] = v
             return
         # $4018-$401F APU test, $4020+ cart expansion: silently ignored.
 
@@ -241,6 +248,7 @@ class NROMMemory(Memory):
         """
         # bytearray.__setitem__(slice, ...) is the fast path for memset
         self._ram[:] = b"\x00" * 0x800
+        self._prg_ram[:] = b"\x00" * 0x2000
         self.nmi_enabled = False
         self.vbl_flag = False
         self.ppuctrl = 0

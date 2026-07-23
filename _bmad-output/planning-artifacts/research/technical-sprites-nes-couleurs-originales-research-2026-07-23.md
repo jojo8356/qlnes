@@ -697,6 +697,9 @@ La premiere implementation qlnes suit cette decision :
   le fichier `.nes`. L'export runtime capture donc les writes `PPUDATA` vers
   `$0000-$1FFF` et marque le manifeste avec `chr_ram: true`, `chr_source:
   snapshot` et une note `CHR-RAM runtime export`.
+- Le bus runtime fournit une PRG-RAM `$6000-$7FFF` zero-init pour les cas où la
+  ROM prépare les buffers OAM/palette dans la RAM cartouche avant un `OAMDMA`
+  `$4014`. Cela augmente la couverture sans changer le format PNG final.
 - Pour mapper 87/J87, NESdev documente un PRG fixe 32 KiB et une fenêtre
   CHR-ROM 8 KiB sélectionnée par writes `$6000-$7FFF`. Le registre expose deux
   bits `LH` où bit 0 = bit CHR haut et bit 1 = bit CHR bas ; qlnes applique ce

@@ -101,6 +101,29 @@ def test_oamdata_and_oamdma_are_captured():
     assert m.nmi_enabled is False
 
 
+def test_cartridge_prg_ram_read_write_and_reset():
+    m = NROMMemory(_prg32())
+    m[0x6000] = 0x14
+    m[0x7FFF] = 0x27
+    assert m[0x6000] == 0x14
+    assert m[0x7FFF] == 0x27
+    m.reset_state()
+    assert m[0x6000] == 0x00
+    assert m[0x7FFF] == 0x00
+
+
+def test_oamdma_can_copy_from_cartridge_prg_ram_page():
+    m = NROMMemory(_prg32())
+    m[0x6000] = 0x14
+    m[0x6001] = 0x24
+    m[0x6002] = 0x02
+    m[0x6003] = 0x40
+    m[0x2003] = 0x00
+    m[0x4014] = 0x60
+    snap = m.ppu_snapshot()
+    assert snap.oam[:4] == bytes([0x14, 0x24, 0x02, 0x40])
+
+
 def test_controller1_strobe_latches_and_shifts_button_bits():
     m = NROMMemory(_prg32())
     m.set_controller1_state(0x09)  # A + Start

@@ -247,9 +247,11 @@ qlnes/
   4 KiB split simples, FME-7 couvre les fenêtres CHR 1 KiB simples, J87 couvre
   la fenêtre CHR-ROM 8 KiB à bit-order inversé. Les ROMs CHR-RAM simples sont
   exportées depuis les writes runtime vers la pattern table, avec `chr_ram:
-  true` et `chr_source: snapshot` dans le manifeste. Les variantes mapper
-  complexes, les IRQ/raster effects et les changements mid-frame demandent
-  encore un snapshot externe ou un observateur PPU plus complet.
+  true` et `chr_source: snapshot` dans le manifeste. Le runner fournit aussi
+  une PRG-RAM `$6000-$7FFF` zero-init pour capturer les jeux qui préparent OAM
+  ou palettes en RAM cartouche avant `OAMDMA`. Les variantes mapper complexes,
+  les IRQ/raster effects et les changements mid-frame demandent encore un
+  snapshot externe ou un observateur PPU plus complet.
 - **Inputs runtime** : `--runtime-input` pilote la manette 1 avec des plages de
   frames (`start@1:30,a+right@120:240`) pour atteindre plus d'états de jeu
   avant l'export PNG.

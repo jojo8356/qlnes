@@ -96,6 +96,8 @@ Ce mode boote la ROM en-process avec `py65`, observe :
 - `PPUADDR` + `PPUDATA` pour la palette RAM `$3F00-$3F1F` ;
 - `OAMADDR` + `OAMDATA` ;
 - `OAMDMA` `$4014` pour copier la page CPU vers OAM ;
+- la PRG-RAM cartouche `$6000-$7FFF`, utile quand l'init prépare les buffers
+  OAM ou palette hors RAM interne avant de déclencher `OAMDMA` ;
 - les writes serie mapper 1/MMC1 vers `$8000-$FFFF` pour choisir les PRG banks
   et composer les fenêtres CHR 8 KiB ou split 4 KiB visibles dans les cas
   simples ;
