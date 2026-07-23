@@ -33,6 +33,15 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     data = json.loads(export.manifest_json.read_text(encoding="utf-8"))
     assert data["kind"] == "smb_native_port_mvp"
     assert data["runtime"].startswith("C/SDL2")
+    assert data["stage_sequence"] == ["1-1", "1-2"]
+    assert [stage["stage"] for stage in data["stages"]] == ["1-1", "1-2"]
+    assert data["stages"][0]["asset"] == "assets/level_1_1.rgb"
+    assert data["stages"][1]["asset"] == "assets/level_1_2.rgb"
+    assert data["stages"][1]["collision_asset"] == "assets/collision_1_2.bin"
+    assert data["stages"][1]["block_asset"] == "assets/blocks_1_2.bin"
+    assert data["stages"][1]["enemy_asset"] == "assets/enemies_1_2.bin"
+    assert data["stages"][1]["width"] > 256
+    assert data["stages"][1]["interactive_block_count"] > 0
     assert data["level"]["width"] > 256
     assert data["level"]["collision_columns"] == data["level"]["width"] // 16
     assert data["level"]["collision_rows"] == data["level"]["height"] // 16
@@ -40,6 +49,7 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert data["stage_clear"]["restart_ms"] == 2500
     assert data["stage_clear"]["time_bonus_per_second"] == 50
     assert data["stage_clear"]["behavior"].startswith("native stage-clear")
+    assert "advances to the next generated stage" in data["stage_clear"]["behavior"]
     assert data["title_screen"]["asset"] == "assets/title_screen.rgb"
     assert data["title_screen"]["width"] == 256
     assert data["title_screen"]["height"] == 240
@@ -146,9 +156,12 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert export.build_script.exists()
     assert export.appimage_script.exists()
     assert (export.out_dir / "assets" / "level_1_1.rgb").exists()
+    assert (export.out_dir / "assets" / "level_1_2.rgb").exists()
     assert (export.out_dir / "assets" / "title_screen.rgb").exists()
     assert (export.out_dir / "assets" / "collision_1_1.bin").exists()
+    assert (export.out_dir / "assets" / "collision_1_2.bin").exists()
     assert (export.out_dir / "assets" / "blocks_1_1.bin").exists()
+    assert (export.out_dir / "assets" / "blocks_1_2.bin").exists()
     assert (export.out_dir / "assets" / "used_empty_block.rgb").exists()
     assert (export.out_dir / "assets" / "jumping_coin_frame_0.rgba").exists()
     assert (export.out_dir / "assets" / "jumping_coin_frame_1.rgba").exists()
@@ -171,6 +184,7 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert (export.out_dir / "assets" / "koopa_troopa.rgba").exists()
     assert (export.out_dir / "assets" / "koopa_shell.rgba").exists()
     assert (export.out_dir / "assets" / "enemies_1_1.bin").exists()
+    assert (export.out_dir / "assets" / "enemies_1_2.bin").exists()
     assert not (export.out_dir / "emulator").exists()
     assert not list(export.out_dir.rglob("*.nes"))
     source = export.source.read_text(encoding="utf-8")
@@ -240,9 +254,17 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "begin_death" in source
     assert "begin_stage_clear" in source
     assert "update_stage_clear_title" in source
-    assert "STAGE_CLEAR_X" in source
+    assert "STAGE_COUNT 2" in source
+    assert 'STAGE_LABELS[STAGE_COUNT] = {"1-1", "1-2"}' in source
+    assert (
+        'STAGE_LEVEL_FILES[STAGE_COUNT] = {"assets/level_1_1.rgb", "assets/level_1_2.rgb"}'
+        in source
+    )
+    assert "stage_clear_x(current_level_w)" in source
+    assert "current_stage = (current_stage + 1) % STAGE_COUNT" in source
+    assert "draw_hud(frame, score, coins, time_left, lives, stage_clear, stage_label)" in source
     assert "STAGE_CLEAR_RESTART_MS" in source
-    assert "STAGE CLEAR" in source
+    assert " CLEAR" in source
     assert "Score %06d" in source
     assert "Time %03d" in source
     assert "draw_hud" in source
@@ -323,7 +345,9 @@ def test_cli_smb_native_generates_project(tmp_path: Path) -> None:
     assert (out / "build-appimage.sh").exists()
     assert (out / "assets" / "title_screen.rgb").exists()
     assert (out / "assets" / "collision_1_1.bin").exists()
+    assert (out / "assets" / "collision_1_2.bin").exists()
     assert (out / "assets" / "blocks_1_1.bin").exists()
+    assert (out / "assets" / "blocks_1_2.bin").exists()
     assert (out / "assets" / "used_empty_block.rgb").exists()
     assert (out / "assets" / "jumping_coin_frame_0.rgba").exists()
     assert (out / "assets" / "jumping_coin_frame_3.rgba").exists()
@@ -338,4 +362,5 @@ def test_cli_smb_native_generates_project(tmp_path: Path) -> None:
     assert (out / "assets" / "koopa_troopa.rgba").exists()
     assert (out / "assets" / "koopa_shell.rgba").exists()
     assert (out / "assets" / "enemies_1_1.bin").exists()
+    assert (out / "assets" / "enemies_1_2.bin").exists()
     assert not list(out.rglob("*.nes"))

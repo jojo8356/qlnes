@@ -17,6 +17,7 @@ from PIL import Image
 from .det import sha256_file
 from .smb_graphics import (
     WORLD_MAP,
+    SmbLevelExport,
     _SmbLevelRuntime,
     render_smb_blocks,
     render_smb_characters,
@@ -34,6 +35,7 @@ SMB_KOOPA_GROUPS = {0x3B: 2, 0x3C: 3}
 SMB_NATIVE_ENEMY_RECORD_BYTES = 5
 SMB_NATIVE_BLOCK_RECORD_BYTES = 5
 SMB_JUMPING_COIN_FRAME_COUNT = 4
+SMB_NATIVE_DEFAULT_STAGE_SEQUENCE = ("1-1", "1-2")
 SMB_INTERACTIVE_BLOCK_METATILES = {
     0xC0: "question-block",
     0xC1: "question-block",
@@ -77,6 +79,20 @@ class SmbNativeExport:
     files: list[Path] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class _SmbNativeStageAsset:
+    stage: str
+    safe_stage: str
+    level: SmbLevelExport
+    level_raw: Path
+    collision_raw: Path
+    blocks_raw: Path
+    enemies_raw: Path
+    collision_size: tuple[int, int]
+    interactive_blocks: list[dict[str, object]]
+    enemy_spawns: list[dict[str, object]]
+
+
 def slugify_binary_name(name: str) -> str:
     slug = "".join(ch if ch.isalnum() else "-" for ch in name.strip())
     slug = "-".join(part for part in slug.split("-") if part)
@@ -100,6 +116,11 @@ def create_smb_native_port(
 
     rom_bytes = rom.read_bytes()
     validate_smb_nrom(rom_bytes)
+    stage_names = list(SMB_NATIVE_DEFAULT_STAGE_SEQUENCE if stage == "1-1" else (stage,))
+    for stage_name in stage_names:
+        if stage_name not in WORLD_MAP:
+            valid = ", ".join(sorted(WORLD_MAP))
+            raise ValueError(f"unknown SMB stage {stage_name!r}; valid: {valid}")
 
     app_slug = slugify_binary_name(app_name)
     src_dir = out / "src"
@@ -109,7 +130,14 @@ def create_smb_native_port(
     assets_dir.mkdir(exist_ok=True)
     build_dir.mkdir(exist_ok=True)
 
-    level = render_smb_level(rom, build_dir / "levels", stage=stage, max_columns=256)
+    rendered_levels = [
+        render_smb_level(rom, build_dir / "levels", stage=stage_name, max_columns=256)
+        for stage_name in stage_names
+    ]
+    max_level_width = max(level.width for level in rendered_levels)
+    max_level_height = max(level.height for level in rendered_levels)
+    max_collision_cols = max_level_width // 16
+    max_collision_rows = max_level_height // 16
     title_assets = render_smb_title_assets(rom, build_dir / "title")
     characters = render_smb_characters(rom, build_dir / "characters")
     block_assets = render_smb_blocks(rom, build_dir / "blocks")
@@ -146,10 +174,7 @@ def create_smb_native_port(
     if not brick_chunk_png.exists():
         raise RuntimeError(f"expected SMB brick chunk sprite missing: {brick_chunk_png}")
 
-    level_raw = assets_dir / "level_1_1.rgb"
     title_screen_raw = assets_dir / "title_screen.rgb"
-    collision_raw = assets_dir / "collision_1_1.bin"
-    blocks_raw = assets_dir / "blocks_1_1.bin"
     used_block_raw = assets_dir / "used_empty_block.rgb"
     coin_frame_raws = [
         assets_dir / f"jumping_coin_frame_{idx}.rgba" for idx in range(SMB_JUMPING_COIN_FRAME_COUNT)
@@ -160,16 +185,63 @@ def create_smb_native_port(
     koopa_raw = assets_dir / "koopa_troopa.rgba"
     koopa_shell_raw = assets_dir / "koopa_shell.rgba"
     dead_mario_raw = assets_dir / SMB_DEAD_MARIO_SPRITE[1]
-    enemies_raw = assets_dir / "enemies_1_1.bin"
-    _write_rgb(level.png, level_raw)
+    stage_assets: list[_SmbNativeStageAsset] = []
+    for level in rendered_levels:
+        safe_stage = level.stage.replace("-", "_")
+        level_raw = assets_dir / f"level_{safe_stage}.rgb"
+        collision_raw = assets_dir / f"collision_{safe_stage}.bin"
+        blocks_raw = assets_dir / f"blocks_{safe_stage}.bin"
+        enemies_raw = assets_dir / f"enemies_{safe_stage}.bin"
+        _write_padded_rgb(level.png, level_raw, max_level_width, max_level_height)
+        collision_size = _write_collision_map(
+            level.png,
+            collision_raw,
+            pad_cols=max_collision_cols,
+            pad_rows=max_collision_rows,
+        )
+        interactive_blocks, used_block_size = _write_block_interactions(
+            rom_bytes,
+            level.stage,
+            blocks_raw,
+            used_block_raw,
+        )
+        enemy_spawns = _write_enemy_spawns(rom_bytes, level.stage, enemies_raw)
+        stage_assets.append(
+            _SmbNativeStageAsset(
+                stage=level.stage,
+                safe_stage=safe_stage,
+                level=level,
+                level_raw=level_raw,
+                collision_raw=collision_raw,
+                blocks_raw=blocks_raw,
+                enemies_raw=enemies_raw,
+                collision_size=collision_size,
+                interactive_blocks=interactive_blocks,
+                enemy_spawns=enemy_spawns,
+            )
+        )
+
+    max_block_count = max(len(stage_asset.interactive_blocks) for stage_asset in stage_assets)
+    max_enemy_count = max(len(stage_asset.enemy_spawns) for stage_asset in stage_assets)
+    for stage_asset in stage_assets:
+        _pad_record_file(
+            stage_asset.blocks_raw,
+            current_count=len(stage_asset.interactive_blocks),
+            max_count=max_block_count,
+            record_bytes=SMB_NATIVE_BLOCK_RECORD_BYTES,
+            fill_record=bytes((0, 0, 0, 0, 2)),
+        )
+        _pad_record_file(
+            stage_asset.enemies_raw,
+            current_count=len(stage_asset.enemy_spawns),
+            max_count=max_enemy_count,
+            record_bytes=SMB_NATIVE_ENEMY_RECORD_BYTES,
+            fill_record=bytes((0, 0, 0, 0, 1)),
+        )
+
+    first_stage = stage_assets[0]
+    used_block_size = _write_used_block_asset(rom_bytes, first_stage.stage, used_block_raw)
     title_screen_size = _write_rgb(title_assets.title_screen, title_screen_raw)
-    collision_size = _write_collision_map(level.png, collision_raw)
-    interactive_blocks, used_block_size = _write_block_interactions(
-        rom_bytes,
-        stage,
-        blocks_raw,
-        used_block_raw,
-    )
     coin_frame_size = _write_coin_frame_assets(build_dir / "blocks" / "sprites", coin_frame_raws)
     small_mario_size, small_mario_assets = _write_mario_frame_assets(
         mario_pngs,
@@ -193,13 +265,27 @@ def create_smb_native_port(
     main_c.write_text(
         _main_c_source(
             app_name=app_name,
-            level_width=level.width,
-            level_height=level.height,
+            stage_labels=[stage_asset.stage for stage_asset in stage_assets],
+            stage_level_widths=[stage_asset.level.width for stage_asset in stage_assets],
+            stage_level_files=[
+                str(stage_asset.level_raw.relative_to(out)) for stage_asset in stage_assets
+            ],
+            stage_collision_files=[
+                str(stage_asset.collision_raw.relative_to(out)) for stage_asset in stage_assets
+            ],
+            stage_block_files=[
+                str(stage_asset.blocks_raw.relative_to(out)) for stage_asset in stage_assets
+            ],
+            stage_enemy_files=[
+                str(stage_asset.enemies_raw.relative_to(out)) for stage_asset in stage_assets
+            ],
+            level_width=max_level_width,
+            level_height=max_level_height,
             title_screen_width=title_screen_size[0],
             title_screen_height=title_screen_size[1],
-            collision_cols=collision_size[0],
-            collision_rows=collision_size[1],
-            block_count=len(interactive_blocks),
+            collision_cols=max_collision_cols,
+            collision_rows=max_collision_rows,
+            block_count=max_block_count,
             block_record_bytes=SMB_NATIVE_BLOCK_RECORD_BYTES,
             used_block_width=used_block_size[0],
             used_block_height=used_block_size[1],
@@ -223,7 +309,7 @@ def create_smb_native_port(
             koopa_height=koopa_size[1],
             koopa_shell_width=koopa_shell_size[0],
             koopa_shell_height=koopa_shell_size[1],
-            enemy_count=len(enemy_spawns),
+            enemy_count=max_enemy_count,
             enemy_record_bytes=SMB_NATIVE_ENEMY_RECORD_BYTES,
         ),
         encoding="utf-8",
@@ -259,10 +345,10 @@ Terminal=false
         appimage_sh,
         desktop,
         icon,
-        level_raw,
+        *(stage_asset.level_raw for stage_asset in stage_assets),
         title_screen_raw,
-        collision_raw,
-        blocks_raw,
+        *(stage_asset.collision_raw for stage_asset in stage_assets),
+        *(stage_asset.blocks_raw for stage_asset in stage_assets),
         used_block_raw,
         *coin_frame_raws,
         mushroom_raw,
@@ -273,7 +359,7 @@ Terminal=false
         goomba_raw,
         koopa_raw,
         koopa_shell_raw,
-        enemies_raw,
+        *(stage_asset.enemies_raw for stage_asset in stage_assets),
         manifest,
     ]
     manifest.write_text(
@@ -282,26 +368,46 @@ Terminal=false
                 "kind": "smb_native_port_mvp",
                 "app_name": app_name,
                 "executable_name": app_slug,
-                "stage": stage,
+                "stage": first_stage.stage,
+                "stage_sequence": [stage_asset.stage for stage_asset in stage_assets],
                 "rom_source": str(rom),
                 "rom_sha256": sha256_file(rom),
                 "runtime": "C/SDL2 native side-scroller MVP; no ROM or emulator is bundled",
+                "stages": [
+                    {
+                        "stage": stage_asset.stage,
+                        "source_png": str(stage_asset.level.png),
+                        "asset": str(stage_asset.level_raw.relative_to(out)),
+                        "collision_asset": str(stage_asset.collision_raw.relative_to(out)),
+                        "block_asset": str(stage_asset.blocks_raw.relative_to(out)),
+                        "enemy_asset": str(stage_asset.enemies_raw.relative_to(out)),
+                        "width": stage_asset.level.width,
+                        "height": stage_asset.level.height,
+                        "columns": stage_asset.level.columns,
+                        "rows": stage_asset.level.rows,
+                        "collision_columns": stage_asset.collision_size[0],
+                        "collision_rows": stage_asset.collision_size[1],
+                        "interactive_block_count": len(stage_asset.interactive_blocks),
+                        "enemy_spawn_count": len(stage_asset.enemy_spawns),
+                    }
+                    for stage_asset in stage_assets
+                ],
                 "level": {
-                    "source_png": str(level.png),
-                    "asset": str(level_raw.relative_to(out)),
-                    "collision_asset": str(collision_raw.relative_to(out)),
-                    "width": level.width,
-                    "height": level.height,
-                    "columns": level.columns,
-                    "rows": level.rows,
-                    "collision_columns": collision_size[0],
-                    "collision_rows": collision_size[1],
+                    "source_png": str(first_stage.level.png),
+                    "asset": str(first_stage.level_raw.relative_to(out)),
+                    "collision_asset": str(first_stage.collision_raw.relative_to(out)),
+                    "width": first_stage.level.width,
+                    "height": first_stage.level.height,
+                    "columns": first_stage.level.columns,
+                    "rows": first_stage.level.rows,
+                    "collision_columns": first_stage.collision_size[0],
+                    "collision_rows": first_stage.collision_size[1],
                 },
                 "stage_clear": {
-                    "trigger_x": max(level.width - 192, 0),
+                    "trigger_x": max(first_stage.level.width - 192, 0),
                     "restart_ms": 2500,
                     "time_bonus_per_second": 50,
-                    "behavior": "native stage-clear state freezes control and restarts the generated level",
+                    "behavior": "native stage-clear state freezes control, advances to the next generated stage, and loops after the final generated stage",
                 },
                 "title_screen": {
                     "source_png": str(title_assets.title_screen),
@@ -349,7 +455,7 @@ Terminal=false
                     "asset_files": [],
                 },
                 "interactive_blocks": {
-                    "asset": str(blocks_raw.relative_to(out)),
+                    "asset": str(first_stage.blocks_raw.relative_to(out)),
                     "used_block_asset": str(used_block_raw.relative_to(out)),
                     "jumping_coin_assets": [str(path.relative_to(out)) for path in coin_frame_raws],
                     "jumping_coin_width": coin_frame_size[0],
@@ -365,8 +471,8 @@ Terminal=false
                         f"0x{metatile:02X}" for metatile in sorted(SMB_BREAKABLE_BRICK_METATILES)
                     ],
                     "break_behavior": "big Mario breaks empty brick metatiles natively, removes their collision cell, and spawns four native brick chunks",
-                    "count": len(interactive_blocks),
-                    "blocks": interactive_blocks,
+                    "count": len(first_stage.interactive_blocks),
+                    "blocks": first_stage.interactive_blocks,
                 },
                 "player": {
                     "source_png": str(mario_pngs["small-stand"]),
@@ -420,7 +526,7 @@ Terminal=false
                         "runtime_kind": f"0x{SMB_NATIVE_KOOPA_SHELL_KIND:02X}",
                     },
                 ],
-                "enemy_spawns": enemy_spawns,
+                "enemy_spawns": first_stage.enemy_spawns,
                 "block_manifest": str(block_assets.manifest_json),
                 "character_manifest": str(characters.manifest_json),
                 "build": {
@@ -433,7 +539,8 @@ Terminal=false
                     "Controls: arrows or A/D to move, Shift/J to run, Space/W/Up to jump, Esc to quit.",
                     "Title screen uses the ROM-derived SMB title nametable rendered at generation time.",
                     "Collision is derived from the rendered SMB metatile map at build time.",
-                    "Supported enemy spawns are decoded from SMB EnemyData for the selected stage.",
+                    "Default native AppImage sequence includes stages 1-1 and 1-2 with separate generated assets.",
+                    "Supported enemy spawns are decoded from SMB EnemyData for each generated stage.",
                     "Small and big Mario standing, walking, and jumping sprites are normalized from SMB tables.",
                     "Mario death uses the SMB small-killed metasprite and restarts the native level state.",
                     "Big Mario shrinks on enemy damage and gets a short native invulnerability window.",
@@ -457,7 +564,7 @@ Terminal=false
         rom=rom,
         out_dir=out,
         app_name=app_name,
-        stage=stage,
+        stage=first_stage.stage,
         executable_name=app_slug,
         source=main_c,
         build_script=build_sh,
@@ -471,6 +578,17 @@ def _write_rgb(source_png: Path, target: Path) -> tuple[int, int]:
     image = Image.open(source_png).convert("RGB")
     target.write_bytes(image.tobytes())
     return image.size
+
+
+def _write_padded_rgb(source_png: Path, target: Path, width: int, height: int) -> tuple[int, int]:
+    image = Image.open(source_png).convert("RGB")
+    try:
+        padded = Image.new("RGB", (width, height), image.getpixel((0, 0)))
+        padded.paste(image, (0, 0))
+        target.write_bytes(padded.tobytes())
+        return padded.size
+    finally:
+        image.close()
 
 
 def _write_rgba(source_png: Path, target: Path) -> tuple[int, int]:
@@ -541,14 +659,25 @@ def _write_coin_frame_assets(
             image.close()
 
 
-def _write_collision_map(source_png: Path, target: Path) -> tuple[int, int]:
+def _write_collision_map(
+    source_png: Path,
+    target: Path,
+    *,
+    pad_cols: int | None = None,
+    pad_rows: int | None = None,
+) -> tuple[int, int]:
     image = Image.open(source_png).convert("RGB")
     cols = image.width // 16
     rows = image.height // 16
+    out_cols = pad_cols or cols
+    out_rows = pad_rows or rows
     sky = image.getpixel((0, 0))
     cells = bytearray()
-    for row in range(rows):
-        for col in range(cols):
+    for row in range(out_rows):
+        for col in range(out_cols):
+            if row >= rows or col >= cols:
+                cells.append(0)
+                continue
             non_sky = 0
             total = 0
             for y in range(row * 16, row * 16 + 16):
@@ -559,6 +688,39 @@ def _write_collision_map(source_png: Path, target: Path) -> tuple[int, int]:
             cells.append(1 if non_sky / total >= 0.20 else 0)
     target.write_bytes(bytes(cells))
     return cols, rows
+
+
+def _write_used_block_asset(
+    rom_bytes: bytes, stage: str, used_block_target: Path
+) -> tuple[int, int]:
+    runtime = _SmbLevelRuntime(rom_bytes)
+    runtime.load_stage(WORLD_MAP[stage], max_columns=256)
+    palettes = runtime.load_background_palette()
+    used_block = runtime.render_metatile(SMB_USED_BLOCK_METATILE, palettes).convert("RGB")
+    try:
+        used_block_target.write_bytes(used_block.tobytes())
+        return int(used_block.width), int(used_block.height)
+    finally:
+        used_block.close()
+
+
+def _pad_record_file(
+    target: Path,
+    *,
+    current_count: int,
+    max_count: int,
+    record_bytes: int,
+    fill_record: bytes,
+) -> None:
+    if len(fill_record) != record_bytes:
+        raise ValueError("fill_record length must match record_bytes")
+    if current_count > max_count:
+        raise ValueError("current_count cannot exceed max_count")
+    if current_count == max_count:
+        return
+    with target.open("ab") as f:
+        for _ in range(max_count - current_count):
+            f.write(fill_record)
 
 
 def _write_block_interactions(
@@ -761,6 +923,12 @@ def _append_enemy_spawn(
 def _main_c_source(
     *,
     app_name: str,
+    stage_labels: list[str],
+    stage_level_widths: list[int],
+    stage_level_files: list[str],
+    stage_collision_files: list[str],
+    stage_block_files: list[str],
+    stage_enemy_files: list[str],
     level_width: int,
     level_height: int,
     title_screen_width: int,
@@ -794,6 +962,12 @@ def _main_c_source(
     enemy_count: int,
     enemy_record_bytes: int,
 ) -> str:
+    stage_labels_c = ", ".join(f'"{label}"' for label in stage_labels)
+    stage_widths_c = ", ".join(str(width) for width in stage_level_widths)
+    stage_level_files_c = ", ".join(f'"{path}"' for path in stage_level_files)
+    stage_collision_files_c = ", ".join(f'"{path}"' for path in stage_collision_files)
+    stage_block_files_c = ", ".join(f'"{path}"' for path in stage_block_files)
+    stage_enemy_files_c = ", ".join(f'"{path}"' for path in stage_enemy_files)
     return f"""#include <SDL2/SDL.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -804,6 +978,7 @@ def _main_c_source(
 #define SCREEN_W 256
 #define SCREEN_H 240
 #define SCALE 3
+#define STAGE_COUNT {len(stage_labels)}
 #define LEVEL_W {level_width}
 #define LEVEL_H {level_height}
 #define TITLE_SCREEN_W {title_screen_width}
@@ -846,7 +1021,6 @@ def _main_c_source(
 #define STARTING_TIME 400
 #define DEATH_RESTART_MS 1300
 #define INVULNERABLE_MS 1400
-#define STAGE_CLEAR_X {max(level_width - 192, 0)}
 #define STAGE_CLEAR_RESTART_MS 2500
 #define SCORE_COIN 200
 #define SCORE_MUSHROOM 1000
@@ -857,6 +1031,13 @@ def _main_c_source(
 #define SCORE_TIME_BONUS 50
 #define KOOPA_SHELL_SPEED 150.0f
 #define AUDIO_RATE 44100
+
+static const char *STAGE_LABELS[STAGE_COUNT] = {{{stage_labels_c}}};
+static const int STAGE_LEVEL_WIDTHS[STAGE_COUNT] = {{{stage_widths_c}}};
+static const char *STAGE_LEVEL_FILES[STAGE_COUNT] = {{{stage_level_files_c}}};
+static const char *STAGE_COLLISION_FILES[STAGE_COUNT] = {{{stage_collision_files_c}}};
+static const char *STAGE_BLOCK_FILES[STAGE_COUNT] = {{{stage_block_files_c}}};
+static const char *STAGE_ENEMY_FILES[STAGE_COUNT] = {{{stage_enemy_files_c}}};
 
 enum {{
     AUDIO_MODE_TITLE = 0,
@@ -956,6 +1137,12 @@ static uint8_t *read_asset(const char *path, size_t expected) {{
         return NULL;
     }}
     return data;
+}}
+
+static uint8_t *read_bundled_asset(const char *base, const char *asset, size_t expected) {{
+    char path[4096];
+    snprintf(path, sizeof(path), "%s%s", base ? base : "", asset);
+    return read_asset(path, expected);
 }}
 
 static double square_sample(AudioState *state, double *phase, double hz) {{
@@ -1087,13 +1274,18 @@ static void trigger_sfx(SDL_AudioDeviceID device, AudioState *state, int kind) {
     SDL_UnlockAudioDevice(device);
 }}
 
-static void draw_level(uint32_t *frame, const uint8_t *level, int camera_x) {{
+static int stage_clear_x(int level_w) {{
+    int trigger = level_w - 192;
+    return trigger > 0 ? trigger : 0;
+}}
+
+static void draw_level(uint32_t *frame, const uint8_t *level, int level_w, int camera_x) {{
     for (int y = 0; y < SCREEN_H; y++) {{
         int sy = y < LEVEL_H ? y : LEVEL_H - 1;
         for (int x = 0; x < SCREEN_W; x++) {{
             int sx = camera_x + x;
             if (sx < 0) sx = 0;
-            if (sx >= LEVEL_W) sx = LEVEL_W - 1;
+            if (sx >= level_w) sx = level_w - 1;
             size_t i = ((size_t)sy * LEVEL_W + sx) * 3;
             frame[(size_t)y * SCREEN_W + x] = 0xFF000000u | ((uint32_t)level[i] << 16) |
                 ((uint32_t)level[i + 1] << 8) | (uint32_t)level[i + 2];
@@ -1198,7 +1390,15 @@ static void draw_hud_number(uint32_t *frame, int value, int digits, int x, int y
     }}
 }}
 
-static void draw_hud(uint32_t *frame, int score, int coins, int time_left, int lives, bool stage_clear) {{
+static void draw_hud(
+    uint32_t *frame,
+    int score,
+    int coins,
+    int time_left,
+    int lives,
+    bool stage_clear,
+    const char *stage_label
+) {{
     uint32_t shadow = 0xFF000000u;
     uint32_t color = stage_clear ? 0xFFFFFF40u : 0xFFFFFFFFu;
     draw_hud_text(frame, "MARIO", 8, 8, shadow);
@@ -1207,7 +1407,7 @@ static void draw_hud(uint32_t *frame, int score, int coins, int time_left, int l
     draw_hud_text(frame, "COIN", 69, 7, color);
     draw_hud_number(frame, coins, 2, 76, 16, color);
     draw_hud_text(frame, "WORLD", 124, 7, color);
-    draw_hud_text(frame, "1-1", 132, 16, color);
+    draw_hud_text(frame, stage_label, 132, 16, color);
     draw_hud_text(frame, "TIME", 196, 7, color);
     draw_hud_number(frame, time_left, 3, 200, 16, color);
     draw_hud_text(frame, "LIVES", 8, 28, color);
@@ -1237,8 +1437,14 @@ static const Block *const_block_at(const Block *blocks, int world_x, int world_y
     return NULL;
 }}
 
-static bool solid_at(const uint8_t *collision, const Block *blocks, int world_x, int world_y) {{
-    if (world_x < 0 || world_x >= LEVEL_W) return true;
+static bool solid_at(
+    const uint8_t *collision,
+    const Block *blocks,
+    int level_w,
+    int world_x,
+    int world_y
+) {{
+    if (world_x < 0 || world_x >= level_w) return true;
     if (world_y >= LEVEL_H) return true;
     if (world_y < 0) return false;
     const Block *block = const_block_at(blocks, world_x, world_y);
@@ -1249,13 +1455,23 @@ static bool solid_at(const uint8_t *collision, const Block *blocks, int world_x,
     return collision[row * COLLISION_COLS + col] != 0;
 }}
 
-static bool rect_hits_solid(const uint8_t *collision, const Block *blocks, float x, float y, int w, int h) {{
+static bool rect_hits_solid(
+    const uint8_t *collision,
+    const Block *blocks,
+    int level_w,
+    float x,
+    float y,
+    int w,
+    int h
+) {{
     int left = (int)x;
     int right = (int)(x + w - 1);
     int top = (int)y;
     int bottom = (int)(y + h - 1);
-    return solid_at(collision, blocks, left, top) || solid_at(collision, blocks, right, top) ||
-        solid_at(collision, blocks, left, bottom) || solid_at(collision, blocks, right, bottom);
+    return solid_at(collision, blocks, level_w, left, top) ||
+        solid_at(collision, blocks, level_w, right, top) ||
+        solid_at(collision, blocks, level_w, left, bottom) ||
+        solid_at(collision, blocks, level_w, right, bottom);
 }}
 
 static bool rects_overlap(float ax, float ay, int aw, int ah, float bx, float by, int bw, int bh) {{
@@ -1277,7 +1493,7 @@ static bool load_enemies(const uint8_t *data, Enemy *enemies) {{
         enemies[i].vx = -36.0f;
         enemies[i].vy = 0.0f;
         enemies[i].kind = kind;
-        enemies[i].alive = true;
+        enemies[i].alive = data[o + 4] == 0;
     }}
     return true;
 }}
@@ -1288,8 +1504,8 @@ static bool load_blocks(const uint8_t *data, Block *blocks) {{
         blocks[i].x = (uint16_t)data[o] | ((uint16_t)data[o + 1] << 8);
         blocks[i].y = data[o + 2];
         blocks[i].metatile = data[o + 3];
-        blocks[i].used = data[o + 4] != 0;
-        blocks[i].broken = false;
+        blocks[i].used = data[o + 4] == 1;
+        blocks[i].broken = data[o + 4] == 2;
     }}
     return true;
 }}
@@ -1377,7 +1593,13 @@ static void spawn_mushroom(Powerup *powerup, const Block *block) {{
     powerup->target_y = (float)block->y - MUSHROOM_H;
 }}
 
-static void update_powerup(Powerup *powerup, const uint8_t *collision, const Block *blocks, float dt) {{
+static void update_powerup(
+    Powerup *powerup,
+    const uint8_t *collision,
+    const Block *blocks,
+    int level_w,
+    float dt
+) {{
     if (!powerup->active) return;
     if (powerup->emerging) {{
         powerup->y -= 22.0f * dt;
@@ -1389,13 +1611,13 @@ static void update_powerup(Powerup *powerup, const uint8_t *collision, const Blo
     }}
     powerup->vy += 620.0f * dt;
     float next_x = powerup->x + powerup->vx * dt;
-    if (rect_hits_solid(collision, blocks, next_x, powerup->y, MUSHROOM_W, MUSHROOM_H)) {{
+    if (rect_hits_solid(collision, blocks, level_w, next_x, powerup->y, MUSHROOM_W, MUSHROOM_H)) {{
         powerup->vx = -powerup->vx;
     }} else {{
         powerup->x = next_x;
     }}
     float next_y = powerup->y + powerup->vy * dt;
-    if (!rect_hits_solid(collision, blocks, powerup->x, next_y, MUSHROOM_W, MUSHROOM_H)) {{
+    if (!rect_hits_solid(collision, blocks, level_w, powerup->x, next_y, MUSHROOM_W, MUSHROOM_H)) {{
         powerup->y = next_y;
     }} else if (powerup->vy > 0.0f) {{
         int tile_y = ((int)(powerup->y + MUSHROOM_H + powerup->vy * dt)) / TILE_SIZE;
@@ -1451,13 +1673,21 @@ static int mario_height(bool mario_big) {{
     return mario_big ? BIG_MARIO_H : SMALL_MARIO_H;
 }}
 
-static void update_window_title(SDL_Window *window, int score, int coins, int time_left, int lives) {{
+static void update_window_title(
+    SDL_Window *window,
+    const char *stage_label,
+    int score,
+    int coins,
+    int time_left,
+    int lives
+) {{
     char title[256];
     snprintf(
         title,
         sizeof(title),
-        "%s  Score %06d  Coins %02d  Time %03d  Lives %d",
+        "%s  %s  Score %06d  Coins %02d  Time %03d  Lives %d",
         APP_TITLE,
+        stage_label,
         score,
         coins,
         time_left,
@@ -1472,13 +1702,21 @@ static void update_title_screen_window_title(SDL_Window *window) {{
     SDL_SetWindowTitle(window, title);
 }}
 
-static void update_stage_clear_title(SDL_Window *window, int score, int coins, int time_left, int lives) {{
+static void update_stage_clear_title(
+    SDL_Window *window,
+    const char *stage_label,
+    int score,
+    int coins,
+    int time_left,
+    int lives
+) {{
     char title[256];
     snprintf(
         title,
         sizeof(title),
-        "%s  STAGE CLEAR  Score %06d  Coins %02d  Time %03d  Lives %d",
+        "%s  %s CLEAR  Score %06d  Coins %02d  Time %03d  Lives %d",
         APP_TITLE,
+        stage_label,
         score,
         coins,
         time_left,
@@ -1535,6 +1773,7 @@ static void begin_death(
     bool *on_ground,
     uint32_t now,
     SDL_Window *window,
+    const char *stage_label,
     int score,
     int coins,
     int time_left
@@ -1546,7 +1785,7 @@ static void begin_death(
     *vy = -210.0f;
     *on_ground = false;
     if (*lives > 0) *lives -= 1;
-    update_window_title(window, score, coins, time_left, *lives);
+    update_window_title(window, stage_label, score, coins, time_left, *lives);
 }}
 
 static void begin_stage_clear(
@@ -1559,6 +1798,7 @@ static void begin_stage_clear(
     bool *on_ground,
     uint32_t now,
     SDL_Window *window,
+    const char *stage_label,
     int coins,
     int lives
 ) {{
@@ -1570,7 +1810,7 @@ static void begin_stage_clear(
     *vx = 0.0f;
     *vy = 0.0f;
     *on_ground = true;
-    update_stage_clear_title(window, *score, coins, *time_left, lives);
+    update_stage_clear_title(window, stage_label, *score, coins, *time_left, lives);
 }}
 
 static void draw_sprite(
@@ -1600,10 +1840,7 @@ static void draw_sprite(
 
 int main(int argc, char **argv) {{
     const char *base = SDL_GetBasePath();
-    char level_path[4096];
     char title_screen_path[4096];
-    char collision_path[4096];
-    char blocks_path[4096];
     char used_block_path[4096];
     char coin_path_0[4096];
     char coin_path_1[4096];
@@ -1625,11 +1862,7 @@ int main(int argc, char **argv) {{
     char goomba_path[4096];
     char koopa_path[4096];
     char koopa_shell_path[4096];
-    char enemies_path[4096];
-    snprintf(level_path, sizeof(level_path), "%sassets/level_1_1.rgb", base ? base : "");
     snprintf(title_screen_path, sizeof(title_screen_path), "%sassets/title_screen.rgb", base ? base : "");
-    snprintf(collision_path, sizeof(collision_path), "%sassets/collision_1_1.bin", base ? base : "");
-    snprintf(blocks_path, sizeof(blocks_path), "%sassets/blocks_1_1.bin", base ? base : "");
     snprintf(used_block_path, sizeof(used_block_path), "%sassets/used_empty_block.rgb", base ? base : "");
     snprintf(coin_path_0, sizeof(coin_path_0), "%sassets/jumping_coin_frame_0.rgba", base ? base : "");
     snprintf(coin_path_1, sizeof(coin_path_1), "%sassets/jumping_coin_frame_1.rgba", base ? base : "");
@@ -1651,12 +1884,21 @@ int main(int argc, char **argv) {{
     snprintf(goomba_path, sizeof(goomba_path), "%sassets/goomba.rgba", base ? base : "");
     snprintf(koopa_path, sizeof(koopa_path), "%sassets/koopa_troopa.rgba", base ? base : "");
     snprintf(koopa_shell_path, sizeof(koopa_shell_path), "%sassets/koopa_shell.rgba", base ? base : "");
-    snprintf(enemies_path, sizeof(enemies_path), "%sassets/enemies_1_1.bin", base ? base : "");
 
-    uint8_t *level = read_asset(level_path, (size_t)LEVEL_W * LEVEL_H * 3);
+    uint8_t *levels[STAGE_COUNT];
+    uint8_t *collisions[STAGE_COUNT];
+    uint8_t *block_sets[STAGE_COUNT];
+    uint8_t *enemy_sets[STAGE_COUNT];
+    bool stages_loaded = true;
+    for (int i = 0; i < STAGE_COUNT; i++) {{
+        levels[i] = read_bundled_asset(base, STAGE_LEVEL_FILES[i], (size_t)LEVEL_W * LEVEL_H * 3);
+        collisions[i] = read_bundled_asset(base, STAGE_COLLISION_FILES[i], (size_t)COLLISION_COLS * COLLISION_ROWS);
+        block_sets[i] = read_bundled_asset(base, STAGE_BLOCK_FILES[i], (size_t)BLOCK_COUNT * BLOCK_RECORD_BYTES);
+        enemy_sets[i] = read_bundled_asset(base, STAGE_ENEMY_FILES[i], (size_t)ENEMY_COUNT * ENEMY_RECORD_BYTES);
+        if (!levels[i] || !collisions[i] || !block_sets[i] || !enemy_sets[i]) stages_loaded = false;
+    }}
+
     uint8_t *title_screen = read_asset(title_screen_path, (size_t)TITLE_SCREEN_W * TITLE_SCREEN_H * 3);
-    uint8_t *collision = read_asset(collision_path, (size_t)COLLISION_COLS * COLLISION_ROWS);
-    uint8_t *block_data = read_asset(blocks_path, (size_t)BLOCK_COUNT * BLOCK_RECORD_BYTES);
     uint8_t *used_block = read_asset(used_block_path, (size_t)USED_BLOCK_W * USED_BLOCK_H * 3);
     uint8_t *coin_frames[COIN_FRAME_COUNT];
     coin_frames[0] = read_asset(coin_path_0, (size_t)COIN_W * COIN_H * 4);
@@ -1681,7 +1923,6 @@ int main(int argc, char **argv) {{
     uint8_t *goomba = read_asset(goomba_path, (size_t)GOOMBA_W * GOOMBA_H * 4);
     uint8_t *koopa = read_asset(koopa_path, (size_t)KOOPA_W * KOOPA_H * 4);
     uint8_t *koopa_shell = read_asset(koopa_shell_path, (size_t)KOOPA_SHELL_W * KOOPA_SHELL_H * 4);
-    uint8_t *enemy_data = read_asset(enemies_path, (size_t)ENEMY_COUNT * ENEMY_RECORD_BYTES);
     bool mario_loaded = true;
     for (int i = 0; i < MARIO_FRAME_COUNT; i++) {{
         if (!small_mario_frames[i] || !big_mario_frames[i]) mario_loaded = false;
@@ -1690,17 +1931,27 @@ int main(int argc, char **argv) {{
     for (int i = 0; i < COIN_FRAME_COUNT; i++) {{
         if (!coin_frames[i]) coins_loaded = false;
     }}
-    if (!level || !title_screen || !collision || !block_data || !used_block || !coins_loaded || !mushroom || !brick_chunk || !mario_loaded || !dead_mario || !goomba || !koopa || !koopa_shell || !enemy_data) return 2;
+    if (!stages_loaded || !title_screen || !used_block || !coins_loaded || !mushroom || !brick_chunk || !mario_loaded || !dead_mario || !goomba || !koopa || !koopa_shell) return 2;
+    int current_stage = 0;
+    const char *stage_label = STAGE_LABELS[current_stage];
+    int current_level_w = STAGE_LEVEL_WIDTHS[current_stage];
+    uint8_t *level = levels[current_stage];
+    uint8_t *collision = collisions[current_stage];
+    uint8_t *block_data = block_sets[current_stage];
+    uint8_t *enemy_data = enemy_sets[current_stage];
     Block blocks[BLOCK_COUNT > 0 ? BLOCK_COUNT : 1];
     Enemy enemies[ENEMY_COUNT > 0 ? ENEMY_COUNT : 1];
     load_blocks(block_data, blocks);
     load_enemies(enemy_data, enemies);
 
     if (argc > 1 && SDL_strcmp(argv[1], "--self-test") == 0) {{
-        free(level);
+        for (int i = 0; i < STAGE_COUNT; i++) {{
+            free(levels[i]);
+            free(collisions[i]);
+            free(block_sets[i]);
+            free(enemy_sets[i]);
+        }}
         free(title_screen);
-        free(collision);
-        free(block_data);
         free(used_block);
         for (int i = 0; i < COIN_FRAME_COUNT; i++) free(coin_frames[i]);
         free(mushroom);
@@ -1713,7 +1964,6 @@ int main(int argc, char **argv) {{
         free(goomba);
         free(koopa);
         free(koopa_shell);
-        free(enemy_data);
         return 0;
     }}
 
@@ -1774,7 +2024,7 @@ int main(int argc, char **argv) {{
                 timer_started_at = SDL_GetTicks();
                 last = timer_started_at;
                 set_audio_mode(audio_device, &audio_state, AUDIO_MODE_GAMEPLAY);
-                update_window_title(window, score, coins, time_left, lives);
+                update_window_title(window, stage_label, score, coins, time_left, lives);
             }}
         }}
 
@@ -1812,7 +2062,7 @@ int main(int argc, char **argv) {{
             if (next_time_left < 0) next_time_left = 0;
             if (next_time_left != time_left) {{
                 time_left = next_time_left;
-                update_window_title(window, score, coins, time_left, lives);
+                update_window_title(window, stage_label, score, coins, time_left, lives);
             }}
             if (time_left <= 0) {{
                 begin_death(
@@ -1824,6 +2074,7 @@ int main(int argc, char **argv) {{
                     &on_ground,
                     now,
                     window,
+                    stage_label,
                     score,
                     coins,
                     time_left
@@ -1864,10 +2115,17 @@ int main(int argc, char **argv) {{
                     &timer_started_at
                 );
                 set_audio_mode(audio_device, &audio_state, AUDIO_MODE_GAMEPLAY);
-                update_window_title(window, score, coins, time_left, lives);
+                update_window_title(window, stage_label, score, coins, time_left, lives);
             }}
         }} else if (stage_clear) {{
             if (now - stage_clear_started_at >= STAGE_CLEAR_RESTART_MS) {{
+                current_stage = (current_stage + 1) % STAGE_COUNT;
+                stage_label = STAGE_LABELS[current_stage];
+                current_level_w = STAGE_LEVEL_WIDTHS[current_stage];
+                level = levels[current_stage];
+                collision = collisions[current_stage];
+                block_data = block_sets[current_stage];
+                enemy_data = enemy_sets[current_stage];
                 reset_level_state(
                     block_data,
                     blocks,
@@ -1889,17 +2147,17 @@ int main(int argc, char **argv) {{
                     &timer_started_at
                 );
                 set_audio_mode(audio_device, &audio_state, AUDIO_MODE_GAMEPLAY);
-                update_window_title(window, score, coins, time_left, lives);
+                update_window_title(window, stage_label, score, coins, time_left, lives);
             }}
         }} else {{
         vy += 620.0f * dt;
         float next_x = mario_x + vx * dt;
-        if (!rect_hits_solid(collision, blocks, next_x, mario_y, player_w, player_h)) {{
+        if (!rect_hits_solid(collision, blocks, current_level_w, next_x, mario_y, player_w, player_h)) {{
             mario_x = next_x;
         }}
         float next_y = mario_y + vy * dt;
         on_ground = false;
-        if (!rect_hits_solid(collision, blocks, mario_x, next_y, player_w, player_h)) {{
+        if (!rect_hits_solid(collision, blocks, current_level_w, mario_x, next_y, player_w, player_h)) {{
             mario_y = next_y;
         }} else if (vy > 0.0f) {{
             int tile_y = ((int)(mario_y + player_h + vy * dt)) / TILE_SIZE;
@@ -1917,7 +2175,7 @@ int main(int argc, char **argv) {{
                     brick_effect.y = (float)hit->y;
                     brick_effect.started_at = now;
                     trigger_sfx(audio_device, &audio_state, SFX_BRICK);
-                    update_window_title(window, score, coins, time_left, lives);
+                    update_window_title(window, stage_label, score, coins, time_left, lives);
                 }} else if (!block_is_breakable(hit)) {{
                     hit->used = true;
                     if (hit->metatile == 0x57) {{
@@ -1930,15 +2188,15 @@ int main(int argc, char **argv) {{
                         coin_effect.x = (float)hit->x + 4.0f;
                         coin_effect.y = (float)hit->y - 8.0f;
                         coin_effect.started_at = now;
-                        update_window_title(window, score, coins, time_left, lives);
+                        update_window_title(window, stage_label, score, coins, time_left, lives);
                     }}
                 }}
             }}
             vy = 0.0f;
         }}
         if (mario_x < 0.0f) mario_x = 0.0f;
-        if (mario_x > LEVEL_W - player_w) mario_x = LEVEL_W - player_w;
-        update_powerup(&powerup, collision, blocks, dt);
+        if (mario_x > current_level_w - player_w) mario_x = current_level_w - player_w;
+        update_powerup(&powerup, collision, blocks, current_level_w, dt);
         if (powerup.active && rects_overlap(mario_x, mario_y, player_w, player_h, powerup.x, powerup.y, MUSHROOM_W, MUSHROOM_H)) {{
             powerup.active = false;
             if (!mario_big) {{
@@ -1948,7 +2206,7 @@ int main(int argc, char **argv) {{
             score += SCORE_MUSHROOM;
             coins += 10;
             trigger_sfx(audio_device, &audio_state, SFX_POWERUP);
-            update_window_title(window, score, coins, time_left, lives);
+            update_window_title(window, stage_label, score, coins, time_left, lives);
         }}
         player_w = mario_width(mario_big);
         player_h = mario_height(mario_big);
@@ -1963,13 +2221,14 @@ int main(int argc, char **argv) {{
                 &on_ground,
                 now,
                 window,
+                stage_label,
                 score,
                 coins,
                 time_left
             );
             set_audio_mode(audio_device, &audio_state, AUDIO_MODE_DEATH);
         }}
-        if (mario_x >= STAGE_CLEAR_X) {{
+        if (mario_x >= stage_clear_x(current_level_w)) {{
             begin_stage_clear(
                 &stage_clear,
                 &stage_clear_started_at,
@@ -1980,6 +2239,7 @@ int main(int argc, char **argv) {{
                 &on_ground,
                 now,
                 window,
+                stage_label,
                 coins,
                 lives
             );
@@ -1993,13 +2253,13 @@ int main(int argc, char **argv) {{
             int eh = enemy_height(enemy);
             enemy->vy += 620.0f * dt;
             float gx = enemy->x + enemy->vx * dt;
-            if (rect_hits_solid(collision, blocks, gx, enemy->y, ew, eh)) {{
+            if (rect_hits_solid(collision, blocks, current_level_w, gx, enemy->y, ew, eh)) {{
                 enemy->vx = -enemy->vx;
             }} else {{
                 enemy->x = gx;
             }}
             float gy = enemy->y + enemy->vy * dt;
-            if (!rect_hits_solid(collision, blocks, enemy->x, gy, ew, eh)) {{
+            if (!rect_hits_solid(collision, blocks, current_level_w, enemy->x, gy, ew, eh)) {{
                 enemy->y = gy;
             }} else if (enemy->vy > 0.0f) {{
                 int tile_y = ((int)(enemy->y + eh + enemy->vy * dt)) / TILE_SIZE;
@@ -2010,7 +2270,7 @@ int main(int argc, char **argv) {{
             }}
             int probe_x = enemy->vx < 0.0f ? (int)enemy->x - 2 : (int)(enemy->x + ew + 2);
             int foot_y = (int)(enemy->y + eh + 2);
-            if (!solid_at(collision, blocks, probe_x, foot_y)) {{
+            if (!solid_at(collision, blocks, current_level_w, probe_x, foot_y)) {{
                 enemy->vx = -enemy->vx;
             }}
             if (rects_overlap(mario_x, mario_y, player_w, player_h, enemy->x, enemy->y, ew, eh)) {{
@@ -2029,7 +2289,7 @@ int main(int argc, char **argv) {{
                     }}
                     score += SCORE_STOMP;
                     trigger_sfx(audio_device, &audio_state, SFX_STOMP);
-                    update_window_title(window, score, coins, time_left, lives);
+                    update_window_title(window, stage_label, score, coins, time_left, lives);
                     vy = -160.0f;
                 }} else if (shell_stationary) {{
                     enemy->vx = mario_x < enemy->x ? KOOPA_SHELL_SPEED : -KOOPA_SHELL_SPEED;
@@ -2040,7 +2300,7 @@ int main(int argc, char **argv) {{
                     }}
                     score += SCORE_SHELL_KICK;
                     trigger_sfx(audio_device, &audio_state, SFX_SHELL_KICK);
-                    update_window_title(window, score, coins, time_left, lives);
+                    update_window_title(window, stage_label, score, coins, time_left, lives);
                 }} else if (now < invulnerable_until) {{
                     continue;
                 }} else if (mario_big) {{
@@ -2058,6 +2318,7 @@ int main(int argc, char **argv) {{
                         &on_ground,
                         now,
                         window,
+                        stage_label,
                         score,
                         coins,
                         time_left
@@ -2082,7 +2343,7 @@ int main(int argc, char **argv) {{
                     target->alive = false;
                     score += SCORE_SHELL_HIT;
                     trigger_sfx(audio_device, &audio_state, SFX_STOMP);
-                    update_window_title(window, score, coins, time_left, lives);
+                    update_window_title(window, stage_label, score, coins, time_left, lives);
                 }}
             }}
         }}
@@ -2090,9 +2351,9 @@ int main(int argc, char **argv) {{
 
         int camera = (int)mario_x - 96;
         if (camera < 0) camera = 0;
-        if (camera > LEVEL_W - SCREEN_W) camera = LEVEL_W - SCREEN_W;
-        draw_level(frame, level, camera);
-        draw_hud(frame, score, coins, time_left, lives, stage_clear);
+        if (camera > current_level_w - SCREEN_W) camera = current_level_w - SCREEN_W;
+        draw_level(frame, level, current_level_w, camera);
+        draw_hud(frame, score, coins, time_left, lives, stage_clear, stage_label);
         draw_broken_blocks(frame, blocks, level, camera);
         draw_used_blocks(frame, blocks, used_block, camera);
         if (coin_effect.active && now - coin_effect.started_at >= 650) coin_effect.active = false;
@@ -2147,10 +2408,13 @@ int main(int argc, char **argv) {{
     }}
 
     free(frame);
-    free(level);
+    for (int i = 0; i < STAGE_COUNT; i++) {{
+        free(levels[i]);
+        free(collisions[i]);
+        free(block_sets[i]);
+        free(enemy_sets[i]);
+    }}
     free(title_screen);
-    free(collision);
-    free(block_data);
     free(used_block);
     for (int i = 0; i < COIN_FRAME_COUNT; i++) free(coin_frames[i]);
     free(mushroom);
@@ -2163,7 +2427,6 @@ int main(int argc, char **argv) {{
     free(goomba);
     free(koopa);
     free(koopa_shell);
-    free(enemy_data);
     if (audio_device) SDL_CloseAudioDevice(audio_device);
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
