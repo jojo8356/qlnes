@@ -6,6 +6,7 @@ import pytest
 from qlnes.audio.in_process.memory import (
     AxROMMemory,
     CNROMMemory,
+    ColorDreamsMemory,
     GxROMMemory,
     MMC1Memory,
     MMC3Memory,
@@ -274,6 +275,29 @@ def test_gxrom_reset_state_restores_prg_and_chr_bank():
     m[0x8000] = 0x32
     assert m[0x8000] == 3
     assert m.ppu_snapshot().chr_bank == 2
+    m.reset_state()
+    assert m[0x8000] == 0
+    assert m.ppu_snapshot().chr_bank == 0
+
+
+def test_colordreams_mapper_write_switches_prg_and_chr_bank():
+    banks = [bytes([bank_id] * 0x8000) for bank_id in range(4)]
+    m = ColorDreamsMemory(b"".join(banks), chr_banks=16)
+    assert m[0x8000] == 0
+    assert m[0xFFFF] == 0
+    assert m.ppu_snapshot().chr_bank == 0
+    m[0x8000] = 0x21
+    assert m[0x8000] == 1
+    assert m[0xFFFF] == 1
+    assert m.ppu_snapshot().chr_bank == 2
+
+
+def test_colordreams_reset_state_restores_prg_and_chr_bank():
+    banks = [bytes([bank_id] * 0x8000) for bank_id in range(4)]
+    m = ColorDreamsMemory(b"".join(banks), chr_banks=16)
+    m[0x8000] = 0x32
+    assert m[0x8000] == 2
+    assert m.ppu_snapshot().chr_bank == 3
     m.reset_state()
     assert m[0x8000] == 0
     assert m.ppu_snapshot().chr_bank == 0

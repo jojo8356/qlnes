@@ -10,7 +10,7 @@ class TestMapperHeader(unittest.TestCase):
         self.assertIsNone(parse_header(b"NOPE" + bytes(20)))
 
     def test_mapper_extraction(self):
-        for m in (0, 1, 2, 3, 4):
+        for m in (0, 1, 2, 3, 4, 7, 11, 66):
             h = parse_header(ines_header(1, 1, m))
             self.assertEqual(h.mapper, m, f"mapper={m}")
 
@@ -86,6 +86,14 @@ class TestGxROM(unittest.TestCase):
 class TestAxROM(unittest.TestCase):
     def test_axrom_one_image_per_32k_bank(self):
         images = rom_to_images(fake_rom(4, 7))
+        self.assertEqual(len(images), 2)
+        self.assertEqual(images[0][1][0x8000], 0)
+        self.assertEqual(images[1][1][0x8000], 2)
+
+
+class TestColorDreams(unittest.TestCase):
+    def test_colordreams_one_image_per_32k_bank(self):
+        images = rom_to_images(fake_rom(4, 11))
         self.assertEqual(len(images), 2)
         self.assertEqual(images[0][1][0x8000], 0)
         self.assertEqual(images[1][1][0x8000], 2)

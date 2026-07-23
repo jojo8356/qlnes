@@ -485,11 +485,17 @@ La premiere implementation qlnes suit cette decision :
   exporte les sprites OAM avec palette RAM runtime, flips, taille 8x8/8x16 et
   canvas `oam-screen.png`.
 - `python -m qlnes sprites ROM.nes -o out/oam --runtime-frames 120` boote les
-  ROMs simples NROM, MMC1/SxROM, UxROM, CNROM, MMC3, AxROM et GxROM/GNROM avec
-  l'observateur in-process et capture automatiquement PPUCTRL, PPUMASK,
-  palette RAM, OAM/OAMDMA, pattern table CHR-RAM simple, CHR bank CNROM actif,
-  fenêtres CHR MMC1 8 KiB/split 4 KiB, fenêtres CHR MMC3 1 KiB/2 KiB et
-  PRG banks AxROM / PRG-CHR banks GxROM.
+  ROMs simples NROM, MMC1/SxROM, UxROM, CNROM, MMC3, AxROM, Color Dreams et
+  GxROM/GNROM avec l'observateur in-process et capture automatiquement
+  PPUCTRL, PPUMASK, palette RAM, OAM/OAMDMA, pattern table CHR-RAM simple,
+  CHR bank CNROM actif, fenêtres CHR MMC1 8 KiB/split 4 KiB, fenêtres CHR MMC3
+  1 KiB/2 KiB, PRG banks AxROM, PRG-CHR banks Color Dreams et PRG-CHR banks
+  GxROM.
+- Pour mapper 11/Color Dreams, NESdev documente une fenêtre CPU 32 KiB
+  switchable à `$8000-$FFFF`, une fenêtre PPU CHR 8 KiB à `$0000-$1FFF`, et
+  un registre `CCCC LLPP` : bits `0-1` pour le PRG bank 32 KiB, bits `4-7`
+  pour le CHR bank 8 KiB, bits `2-3` réservés au contournement lockout.
+  Source : https://www.nesdev.org/wiki/INES_Mapper_011
 
 Sorties principales :
 
