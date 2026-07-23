@@ -120,11 +120,17 @@ python -m qlnes smb-blocks "roms/Super Mario Bros. (World).nes" -o out/smb-block
 # Super Mario Bros. : exporter logo title-screen et polices utilisees
 python -m qlnes smb-title-assets "roms/Super Mario Bros. (World).nes" -o out/smb-title-assets
 
+# Super Mario Bros. : generer un MVP natif Linux C/SDL2 sans ROM ni emulateur runtime
+python -m qlnes smb-native "roms/Super Mario Bros. (World).nes" -o out/smb-native --name "Super Mario Bros Native" --force
+cd out/smb-native
+./build-appimage.sh
+./Super-Mario-Bros-Native.AppImage
+
 # Generer un projet launcher pour transformer une ROM en .exe ou AppImage
 python -m qlnes bundle-rom ROM.nes -o out/rom-app --name "My NES Game" --target all
 cd out/rom-app
-./build-exe.sh       # PyInstaller: produit dist/My-NES-Game(.exe selon OS)
-./build-appimage.sh  # Linux: demande appimagetool et produit My-NES-Game.AppImage
+./build-exe.sh       # installe PyInstaller localement via uv, puis produit dist/My-NES-Game(.exe selon OS)
+./build-appimage.sh  # installe PyInstaller via uv, recupere appimagetool si besoin, produit My-NES-Game.AppImage
 
 # Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/MMC5/AxROM/MMC2/MMC4/Color Dreams/CPROM/Bandai FCG/Jaleco SS88006/Namco 163/VRC2-VRC4/VRC6/VRC7/Irem G-101/Taito TC0190/BNROM/Mapper 42/RAMBO-1/GxROM/FME-7/Bandai/Camerica/JF-17/VRC1/Holy Diver/NINA-03-06/J87/JF-10/Namco 108 : capture palette/OAM automatiquement
 # Inclut les ROMs CHR-RAM simples quand les patterns sont écrits en VRAM au boot.

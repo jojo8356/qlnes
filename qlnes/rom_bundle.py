@@ -227,7 +227,19 @@ def _write_pyinstaller_scripts(out: Path, app_slug: str, rom_filename: str) -> l
     sh.write_text(
         f"""#!/usr/bin/env sh
 set -eu
-python -m PyInstaller --clean --onefile --name {app_slug} \\
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv is required to bootstrap PyInstaller locally. Install uv or add it to PATH." >&2
+  exit 1
+fi
+export UV_CACHE_DIR="${{UV_CACHE_DIR:-.uv-cache}}"
+PYTHON="${{PYTHON:-python3}}"
+if [ ! -x ".venv-build/bin/python" ]; then
+  uv venv --python "$PYTHON" .venv-build
+fi
+if ! .venv-build/bin/python -c "import PyInstaller" >/dev/null 2>&1; then
+  uv pip install --python .venv-build/bin/python "pyinstaller>=6,<7"
+fi
+.venv-build/bin/python -m PyInstaller --clean --onefile --name {app_slug} \\
   --add-data "roms/{rom_filename}:roms" \\
   --add-data "emulator:emulator" \\
   launcher.py
@@ -239,7 +251,19 @@ python -m PyInstaller --clean --onefile --name {app_slug} \\
     ps1 = out / "build-exe.ps1"
     ps1.write_text(
         f"""$ErrorActionPreference = "Stop"
-python -m PyInstaller --clean --onefile --name {app_slug} `
+if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {{
+  throw "uv is required to bootstrap PyInstaller locally. Install uv or add it to PATH."
+}}
+$env:UV_CACHE_DIR = if ($env:UV_CACHE_DIR) {{ $env:UV_CACHE_DIR }} else {{ ".uv-cache" }}
+$Python = if ($env:PYTHON) {{ $env:PYTHON }} else {{ "python" }}
+if (-not (Test-Path ".venv-build/Scripts/python.exe")) {{
+  uv venv --python $Python .venv-build
+}}
+& .venv-build/Scripts/python.exe -c "import PyInstaller" 2>$null
+if ($LASTEXITCODE -ne 0) {{
+  uv pip install --python .venv-build/Scripts/python.exe "pyinstaller>=6,<7"
+}}
+& .venv-build/Scripts/python.exe -m PyInstaller --clean --onefile --name {app_slug} `
   --add-data "roms/{rom_filename};roms" `
   --add-data "emulator;emulator" `
   launcher.py
@@ -287,11 +311,46 @@ Terminal=false
     sh.write_text(
         f"""#!/usr/bin/env sh
 set -eu
-command -v appimagetool >/dev/null 2>&1 || {{
-  echo "appimagetool is required. Download it from https://github.com/AppImage/AppImageKit/releases" >&2
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv is required to bootstrap PyInstaller locally. Install uv or add it to PATH." >&2
   exit 1
-}}
-python -m PyInstaller --clean --onedir --name {app_slug} \\
+fi
+export UV_CACHE_DIR="${{UV_CACHE_DIR:-.uv-cache}}"
+PYTHON="${{PYTHON:-python3}}"
+if [ ! -x ".venv-build/bin/python" ]; then
+  uv venv --python "$PYTHON" .venv-build
+fi
+if ! .venv-build/bin/python -c "import PyInstaller" >/dev/null 2>&1; then
+  uv pip install --python .venv-build/bin/python "pyinstaller>=6,<7"
+fi
+APPIMAGETOOL="${{APPIMAGETOOL:-}}"
+if [ -z "$APPIMAGETOOL" ]; then
+  if command -v appimagetool >/dev/null 2>&1; then
+    APPIMAGETOOL=appimagetool
+  else
+    mkdir -p .tools
+    ARCH="$(uname -m)"
+    case "$ARCH" in
+      x86_64|amd64) APPIMAGE_ARCH=x86_64 ;;
+      aarch64|arm64) APPIMAGE_ARCH=aarch64 ;;
+      *) echo "unsupported AppImage architecture: $ARCH" >&2; exit 1 ;;
+    esac
+    APPIMAGETOOL=".tools/appimagetool-$APPIMAGE_ARCH.AppImage"
+    if [ ! -x "$APPIMAGETOOL" ]; then
+      URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-$APPIMAGE_ARCH.AppImage"
+      if command -v curl >/dev/null 2>&1; then
+        curl -L "$URL" -o "$APPIMAGETOOL"
+      elif command -v wget >/dev/null 2>&1; then
+        wget -O "$APPIMAGETOOL" "$URL"
+      else
+        echo "curl or wget is required to download appimagetool" >&2
+        exit 1
+      fi
+      chmod +x "$APPIMAGETOOL"
+    fi
+  fi
+fi
+.venv-build/bin/python -m PyInstaller --clean --onedir --name {app_slug} \\
   --add-data "roms/{rom_filename}:roms" \\
   --add-data "emulator:emulator" \\
   launcher.py
@@ -308,7 +367,7 @@ EOF
 chmod +x AppDir/AppRun
 cp "{app_slug}.desktop" "AppDir/{app_slug}.desktop"
 cp "{app_slug}.svg" "AppDir/{app_slug}.svg"
-appimagetool AppDir "{app_slug}.AppImage"
+"$APPIMAGETOOL" AppDir "{app_slug}.AppImage"
 """,
         encoding="utf-8",
     )

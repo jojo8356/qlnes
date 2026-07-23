@@ -1026,6 +1026,44 @@ def smb_title_assets(
     logger.info("  manifeste : %s", manifest.manifest_json)
 
 
+@app.command("smb-native")
+def smb_native(
+    rom: Annotated[Path, typer.Argument(help="ROM Super Mario Bros. .nes source", exists=True)],
+    output: Annotated[
+        Path,
+        typer.Option("-o", "--output", help="Dossier du projet C/SDL2 natif"),
+    ],
+    name: Annotated[
+        str,
+        typer.Option("--name", help="Nom de l'application native"),
+    ] = "Super Mario Bros Native",
+    stage: Annotated[str, typer.Option("--stage", help="Stage SMB a exporter")] = "1-1",
+    force: Annotated[bool, typer.Option("--force", help="Ecraser un dossier existant")] = False,
+    quiet: Annotated[bool, typer.Option("-q", "--quiet")] = False,
+) -> None:
+    """Genere un port natif SMB Linux C/SDL2 sans ROM ni emulateur runtime."""
+    from .io.log import get_logger
+    from .smb_native import create_smb_native_port
+
+    _resolve_log_level(quiet, log_level="INFO", color="auto")
+    logger = get_logger(__name__)
+    try:
+        manifest = create_smb_native_port(
+            rom,
+            output,
+            app_name=name,
+            stage=stage,
+            force=force,
+        )
+    except (FileExistsError, RuntimeError, ValueError) as e:
+        raise typer.BadParameter(str(e)) from e
+    logger.info("✓ port natif SMB genere : %s", manifest.out_dir)
+    logger.info("  source : %s", manifest.source)
+    logger.info("  build : %s", manifest.build_script)
+    logger.info("  appimage : %s", manifest.appimage_script)
+    logger.info("  manifeste : %s", manifest.manifest_json)
+
+
 @app.command("bundle-rom")
 def bundle_rom(
     rom: Annotated[Path, typer.Argument(help="ROM .nes source", exists=True)],

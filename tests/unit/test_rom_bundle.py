@@ -52,6 +52,19 @@ def test_create_rom_bundle_writes_pyinstaller_and_appimage_scaffold(tmp_path: Pa
     assert (manifest.output_dir / "build-exe.sh").exists()
     assert (manifest.output_dir / "build-exe.ps1").exists()
     assert (manifest.output_dir / "build-appimage.sh").exists()
+    exe_script = (manifest.output_dir / "build-exe.sh").read_text(encoding="utf-8")
+    appimage_script = (manifest.output_dir / "build-appimage.sh").read_text(encoding="utf-8")
+    ps1_script = (manifest.output_dir / "build-exe.ps1").read_text(encoding="utf-8")
+    assert "UV_CACHE_DIR" in exe_script
+    assert "UV_CACHE_DIR" in appimage_script
+    assert "UV_CACHE_DIR" in ps1_script
+    assert "uv venv" in exe_script
+    assert "uv pip install" in exe_script
+    assert ".venv-build/bin/python -m PyInstaller" in exe_script
+    assert "uv venv" in ps1_script
+    assert "uv pip install" in ps1_script
+    assert "appimagetool-$APPIMAGE_ARCH.AppImage" in appimage_script
+    assert ".venv-build/bin/python -m PyInstaller" in appimage_script
     assert manifest.desktop_file is not None and manifest.desktop_file.exists()
     assert manifest.icon_file is not None and manifest.icon_file.exists()
     assert os.access(manifest.output_dir / "build-exe.sh", os.X_OK)
