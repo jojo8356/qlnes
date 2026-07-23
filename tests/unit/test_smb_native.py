@@ -73,6 +73,10 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
         "brick_points": 50,
         "stage_clear_time_bonus_per_second": 50,
     }
+    assert data["damage"] == {
+        "invulnerable_ms": 1400,
+        "behavior": "big Mario shrinks on enemy contact, then blinks and ignores enemy damage briefly",
+    }
     assert data["hud"] == {
         "renderer": "native framebuffer 5x7 glyphs",
         "fields": ["MARIO", "COIN", "WORLD", "TIME", "LIVES"],
@@ -207,6 +211,7 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "DEAD_MARIO_H" in source
     assert "WALK_SPEED" in source
     assert "RUN_SPEED" in source
+    assert "INVULNERABLE_MS" in source
     assert "SDL_SCANCODE_LSHIFT" in source
     assert "SDL_SCANCODE_RSHIFT" in source
     assert "SDL_SCANCODE_J" in source
@@ -222,6 +227,7 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "SCORE_TIME_BONUS" in source
     assert "KOOPA_SHELL_SPEED" in source
     assert "bool player_dead" in source
+    assert "uint32_t invulnerable_until" in source
     assert "bool stage_clear" in source
     assert "reset_level_state" in source
     assert "begin_death" in source
@@ -255,6 +261,9 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "hit->broken = true" in source
     assert "if (block && block->broken) return false" in source
     assert "draw_broken_blocks(frame, blocks, level, camera)" in source
+    assert "now < invulnerable_until" in source
+    assert "invulnerable_until = now + INVULNERABLE_MS" in source
+    assert "bool mario_visible = now >= invulnerable_until" in source
     assert "enemy->kind = KOOPA_SHELL_KIND" in source
     assert "shell_is_moving" in source
     assert "bool shell_stationary" in source

@@ -331,6 +331,10 @@ Terminal=false
                     "brick_points": 50,
                     "stage_clear_time_bonus_per_second": 50,
                 },
+                "damage": {
+                    "invulnerable_ms": 1400,
+                    "behavior": "big Mario shrinks on enemy contact, then blinks and ignores enemy damage briefly",
+                },
                 "hud": {
                     "renderer": "native framebuffer 5x7 glyphs",
                     "fields": ["MARIO", "COIN", "WORLD", "TIME", "LIVES"],
@@ -421,6 +425,7 @@ Terminal=false
                     "Supported enemy spawns are decoded from SMB EnemyData for the selected stage.",
                     "Small and big Mario standing, walking, and jumping sprites are normalized from SMB tables.",
                     "Mario death uses the SMB small-killed metasprite and restarts the native level state.",
+                    "Big Mario shrinks on enemy damage and gets a short native invulnerability window.",
                     "Stage clear triggers near the end of the generated level and restarts after a short victory pause.",
                     "Score, coins, world, time and lives are rendered by a native framebuffer HUD.",
                     "Question/item blocks are decoded from SMB metatiles and can be hit natively.",
@@ -824,6 +829,7 @@ def _main_c_source(
 #define STARTING_LIVES 3
 #define STARTING_TIME 400
 #define DEATH_RESTART_MS 1300
+#define INVULNERABLE_MS 1400
 #define STAGE_CLEAR_X {max(level_width - 192, 0)}
 #define STAGE_CLEAR_RESTART_MS 2500
 #define SCORE_COIN 200
@@ -1452,6 +1458,7 @@ static void reset_level_state(
     bool *player_dead,
     bool *stage_clear,
     int *time_left,
+    uint32_t *invulnerable_until,
     uint32_t *timer_started_at
 ) {{
     load_blocks(block_data, blocks);
@@ -1468,6 +1475,7 @@ static void reset_level_state(
     *player_dead = false;
     *stage_clear = false;
     *time_left = STARTING_TIME;
+    *invulnerable_until = 0;
     *timer_started_at = SDL_GetTicks();
 }}
 
@@ -1694,6 +1702,7 @@ int main(int argc, char **argv) {{
     int coins = 0;
     int time_left = STARTING_TIME;
     int lives = STARTING_LIVES;
+    uint32_t invulnerable_until = 0;
     CoinEffect coin_effect = {{false, 0.0f, 0.0f, 0}};
     Powerup powerup = {{false, false, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}};
     uint32_t last = SDL_GetTicks();
@@ -1798,6 +1807,7 @@ int main(int argc, char **argv) {{
                     &player_dead,
                     &stage_clear,
                     &time_left,
+                    &invulnerable_until,
                     &timer_started_at
                 );
                 set_audio_mode(audio_device, &audio_state, AUDIO_MODE_GAMEPLAY);
@@ -1821,6 +1831,7 @@ int main(int argc, char **argv) {{
                     &player_dead,
                     &stage_clear,
                     &time_left,
+                    &invulnerable_until,
                     &timer_started_at
                 );
                 set_audio_mode(audio_device, &audio_state, AUDIO_MODE_GAMEPLAY);
@@ -1972,9 +1983,13 @@ int main(int argc, char **argv) {{
                     score += SCORE_SHELL_KICK;
                     trigger_sfx(audio_device, &audio_state, SFX_SHELL_KICK);
                     update_window_title(window, score, coins, time_left, lives);
+                }} else if (now < invulnerable_until) {{
+                    continue;
                 }} else if (mario_big) {{
                     mario_big = false;
                     mario_y += (float)(BIG_MARIO_H - SMALL_MARIO_H);
+                    invulnerable_until = now + INVULNERABLE_MS;
+                    trigger_sfx(audio_device, &audio_state, SFX_POWERUP);
                 }} else {{
                     begin_death(
                         &player_dead,
@@ -2051,6 +2066,8 @@ int main(int argc, char **argv) {{
                 facing_left
             );
         }} else {{
+            bool mario_visible = now >= invulnerable_until || ((now / 90) % 2 == 0);
+            if (mario_visible) {{
             draw_sprite(
                 frame,
                 mario_sprite(small_mario_frames, big_mario_frames, mario_big, on_ground, vx, now),
@@ -2060,6 +2077,7 @@ int main(int argc, char **argv) {{
                 (int)mario_y,
                 facing_left
             );
+            }}
         }}
 
         SDL_UpdateTexture(texture, NULL, frame, SCREEN_W * (int)sizeof(uint32_t));
