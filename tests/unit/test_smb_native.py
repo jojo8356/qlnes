@@ -47,7 +47,11 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     ]
     assert data["interactive_blocks"]["jumping_coin_width"] > 0
     assert data["interactive_blocks"]["jumping_coin_height"] > 0
+    assert data["interactive_blocks"]["mushroom_asset"] == "assets/mushroom.rgba"
+    assert data["interactive_blocks"]["mushroom_width"] > 0
+    assert data["interactive_blocks"]["mushroom_height"] > 0
     assert any(block["kind"] == "question-block" for block in data["interactive_blocks"]["blocks"])
+    assert any(block["kind"] == "item-brick" for block in data["interactive_blocks"]["blocks"])
     assert data["player"]["width"] > 0
     assert [sprite["name"] for sprite in data["player"]["sprites"]] == [
         "small-stand",
@@ -75,6 +79,7 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert (export.out_dir / "assets" / "jumping_coin_frame_1.rgba").exists()
     assert (export.out_dir / "assets" / "jumping_coin_frame_2.rgba").exists()
     assert (export.out_dir / "assets" / "jumping_coin_frame_3.rgba").exists()
+    assert (export.out_dir / "assets" / "mushroom.rgba").exists()
     assert (export.out_dir / "assets" / "mario_small_stand.rgba").exists()
     assert (export.out_dir / "assets" / "mario_small_walk_1.rgba").exists()
     assert (export.out_dir / "assets" / "mario_small_walk_2.rgba").exists()
@@ -99,6 +104,9 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "update_window_title" in source
     assert "CoinEffect" in source
     assert "draw_coin_effect" in source
+    assert "Powerup" in source
+    assert "spawn_mushroom" in source
+    assert "update_powerup" in source
 
 
 @pytest.mark.skipif(not SMB_ROM.exists(), reason=f"SMB ROM not at {SMB_ROM}")
@@ -133,6 +141,7 @@ def test_cli_smb_native_generates_project(tmp_path: Path) -> None:
     assert (out / "assets" / "used_empty_block.rgb").exists()
     assert (out / "assets" / "jumping_coin_frame_0.rgba").exists()
     assert (out / "assets" / "jumping_coin_frame_3.rgba").exists()
+    assert (out / "assets" / "mushroom.rgba").exists()
     assert (out / "assets" / "goomba.rgba").exists()
     assert (out / "assets" / "mario_small_walk_1.rgba").exists()
     assert (out / "assets" / "mario_small_jump.rgba").exists()

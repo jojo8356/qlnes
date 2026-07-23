@@ -105,6 +105,7 @@ def create_smb_native_port(
     }
     goomba_png = build_dir / "characters" / "enemies" / "goomba.png"
     koopa_png = build_dir / "characters" / "enemies" / "koopa-troopa-1.png"
+    mushroom_png = build_dir / "blocks" / "sprites" / "mushroom.png"
     for mario_png in mario_pngs.values():
         if not mario_png.exists():
             raise RuntimeError(f"expected SMB player sprite missing: {mario_png}")
@@ -112,6 +113,8 @@ def create_smb_native_port(
         raise RuntimeError(f"expected SMB enemy sprite missing: {goomba_png}")
     if not koopa_png.exists():
         raise RuntimeError(f"expected SMB enemy sprite missing: {koopa_png}")
+    if not mushroom_png.exists():
+        raise RuntimeError(f"expected SMB power-up sprite missing: {mushroom_png}")
 
     level_raw = assets_dir / "level_1_1.rgb"
     collision_raw = assets_dir / "collision_1_1.bin"
@@ -120,6 +123,7 @@ def create_smb_native_port(
     coin_frame_raws = [
         assets_dir / f"jumping_coin_frame_{idx}.rgba" for idx in range(SMB_JUMPING_COIN_FRAME_COUNT)
     ]
+    mushroom_raw = assets_dir / "mushroom.rgba"
     goomba_raw = assets_dir / "goomba.rgba"
     koopa_raw = assets_dir / "koopa_troopa.rgba"
     enemies_raw = assets_dir / "enemies_1_1.bin"
@@ -133,6 +137,7 @@ def create_smb_native_port(
     )
     coin_frame_size = _write_coin_frame_assets(build_dir / "blocks" / "sprites", coin_frame_raws)
     mario_size, mario_assets = _write_mario_frame_assets(mario_pngs, assets_dir)
+    mushroom_size = _write_rgba(mushroom_png, mushroom_raw)
     goomba_size = _write_rgba(goomba_png, goomba_raw)
     koopa_size = _write_rgba(koopa_png, koopa_raw)
     enemy_spawns = _write_enemy_spawns(rom_bytes, stage, enemies_raw)
@@ -152,6 +157,8 @@ def create_smb_native_port(
             coin_width=coin_frame_size[0],
             coin_height=coin_frame_size[1],
             coin_frame_count=SMB_JUMPING_COIN_FRAME_COUNT,
+            mushroom_width=mushroom_size[0],
+            mushroom_height=mushroom_size[1],
             mario_width=mario_size[0],
             mario_height=mario_size[1],
             mario_frame_count=len(SMB_SMALL_MARIO_SPRITES),
@@ -200,6 +207,7 @@ Terminal=false
         blocks_raw,
         used_block_raw,
         *coin_frame_raws,
+        mushroom_raw,
         *(assets_dir / asset_name for _, asset_name in SMB_SMALL_MARIO_SPRITES),
         goomba_raw,
         koopa_raw,
@@ -233,6 +241,9 @@ Terminal=false
                     "jumping_coin_assets": [str(path.relative_to(out)) for path in coin_frame_raws],
                     "jumping_coin_width": coin_frame_size[0],
                     "jumping_coin_height": coin_frame_size[1],
+                    "mushroom_asset": str(mushroom_raw.relative_to(out)),
+                    "mushroom_width": mushroom_size[0],
+                    "mushroom_height": mushroom_size[1],
                     "record_bytes": SMB_NATIVE_BLOCK_RECORD_BYTES,
                     "count": len(interactive_blocks),
                     "blocks": interactive_blocks,
@@ -610,6 +621,8 @@ def _main_c_source(
     coin_width: int,
     coin_height: int,
     coin_frame_count: int,
+    mushroom_width: int,
+    mushroom_height: int,
     mario_width: int,
     mario_height: int,
     mario_frame_count: int,
@@ -641,6 +654,8 @@ def _main_c_source(
 #define COIN_W {coin_width}
 #define COIN_H {coin_height}
 #define COIN_FRAME_COUNT {coin_frame_count}
+#define MUSHROOM_W {mushroom_width}
+#define MUSHROOM_H {mushroom_height}
 #define MARIO_W {mario_width}
 #define MARIO_H {mario_height}
 #define MARIO_FRAME_COUNT {mario_frame_count}
@@ -674,6 +689,16 @@ typedef struct {{
     float y;
     uint32_t started_at;
 }} CoinEffect;
+
+typedef struct {{
+    bool active;
+    bool emerging;
+    float x;
+    float y;
+    float vx;
+    float vy;
+    float target_y;
+}} Powerup;
 
 static void draw_sprite(
     uint32_t *frame,
@@ -831,6 +856,45 @@ static void draw_coin_effect(
     );
 }}
 
+static void spawn_mushroom(Powerup *powerup, const Block *block) {{
+    powerup->active = true;
+    powerup->emerging = true;
+    powerup->x = (float)block->x;
+    powerup->y = (float)block->y;
+    powerup->vx = 36.0f;
+    powerup->vy = 0.0f;
+    powerup->target_y = (float)block->y - MUSHROOM_H;
+}}
+
+static void update_powerup(Powerup *powerup, const uint8_t *collision, float dt) {{
+    if (!powerup->active) return;
+    if (powerup->emerging) {{
+        powerup->y -= 22.0f * dt;
+        if (powerup->y <= powerup->target_y) {{
+            powerup->y = powerup->target_y;
+            powerup->emerging = false;
+        }}
+        return;
+    }}
+    powerup->vy += 620.0f * dt;
+    float next_x = powerup->x + powerup->vx * dt;
+    if (rect_hits_solid(collision, next_x, powerup->y, MUSHROOM_W, MUSHROOM_H)) {{
+        powerup->vx = -powerup->vx;
+    }} else {{
+        powerup->x = next_x;
+    }}
+    float next_y = powerup->y + powerup->vy * dt;
+    if (!rect_hits_solid(collision, powerup->x, next_y, MUSHROOM_W, MUSHROOM_H)) {{
+        powerup->y = next_y;
+    }} else if (powerup->vy > 0.0f) {{
+        int tile_y = ((int)(powerup->y + MUSHROOM_H + powerup->vy * dt)) / TILE_SIZE;
+        powerup->y = (float)(tile_y * TILE_SIZE - MUSHROOM_H);
+        powerup->vy = 0.0f;
+    }} else {{
+        powerup->vy = 0.0f;
+    }}
+}}
+
 static int enemy_width(const Enemy *enemy) {{
     return enemy->kind == 0x00 ? KOOPA_W : GOOMBA_W;
 }}
@@ -898,6 +962,7 @@ int main(int argc, char **argv) {{
     char coin_path_1[4096];
     char coin_path_2[4096];
     char coin_path_3[4096];
+    char mushroom_path[4096];
     char mario_path_0[4096];
     char mario_path_1[4096];
     char mario_path_2[4096];
@@ -914,6 +979,7 @@ int main(int argc, char **argv) {{
     snprintf(coin_path_1, sizeof(coin_path_1), "%sassets/jumping_coin_frame_1.rgba", base ? base : "");
     snprintf(coin_path_2, sizeof(coin_path_2), "%sassets/jumping_coin_frame_2.rgba", base ? base : "");
     snprintf(coin_path_3, sizeof(coin_path_3), "%sassets/jumping_coin_frame_3.rgba", base ? base : "");
+    snprintf(mushroom_path, sizeof(mushroom_path), "%sassets/mushroom.rgba", base ? base : "");
     snprintf(mario_path_0, sizeof(mario_path_0), "%sassets/mario_small_stand.rgba", base ? base : "");
     snprintf(mario_path_1, sizeof(mario_path_1), "%sassets/mario_small_walk_1.rgba", base ? base : "");
     snprintf(mario_path_2, sizeof(mario_path_2), "%sassets/mario_small_walk_2.rgba", base ? base : "");
@@ -932,6 +998,7 @@ int main(int argc, char **argv) {{
     coin_frames[1] = read_asset(coin_path_1, (size_t)COIN_W * COIN_H * 4);
     coin_frames[2] = read_asset(coin_path_2, (size_t)COIN_W * COIN_H * 4);
     coin_frames[3] = read_asset(coin_path_3, (size_t)COIN_W * COIN_H * 4);
+    uint8_t *mushroom = read_asset(mushroom_path, (size_t)MUSHROOM_W * MUSHROOM_H * 4);
     uint8_t *mario_frames[MARIO_FRAME_COUNT];
     mario_frames[0] = read_asset(mario_path_0, (size_t)MARIO_W * MARIO_H * 4);
     mario_frames[1] = read_asset(mario_path_1, (size_t)MARIO_W * MARIO_H * 4);
@@ -949,7 +1016,7 @@ int main(int argc, char **argv) {{
     for (int i = 0; i < COIN_FRAME_COUNT; i++) {{
         if (!coin_frames[i]) coins_loaded = false;
     }}
-    if (!level || !collision || !block_data || !used_block || !coins_loaded || !mario_loaded || !goomba || !koopa || !enemy_data) return 2;
+    if (!level || !collision || !block_data || !used_block || !coins_loaded || !mushroom || !mario_loaded || !goomba || !koopa || !enemy_data) return 2;
     Block blocks[BLOCK_COUNT > 0 ? BLOCK_COUNT : 1];
     Enemy enemies[ENEMY_COUNT > 0 ? ENEMY_COUNT : 1];
     load_blocks(block_data, blocks);
@@ -961,6 +1028,7 @@ int main(int argc, char **argv) {{
         free(block_data);
         free(used_block);
         for (int i = 0; i < COIN_FRAME_COUNT; i++) free(coin_frames[i]);
+        free(mushroom);
         for (int i = 0; i < MARIO_FRAME_COUNT; i++) free(mario_frames[i]);
         free(goomba);
         free(koopa);
@@ -993,6 +1061,7 @@ int main(int argc, char **argv) {{
     bool on_ground = false;
     int coins = 0;
     CoinEffect coin_effect = {{false, 0.0f, 0.0f, 0}};
+    Powerup powerup = {{false, false, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}};
     uint32_t last = SDL_GetTicks();
     update_window_title(window, coins);
 
@@ -1035,17 +1104,27 @@ int main(int argc, char **argv) {{
             Block *hit = block_at(blocks, (int)(mario_x + MARIO_W / 2), (int)next_y);
             if (hit && !hit->used) {{
                 hit->used = true;
-                coins += 1;
-                coin_effect.active = true;
-                coin_effect.x = (float)hit->x + 4.0f;
-                coin_effect.y = (float)hit->y - 8.0f;
-                coin_effect.started_at = now;
-                update_window_title(window, coins);
+                if (hit->metatile == 0x57) {{
+                    spawn_mushroom(&powerup, hit);
+                }} else {{
+                    coins += 1;
+                    coin_effect.active = true;
+                    coin_effect.x = (float)hit->x + 4.0f;
+                    coin_effect.y = (float)hit->y - 8.0f;
+                    coin_effect.started_at = now;
+                    update_window_title(window, coins);
+                }}
             }}
             vy = 0.0f;
         }}
         if (mario_x < 0.0f) mario_x = 0.0f;
         if (mario_x > LEVEL_W - MARIO_W) mario_x = LEVEL_W - MARIO_W;
+        update_powerup(&powerup, collision, dt);
+        if (powerup.active && rects_overlap(mario_x, mario_y, MARIO_W, MARIO_H, powerup.x, powerup.y, MUSHROOM_W, MUSHROOM_H)) {{
+            powerup.active = false;
+            coins += 10;
+            update_window_title(window, coins);
+        }}
 
         for (int i = 0; i < ENEMY_COUNT; i++) {{
             Enemy *enemy = &enemies[i];
@@ -1094,6 +1173,9 @@ int main(int argc, char **argv) {{
         draw_used_blocks(frame, blocks, used_block, camera);
         if (coin_effect.active && now - coin_effect.started_at >= 650) coin_effect.active = false;
         draw_coin_effect(frame, &coin_effect, coin_frames, now, camera);
+        if (powerup.active) {{
+            draw_sprite(frame, mushroom, MUSHROOM_W, MUSHROOM_H, (int)powerup.x - camera, (int)powerup.y, false);
+        }}
         for (int i = 0; i < ENEMY_COUNT; i++) {{
             Enemy *enemy = &enemies[i];
             if (!enemy->alive) continue;
@@ -1129,6 +1211,7 @@ int main(int argc, char **argv) {{
     free(block_data);
     free(used_block);
     for (int i = 0; i < COIN_FRAME_COUNT; i++) free(coin_frames[i]);
+    free(mushroom);
     for (int i = 0; i < MARIO_FRAME_COUNT; i++) free(mario_frames[i]);
     free(goomba);
     free(koopa);
