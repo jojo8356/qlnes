@@ -3,7 +3,8 @@
 The Memory ABC is what py65's MPU calls into. Concrete subclasses
 implement mapper-specific PRG/CHR layouts. The in-process runner currently
 ships NROMMemory (mapper 0), UxROMMemory (mapper 2), CNROMMemory
-(mapper 3), and GxROMMemory (mapper 66).
+(mapper 3), GxROMMemory (mapper 66), and a conservative MMC1Memory
+(mapper 1).
 
 The APU observer lives inside __setitem__: when py65 writes to
 $4000-$4017, we record an ApuWriteEvent. PPU reads/writes go through
@@ -296,4 +297,80 @@ class GxROMMemory(NROMMemory):
 
     def reset_state(self) -> None:
         super().reset_state()
+        self._prg_bank = 0
+
+
+class MMC1Memory(NROMMemory):
+    """Mapper-1 MMC1/SxROM memory for simple runtime sprite capture.
+
+    This implements the serial load register, standard PRG banking modes, and
+    8 KiB CHR bank tracking. MMC1 also supports split 4 KiB CHR banks and many
+    board variants; those remain better handled by an explicit PPU snapshot.
+    """
+
+    def __init__(self, prg: bytes, chr_banks: int) -> None:
+        if len(prg) % 0x4000 != 0 or len(prg) == 0:
+            raise ValueError("MMC1 PRG must contain at least one 16 KiB bank")
+        initial = prg if len(prg) in (0x4000, 0x8000) else prg[:0x4000] + prg[-0x4000:]
+        super().__init__(initial)
+        self._banks = [prg[i : i + 0x4000] for i in range(0, len(prg), 0x4000)]
+        self._chr_bank_count = max(chr_banks, 1)
+        self._shift = 0x10
+        self._control = 0x0C
+        self._chr0 = 0
+        self._chr1 = 0
+        self._prg_bank = 0
+
+    def _read_prg(self, addr: int) -> int:
+        mode = (self._control >> 2) & 0x03
+        if mode in (0, 1):
+            bank = (self._prg_bank & 0x0E) % len(self._banks)
+            if addr < 0xC000:
+                return self._banks[bank][addr - 0x8000]
+            return self._banks[(bank + 1) % len(self._banks)][addr - 0xC000]
+        if mode == 2:
+            if addr < 0xC000:
+                return self._banks[0][addr - 0x8000]
+            return self._banks[self._prg_bank % len(self._banks)][addr - 0xC000]
+        if addr < 0xC000:
+            return self._banks[self._prg_bank % len(self._banks)][addr - 0x8000]
+        return self._banks[-1][addr - 0xC000]
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if addr >= 0x8000:
+            self._write_mapper_register(addr, value & 0xFF)
+            return
+        super().__setitem__(addr, value)
+
+    def _write_mapper_register(self, addr: int, value: int) -> None:
+        if value & 0x80:
+            self._shift = 0x10
+            self._control |= 0x0C
+            return
+
+        complete = bool(self._shift & 0x01)
+        self._shift = (self._shift >> 1) | ((value & 0x01) << 4)
+        if not complete:
+            return
+
+        data = self._shift & 0x1F
+        self._shift = 0x10
+        register = (addr >> 13) & 0x03
+        if register == 0:
+            self._control = data
+        elif register == 1:
+            self._chr0 = data
+            if not (self._control & 0x10):
+                self.chr_bank = (data >> 1) % self._chr_bank_count
+        elif register == 2:
+            self._chr1 = data
+        else:
+            self._prg_bank = data & 0x0F
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        self._shift = 0x10
+        self._control = 0x0C
+        self._chr0 = 0
+        self._chr1 = 0
         self._prg_bank = 0

@@ -485,9 +485,10 @@ La premiere implementation qlnes suit cette decision :
   exporte les sprites OAM avec palette RAM runtime, flips, taille 8x8/8x16 et
   canvas `oam-screen.png`.
 - `python -m qlnes sprites ROM.nes -o out/oam --runtime-frames 120` boote les
-  ROMs simples NROM, UxROM, CNROM et GxROM/GNROM avec l'observateur in-process
-  et capture automatiquement PPUCTRL, PPUMASK, palette RAM, OAM/OAMDMA,
-  pattern table CHR-RAM simple, CHR bank CNROM actif et PRG/CHR banks GxROM.
+  ROMs simples NROM, MMC1/SxROM, UxROM, CNROM et GxROM/GNROM avec
+  l'observateur in-process et capture automatiquement PPUCTRL, PPUMASK,
+  palette RAM, OAM/OAMDMA, pattern table CHR-RAM simple, CHR bank CNROM actif,
+  CHR bank MMC1 8 KiB actif et PRG/CHR banks GxROM.
 
 Sorties principales :
 
@@ -499,7 +500,8 @@ Sorties principales :
 
 Limites conservees volontairement :
 
-- les mappers avances MMC1/MMC3 ne sont pas encore captures automatiquement ;
+- MMC1 CHR split 4 KiB, MMC3 et les mappers avances ne sont pas encore
+  captures automatiquement ;
 - les changements mid-frame palette/CHR restent hors scope sans oracle PPU
   complet ;
 - le PNG est un rendu inspectable, mais les valeurs palette PPU du manifeste

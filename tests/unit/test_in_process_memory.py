@@ -6,6 +6,7 @@ import pytest
 from qlnes.audio.in_process.memory import (
     CNROMMemory,
     GxROMMemory,
+    MMC1Memory,
     NROMMemory,
     UxROMMemory,
 )
@@ -271,6 +272,42 @@ def test_gxrom_reset_state_restores_prg_and_chr_bank():
     m[0x8000] = 0x32
     assert m[0x8000] == 3
     assert m.ppu_snapshot().chr_bank == 2
+    m.reset_state()
+    assert m[0x8000] == 0
+    assert m.ppu_snapshot().chr_bank == 0
+
+
+def _mmc1_write_register(m: MMC1Memory, addr: int, value: int) -> None:
+    for bit in range(5):
+        m[addr] = (value >> bit) & 0x01
+
+
+def test_mmc1_serial_write_switches_prg_bank_in_mode_3():
+    banks = [bytes([bank_id] * 0x4000) for bank_id in range(4)]
+    m = MMC1Memory(b"".join(banks), chr_banks=2)
+    assert m[0x8000] == 0
+    assert m[0xC000] == 3
+    _mmc1_write_register(m, 0xE000, 0x02)
+    assert m[0x8000] == 2
+    assert m[0xBFFF] == 2
+    assert m[0xC000] == 3
+
+
+def test_mmc1_serial_write_tracks_8k_chr_bank():
+    banks = [bytes([bank_id] * 0x4000) for bank_id in range(2)]
+    m = MMC1Memory(b"".join(banks), chr_banks=4)
+    _mmc1_write_register(m, 0x8000, 0x0C)  # PRG mode 3, CHR mode 8 KiB
+    _mmc1_write_register(m, 0xA000, 0x02)
+    assert m.ppu_snapshot().chr_bank == 1
+
+
+def test_mmc1_reset_state_restores_shift_register_prg_and_chr_bank():
+    banks = [bytes([bank_id] * 0x4000) for bank_id in range(4)]
+    m = MMC1Memory(b"".join(banks), chr_banks=4)
+    _mmc1_write_register(m, 0xE000, 0x02)
+    _mmc1_write_register(m, 0xA000, 0x02)
+    assert m[0x8000] == 2
+    assert m.ppu_snapshot().chr_bank == 1
     m.reset_state()
     assert m[0x8000] == 0
     assert m.ppu_snapshot().chr_bank == 0

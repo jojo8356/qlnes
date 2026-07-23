@@ -42,13 +42,14 @@ def test_constructor_rejects_unknown_backend():
         InProcessRunner(rom, cpu_backend="cynes")
 
 
-def test_constructor_rejects_non_nrom_mapper():
-    raw = bytearray(b"NES\x1a")
-    raw += bytes([2, 0, 0x10, 0])  # mapper = 1 (MMC1) via flags6 high nibble
-    raw += b"\x00" * 8
-    raw += b"\x00" * 0x8000
-    rom = Rom(bytes(raw), name="mmc1_synth")
-    with pytest.raises(ValueError, match="supports mapper 0, 2, 3 and 66 only"):
+def test_constructor_rejects_unsupported_mapper():
+    class UnsupportedMapperRom:
+        mapper = 4
+        header = None
+        raw = b"\x00" * 0x8000
+
+    rom = UnsupportedMapperRom()
+    with pytest.raises(ValueError, match="supports mapper 0, 1, 2, 3 and 66 only"):
         InProcessRunner(rom)
 
 
