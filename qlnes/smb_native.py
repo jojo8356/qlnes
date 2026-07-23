@@ -24,8 +24,10 @@ from .smb_graphics import (
 )
 
 SMB_ENEMY_DATA_LOW = 0x00E9
+SMB_GREEN_KOOPA_ID = 0x00
 SMB_GOOMBA_ID = 0x06
 SMB_GOOMBA_GROUPS = {0x37: 2, 0x38: 3, 0x39: 2, 0x3A: 3}
+SMB_KOOPA_GROUPS = {0x3B: 2, 0x3C: 3}
 SMB_NATIVE_ENEMY_RECORD_BYTES = 5
 
 
@@ -79,20 +81,25 @@ def create_smb_native_port(
     characters = render_smb_characters(rom, build_dir / "characters")
     mario_png = build_dir / "characters" / "players" / "small-stand.png"
     goomba_png = build_dir / "characters" / "enemies" / "goomba.png"
+    koopa_png = build_dir / "characters" / "enemies" / "koopa-troopa-1.png"
     if not mario_png.exists():
         raise RuntimeError(f"expected SMB player sprite missing: {mario_png}")
     if not goomba_png.exists():
         raise RuntimeError(f"expected SMB enemy sprite missing: {goomba_png}")
+    if not koopa_png.exists():
+        raise RuntimeError(f"expected SMB enemy sprite missing: {koopa_png}")
 
     level_raw = assets_dir / "level_1_1.rgb"
     collision_raw = assets_dir / "collision_1_1.bin"
     mario_raw = assets_dir / "mario_small_stand.rgba"
     goomba_raw = assets_dir / "goomba.rgba"
+    koopa_raw = assets_dir / "koopa_troopa.rgba"
     enemies_raw = assets_dir / "enemies_1_1.bin"
     _write_rgb(level.png, level_raw)
     collision_size = _write_collision_map(level.png, collision_raw)
     mario_size = _write_rgba(mario_png, mario_raw)
     goomba_size = _write_rgba(goomba_png, goomba_raw)
+    koopa_size = _write_rgba(koopa_png, koopa_raw)
     enemy_spawns = _write_enemy_spawns(rom_bytes, stage, enemies_raw)
 
     main_c = src_dir / "main.c"
@@ -107,6 +114,8 @@ def create_smb_native_port(
             mario_height=mario_size[1],
             goomba_width=goomba_size[0],
             goomba_height=goomba_size[1],
+            koopa_width=koopa_size[0],
+            koopa_height=koopa_size[1],
             enemy_count=len(enemy_spawns),
             enemy_record_bytes=SMB_NATIVE_ENEMY_RECORD_BYTES,
         ),
@@ -147,6 +156,7 @@ Terminal=false
         collision_raw,
         mario_raw,
         goomba_raw,
+        koopa_raw,
         enemies_raw,
         manifest,
     ]
@@ -185,10 +195,23 @@ Terminal=false
                         "width": goomba_size[0],
                         "height": goomba_size[1],
                         "spawn_asset": str(enemies_raw.relative_to(out)),
-                        "spawn_count": len(enemy_spawns),
-                        "spawns": enemy_spawns,
-                    }
+                        "spawn_count": sum(
+                            1 for spawn in enemy_spawns if spawn["kind"] == "goomba"
+                        ),
+                    },
+                    {
+                        "name": "koopa-troopa",
+                        "source_png": str(koopa_png),
+                        "asset": str(koopa_raw.relative_to(out)),
+                        "width": koopa_size[0],
+                        "height": koopa_size[1],
+                        "spawn_asset": str(enemies_raw.relative_to(out)),
+                        "spawn_count": sum(
+                            1 for spawn in enemy_spawns if spawn["kind"] == "koopa-troopa"
+                        ),
+                    },
                 ],
+                "enemy_spawns": enemy_spawns,
                 "character_manifest": str(characters.manifest_json),
                 "build": {
                     "elf": f"dist/{app_slug}",
@@ -199,7 +222,7 @@ Terminal=false
                     "This is a native MVP, not a complete SMB engine yet.",
                     "Controls: arrows or A/D to move, Space/W/Up to jump, Esc to quit.",
                     "Collision is derived from the rendered SMB metatile map at build time.",
-                    "Goomba spawns are decoded from SMB EnemyData for the selected stage.",
+                    "Supported enemy spawns are decoded from SMB EnemyData for the selected stage.",
                 ],
             },
             indent=2,
@@ -302,9 +325,11 @@ def _write_enemy_spawns(
         if enemy_id == SMB_GOOMBA_ID and not hard_mode_only:
             x = page_loc * 256 + (first & 0xF0)
             y = row * 16 + 8
-            _append_goomba_spawn(
+            _append_enemy_spawn(
                 records,
                 spawns,
+                kind="goomba",
+                enemy_id=SMB_GOOMBA_ID,
                 x=x,
                 y=y,
                 page=page_loc,
@@ -317,9 +342,46 @@ def _write_enemy_spawns(
             x = page_loc * 256 + (first & 0xF0)
             y = row * 16 + 8
             for group_index in range(SMB_GOOMBA_GROUPS[enemy_id]):
-                _append_goomba_spawn(
+                _append_enemy_spawn(
                     records,
                     spawns,
+                    kind="goomba",
+                    enemy_id=SMB_GOOMBA_ID,
+                    x=x + group_index * 24,
+                    y=y,
+                    page=page_loc,
+                    column=column,
+                    row=row,
+                    offset=offset,
+                    source=(first, second),
+                    group_id=enemy_id,
+                    group_index=group_index,
+                )
+        elif enemy_id == SMB_GREEN_KOOPA_ID and not hard_mode_only:
+            x = page_loc * 256 + (first & 0xF0)
+            y = row * 16
+            _append_enemy_spawn(
+                records,
+                spawns,
+                kind="koopa-troopa",
+                enemy_id=SMB_GREEN_KOOPA_ID,
+                x=x,
+                y=y,
+                page=page_loc,
+                column=column,
+                row=row,
+                offset=offset,
+                source=(first, second),
+            )
+        elif enemy_id in SMB_KOOPA_GROUPS and not hard_mode_only:
+            x = page_loc * 256 + (first & 0xF0)
+            y = row * 16
+            for group_index in range(SMB_KOOPA_GROUPS[enemy_id]):
+                _append_enemy_spawn(
+                    records,
+                    spawns,
+                    kind="koopa-troopa",
+                    enemy_id=SMB_GREEN_KOOPA_ID,
                     x=x + group_index * 24,
                     y=y,
                     page=page_loc,
@@ -338,10 +400,12 @@ def _write_enemy_spawns(
     return spawns
 
 
-def _append_goomba_spawn(
+def _append_enemy_spawn(
     records: bytearray,
     spawns: list[dict[str, object]],
     *,
+    kind: str,
+    enemy_id: int,
     x: int,
     y: int,
     page: int,
@@ -352,10 +416,10 @@ def _append_goomba_spawn(
     group_id: int | None = None,
     group_index: int | None = None,
 ) -> None:
-    records.extend((x & 0xFF, (x >> 8) & 0xFF, y & 0xFF, SMB_GOOMBA_ID, 0))
+    records.extend((x & 0xFF, (x >> 8) & 0xFF, y & 0xFF, enemy_id, 0))
     spawn: dict[str, object] = {
-        "kind": "goomba",
-        "enemy_id": f"0x{SMB_GOOMBA_ID:02X}",
+        "kind": kind,
+        "enemy_id": f"0x{enemy_id:02X}",
         "x": x,
         "y": y,
         "page": page,
@@ -381,6 +445,8 @@ def _main_c_source(
     mario_height: int,
     goomba_width: int,
     goomba_height: int,
+    koopa_width: int,
+    koopa_height: int,
     enemy_count: int,
     enemy_record_bytes: int,
 ) -> str:
@@ -402,6 +468,8 @@ def _main_c_source(
 #define MARIO_H {mario_height}
 #define GOOMBA_W {goomba_width}
 #define GOOMBA_H {goomba_height}
+#define KOOPA_W {koopa_width}
+#define KOOPA_H {koopa_height}
 #define ENEMY_COUNT {enemy_count}
 #define ENEMY_RECORD_BYTES {enemy_record_bytes}
 #define TILE_SIZE 16
@@ -489,6 +557,18 @@ static bool load_enemies(const uint8_t *data, Enemy *enemies) {{
     return true;
 }}
 
+static int enemy_width(const Enemy *enemy) {{
+    return enemy->kind == 0x00 ? KOOPA_W : GOOMBA_W;
+}}
+
+static int enemy_height(const Enemy *enemy) {{
+    return enemy->kind == 0x00 ? KOOPA_H : GOOMBA_H;
+}}
+
+static const uint8_t *enemy_sprite(const Enemy *enemy, const uint8_t *goomba, const uint8_t *koopa) {{
+    return enemy->kind == 0x00 ? koopa : goomba;
+}}
+
 static void draw_sprite(
     uint32_t *frame,
     const uint8_t *sprite,
@@ -520,19 +600,22 @@ int main(int argc, char **argv) {{
     char collision_path[4096];
     char mario_path[4096];
     char goomba_path[4096];
+    char koopa_path[4096];
     char enemies_path[4096];
     snprintf(level_path, sizeof(level_path), "%sassets/level_1_1.rgb", base ? base : "");
     snprintf(collision_path, sizeof(collision_path), "%sassets/collision_1_1.bin", base ? base : "");
     snprintf(mario_path, sizeof(mario_path), "%sassets/mario_small_stand.rgba", base ? base : "");
     snprintf(goomba_path, sizeof(goomba_path), "%sassets/goomba.rgba", base ? base : "");
+    snprintf(koopa_path, sizeof(koopa_path), "%sassets/koopa_troopa.rgba", base ? base : "");
     snprintf(enemies_path, sizeof(enemies_path), "%sassets/enemies_1_1.bin", base ? base : "");
 
     uint8_t *level = read_asset(level_path, (size_t)LEVEL_W * LEVEL_H * 3);
     uint8_t *collision = read_asset(collision_path, (size_t)COLLISION_COLS * COLLISION_ROWS);
     uint8_t *mario = read_asset(mario_path, (size_t)MARIO_W * MARIO_H * 4);
     uint8_t *goomba = read_asset(goomba_path, (size_t)GOOMBA_W * GOOMBA_H * 4);
+    uint8_t *koopa = read_asset(koopa_path, (size_t)KOOPA_W * KOOPA_H * 4);
     uint8_t *enemy_data = read_asset(enemies_path, (size_t)ENEMY_COUNT * ENEMY_RECORD_BYTES);
-    if (!level || !collision || !mario || !goomba || !enemy_data) return 2;
+    if (!level || !collision || !mario || !goomba || !koopa || !enemy_data) return 2;
     Enemy enemies[ENEMY_COUNT > 0 ? ENEMY_COUNT : 1];
     load_enemies(enemy_data, enemies);
 
@@ -541,6 +624,7 @@ int main(int argc, char **argv) {{
         free(collision);
         free(mario);
         free(goomba);
+        free(koopa);
         free(enemy_data);
         return 0;
     }}
@@ -613,30 +697,32 @@ int main(int argc, char **argv) {{
 
         for (int i = 0; i < ENEMY_COUNT; i++) {{
             Enemy *enemy = &enemies[i];
-            if (!enemy->alive || enemy->kind != 0x06) continue;
+            if (!enemy->alive) continue;
+            int ew = enemy_width(enemy);
+            int eh = enemy_height(enemy);
             enemy->vy += 620.0f * dt;
             float gx = enemy->x + enemy->vx * dt;
-            if (rect_hits_solid(collision, gx, enemy->y, GOOMBA_W, GOOMBA_H)) {{
+            if (rect_hits_solid(collision, gx, enemy->y, ew, eh)) {{
                 enemy->vx = -enemy->vx;
             }} else {{
                 enemy->x = gx;
             }}
             float gy = enemy->y + enemy->vy * dt;
-            if (!rect_hits_solid(collision, enemy->x, gy, GOOMBA_W, GOOMBA_H)) {{
+            if (!rect_hits_solid(collision, enemy->x, gy, ew, eh)) {{
                 enemy->y = gy;
             }} else if (enemy->vy > 0.0f) {{
-                int tile_y = ((int)(enemy->y + GOOMBA_H + enemy->vy * dt)) / TILE_SIZE;
-                enemy->y = (float)(tile_y * TILE_SIZE - GOOMBA_H);
+                int tile_y = ((int)(enemy->y + eh + enemy->vy * dt)) / TILE_SIZE;
+                enemy->y = (float)(tile_y * TILE_SIZE - eh);
                 enemy->vy = 0.0f;
             }} else {{
                 enemy->vy = 0.0f;
             }}
-            int probe_x = enemy->vx < 0.0f ? (int)enemy->x - 2 : (int)(enemy->x + GOOMBA_W + 2);
-            int foot_y = (int)(enemy->y + GOOMBA_H + 2);
+            int probe_x = enemy->vx < 0.0f ? (int)enemy->x - 2 : (int)(enemy->x + ew + 2);
+            int foot_y = (int)(enemy->y + eh + 2);
             if (!solid_at(collision, probe_x, foot_y)) {{
                 enemy->vx = -enemy->vx;
             }}
-            if (rects_overlap(mario_x, mario_y, MARIO_W, MARIO_H, enemy->x, enemy->y, GOOMBA_W, GOOMBA_H)) {{
+            if (rects_overlap(mario_x, mario_y, MARIO_W, MARIO_H, enemy->x, enemy->y, ew, eh)) {{
                 if (vy > 40.0f && mario_y + MARIO_H - 4.0f < enemy->y + 8.0f) {{
                     enemy->alive = false;
                     vy = -160.0f;
@@ -655,8 +741,16 @@ int main(int argc, char **argv) {{
         draw_level(frame, level, camera);
         for (int i = 0; i < ENEMY_COUNT; i++) {{
             Enemy *enemy = &enemies[i];
-            if (!enemy->alive || enemy->kind != 0x06) continue;
-            draw_sprite(frame, goomba, GOOMBA_W, GOOMBA_H, (int)enemy->x - camera, (int)enemy->y, enemy->vx > 0.0f);
+            if (!enemy->alive) continue;
+            draw_sprite(
+                frame,
+                enemy_sprite(enemy, goomba, koopa),
+                enemy_width(enemy),
+                enemy_height(enemy),
+                (int)enemy->x - camera,
+                (int)enemy->y,
+                enemy->vx > 0.0f
+            );
         }}
         draw_sprite(frame, mario, MARIO_W, MARIO_H, (int)mario_x - camera, (int)mario_y, facing_left);
 
@@ -671,6 +765,7 @@ int main(int argc, char **argv) {{
     free(collision);
     free(mario);
     free(goomba);
+    free(koopa);
     free(enemy_data);
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);

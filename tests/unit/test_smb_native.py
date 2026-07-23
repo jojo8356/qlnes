@@ -39,8 +39,12 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert data["player"]["width"] > 0
     assert data["enemies"][0]["name"] == "goomba"
     assert data["enemies"][0]["spawn_count"] >= 8
-    assert data["enemies"][0]["spawns"][0]["source_bytes"]
-    assert any("group_id" in spawn for spawn in data["enemies"][0]["spawns"])
+    assert data["enemies"][1]["name"] == "koopa-troopa"
+    assert data["enemies"][1]["spawn_count"] >= 1
+    assert sum(enemy["spawn_count"] for enemy in data["enemies"]) == len(data["enemy_spawns"])
+    assert data["enemy_spawns"][0]["source_bytes"]
+    assert any("group_id" in spawn for spawn in data["enemy_spawns"])
+    assert any(spawn["kind"] == "koopa-troopa" for spawn in data["enemy_spawns"])
     assert export.source.exists()
     assert export.build_script.exists()
     assert export.appimage_script.exists()
@@ -48,6 +52,7 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert (export.out_dir / "assets" / "collision_1_1.bin").exists()
     assert (export.out_dir / "assets" / "mario_small_stand.rgba").exists()
     assert (export.out_dir / "assets" / "goomba.rgba").exists()
+    assert (export.out_dir / "assets" / "koopa_troopa.rgba").exists()
     assert (export.out_dir / "assets" / "enemies_1_1.bin").exists()
     assert not (export.out_dir / "emulator").exists()
     assert not list(export.out_dir.rglob("*.nes"))
@@ -57,6 +62,7 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "rect_hits_solid" in source
     assert "ENEMY_COUNT" in source
     assert "Enemy *enemy" in source
+    assert "KOOPA_W" in source
 
 
 @pytest.mark.skipif(not SMB_ROM.exists(), reason=f"SMB ROM not at {SMB_ROM}")
@@ -88,5 +94,6 @@ def test_cli_smb_native_generates_project(tmp_path: Path) -> None:
     assert (out / "build-appimage.sh").exists()
     assert (out / "assets" / "collision_1_1.bin").exists()
     assert (out / "assets" / "goomba.rgba").exists()
+    assert (out / "assets" / "koopa_troopa.rgba").exists()
     assert (out / "assets" / "enemies_1_1.bin").exists()
     assert not list(out.rglob("*.nes"))
