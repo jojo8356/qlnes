@@ -9,6 +9,7 @@ from qlnes.sprites import (
     DEFAULT_SPRITE_PALETTE,
     chr_from_ines,
     decode_sprite_pattern,
+    export_sprite_batch,
     export_in_process_runtime_sprites,
     export_runtime_oam_sprites,
     export_sprite_pattern_table,
@@ -647,6 +648,63 @@ class TestSpriteExport(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertTrue((out_dir / "oam-spritesheet.png").exists())
             self.assertTrue((out_dir / "sprites-manifest.json").exists())
+
+    def test_export_sprite_batch_writes_one_manifest_per_rom_and_summary(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_dir = Path(td) / "roms"
+            rom_dir.mkdir()
+            (rom_dir / "a.nes").write_bytes(_sprite_test_rom())
+            (rom_dir / "b.NES").write_bytes(_sprite_test_rom())
+            out_dir = Path(td) / "batch"
+
+            manifest = export_sprite_batch(
+                rom_dir,
+                out_dir,
+                palette_values=(0x0F, 0x30, 0x16, 0x27),
+                palette_source="user",
+                per_tile=False,
+            )
+
+            self.assertEqual(manifest.success_count, 2)
+            self.assertEqual(manifest.failure_count, 0)
+            self.assertTrue((out_dir / "a" / "sprites-manifest.json").exists())
+            self.assertTrue((out_dir / "b" / "sprites-manifest.json").exists())
+            data = json.loads((out_dir / "sprites-batch-manifest.json").read_text())
+            self.assertEqual(data["rom_count"], 2)
+            self.assertEqual(data["success_count"], 2)
+            self.assertEqual(data["transparent_index"], 0)
+
+    def test_cli_sprites_batch_runtime_records_failures_when_allowed(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_dir = Path(td) / "roms"
+            rom_dir.mkdir()
+            (rom_dir / "ok.nes").write_bytes(_runtime_sprite_test_rom())
+            (rom_dir / "bad.nes").write_bytes(b"not a rom")
+            out_dir = Path(td) / "batch-runtime"
+
+            from qlnes.cli import main
+
+            rc = main(
+                [
+                    "sprites-batch",
+                    str(rom_dir),
+                    "-o",
+                    str(out_dir),
+                    "--runtime-frames",
+                    "1",
+                    "--allow-failures",
+                    "--quiet",
+                ]
+            )
+
+            self.assertEqual(rc, 0)
+            self.assertTrue((out_dir / "ok" / "oam-spritesheet.png").exists())
+            data = json.loads((out_dir / "sprites-batch-manifest.json").read_text())
+            self.assertEqual(data["mode"], "runtime")
+            self.assertEqual(data["success_count"], 1)
+            self.assertEqual(data["failure_count"], 1)
+            errors = [entry["error"] for entry in data["entries"] if not entry["ok"]]
+            self.assertTrue(errors)
 
     def test_in_process_runtime_export_uses_cnrom_selected_chr_bank(self):
         with tempfile.TemporaryDirectory() as td:

@@ -111,6 +111,24 @@ Ce mode boote la ROM en-process avec `py65`, observe :
 Ensuite il exporte les sprites OAM comme le mode `--snapshot`, avec
 `palette_source: runtime-snapshot` et `snapshot: in-process` dans le manifeste.
 
+## Mode batch multi-ROM
+
+Pour traiter une collection locale, `sprites-batch` cherche les fichiers `.nes`
+dans un dossier, crée un sous-dossier de sortie par ROM, et écrit un manifeste
+global `sprites-batch-manifest.json` :
+
+```bash
+python -m qlnes sprites-batch roms/ \
+  -o out/sprites-batch \
+  --recursive \
+  --runtime-frames 120
+```
+
+Le batch continue quand une ROM échoue, enregistre l'erreur dans le manifeste
+global, puis retourne un code non-zero s'il y a au moins un échec. Ajouter
+`--allow-failures` pour conserver un code retour `0` dans les pipelines qui
+acceptent les ROMs non supportées.
+
 La forme courte `--palette 0F,30,16,27` applique une sous-palette sprite de 4
 valeurs PPU sur les quatre palettes sprite.
 

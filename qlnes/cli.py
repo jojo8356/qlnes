@@ -600,6 +600,107 @@ def sprites(
         logger.warning("%s", note)
 
 
+@app.command("sprites-batch")
+def sprites_batch(
+    input_path: Annotated[
+        Path,
+        typer.Argument(
+            help="Fichier .nes ou dossier contenant des ROMs .nes",
+            exists=True,
+            readable=True,
+        ),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option("-o", "--output", help="Dossier racine de sortie batch"),
+    ],
+    recursive: Annotated[
+        bool,
+        typer.Option("-r", "--recursive", help="Chercher les ROMs .nes dans les sous-dossiers"),
+    ] = False,
+    pattern_table: Annotated[
+        int,
+        typer.Option("--pattern-table", help="Pattern table sprite statique : 0 ou 1"),
+    ] = 1,
+    chr_bank: Annotated[
+        int,
+        typer.Option("--chr-bank", help="Banque CHR-ROM 8 KiB statique a utiliser"),
+    ] = 0,
+    sprite_height: Annotated[
+        int,
+        typer.Option("--sprite-height", help="Hauteur sprite NES statique : 8 ou 16"),
+    ] = 8,
+    palette_id: Annotated[
+        int,
+        typer.Option("--palette-id", help="Sous-palette sprite statique 0..3 a appliquer"),
+    ] = 0,
+    palette: Annotated[
+        str | None,
+        typer.Option(
+            "--palette",
+            help="Palette NES PPU statique : 4 valeurs sprite ou 32 valeurs palette RAM",
+        ),
+    ] = None,
+    runtime_frames: Annotated[
+        int | None,
+        typer.Option(
+            "--runtime-frames",
+            help="Boot in-process chaque ROM pendant N frames puis capture palette/OAM",
+        ),
+    ] = None,
+    include_hidden: Annotated[
+        bool,
+        typer.Option("--include-hidden", help="Inclure les sprites OAM masques hors ecran"),
+    ] = False,
+    no_tiles: Annotated[
+        bool,
+        typer.Option("--no-tiles", help="Mode statique: seulement la spritesheet"),
+    ] = False,
+    allow_failures: Annotated[
+        bool,
+        typer.Option("--allow-failures", help="Retourner 0 meme si certaines ROMs echouent"),
+    ] = False,
+    quiet: Annotated[bool, typer.Option("-q", "--quiet")] = False,
+) -> None:
+    """Extrait des sprites PNG transparents pour toutes les ROMs `.nes` d'un dossier."""
+    from .io.log import get_logger
+    from .sprites import export_sprite_batch, parse_palette_values
+
+    _resolve_log_level(quiet, log_level="INFO", color="auto")
+    logger = get_logger(__name__)
+
+    palette_values = parse_palette_values(palette) if palette else None
+    palette_source = "user" if palette_values is not None else "preview"
+    manifest = export_sprite_batch(
+        input_path,
+        output,
+        recursive=recursive,
+        runtime_frames=runtime_frames,
+        include_hidden=include_hidden,
+        chr_bank=chr_bank,
+        pattern_table=pattern_table,
+        sprite_height=sprite_height,
+        palette_id=palette_id,
+        palette_values=palette_values,
+        palette_source=palette_source,
+        per_tile=not no_tiles,
+    )
+    logger.info(
+        "✓ batch sprites termine : %s  (roms=%d, ok=%d, erreurs=%d, alpha=index0)",
+        output,
+        len(manifest.entries),
+        manifest.success_count,
+        manifest.failure_count,
+    )
+    if manifest.manifest_json:
+        logger.info("  manifeste batch : %s", manifest.manifest_json)
+    for entry in manifest.entries:
+        if not entry.ok:
+            logger.warning("ROM echouee: %s — %s", entry.rom, entry.error)
+    if manifest.failure_count and not allow_failures:
+        raise typer.Exit(1)
+
+
 @app.command()
 def nsf(
     rom: Annotated[Path, typer.Argument(help="ROM .nes source", exists=True)],

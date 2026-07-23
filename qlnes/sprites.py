@@ -79,6 +79,33 @@ class SpriteExportManifest:
     notes: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class BatchSpriteExportEntry:
+    rom: Path
+    out_dir: Path
+    ok: bool
+    n_tiles: int = 0
+    spritesheet: Path | None = None
+    screen_png: Path | None = None
+    manifest_json: Path | None = None
+    error: str | None = None
+
+
+@dataclass
+class BatchSpriteExportManifest:
+    out_dir: Path
+    entries: list[BatchSpriteExportEntry] = field(default_factory=list)
+    manifest_json: Path | None = None
+
+    @property
+    def success_count(self) -> int:
+        return sum(1 for entry in self.entries if entry.ok)
+
+    @property
+    def failure_count(self) -> int:
+        return sum(1 for entry in self.entries if not entry.ok)
+
+
 def parse_palette_values(text: str) -> tuple[int, ...]:
     """Parse comma/space-separated NES PPU palette values.
 
@@ -725,3 +752,146 @@ def export_in_process_runtime_sprites(
         )
         manifest.manifest_json.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     return manifest
+
+
+def discover_nes_roms(path: Path, *, recursive: bool = False) -> list[Path]:
+    """Return `.nes` ROM paths from one file or directory."""
+
+    path = Path(path)
+    if path.is_file():
+        return [path] if path.suffix.lower() == ".nes" else []
+    if not path.is_dir():
+        raise FileNotFoundError(path)
+    candidates = path.rglob("*") if recursive else path.iterdir()
+    return sorted(p for p in candidates if p.is_file() and p.suffix.lower() == ".nes")
+
+
+def _batch_out_dir(root: Path, rom: Path, out_dir: Path, used: set[Path]) -> Path:
+    try:
+        rel = rom.relative_to(root if root.is_dir() else root.parent)
+    except ValueError:
+        rel = Path(rom.name)
+    candidate = out_dir / rel.with_suffix("")
+    if candidate not in used:
+        used.add(candidate)
+        return candidate
+    base = candidate
+    idx = 2
+    while True:
+        candidate = base.with_name(f"{base.name}-{idx}")
+        if candidate not in used:
+            used.add(candidate)
+            return candidate
+        idx += 1
+
+
+def export_sprite_batch(
+    input_path: Path,
+    out_dir: Path,
+    *,
+    recursive: bool = False,
+    runtime_frames: int | None = None,
+    include_hidden: bool = False,
+    chr_bank: int = 0,
+    pattern_table: int = 1,
+    sprite_height: int = 8,
+    palette_id: int = 0,
+    palette_values: Sequence[int] | None = None,
+    palette_source: str = "preview",
+    per_tile: bool = True,
+) -> BatchSpriteExportManifest:
+    """Export transparent sprite PNGs for every `.nes` ROM under `input_path`.
+
+    Static mode writes CHR preview sprites for every discovered ROM. Runtime
+    mode (`runtime_frames` set) boots each ROM with the in-process observer and
+    writes original-palette OAM sprites when the mapper/init path is supported.
+    Failures are captured per ROM in the batch manifest so a collection run can
+    continue and expose unsupported cases clearly.
+    """
+
+    input_path = Path(input_path)
+    out_dir = Path(out_dir)
+    roms = discover_nes_roms(input_path, recursive=recursive)
+    used: set[Path] = set()
+    batch = BatchSpriteExportManifest(out_dir=out_dir)
+
+    for rom in roms:
+        rom_out = _batch_out_dir(input_path, rom, out_dir, used)
+        try:
+            if runtime_frames is not None:
+                manifest = export_in_process_runtime_sprites(
+                    rom,
+                    rom_out,
+                    frames=runtime_frames,
+                    include_hidden=include_hidden,
+                )
+            else:
+                manifest = export_sprite_pattern_table(
+                    rom,
+                    rom_out,
+                    chr_bank=chr_bank,
+                    pattern_table=pattern_table,
+                    sprite_height=sprite_height,
+                    palette_id=palette_id,
+                    palette_values=palette_values,
+                    palette_source=palette_source,
+                    per_tile=per_tile,
+                )
+            batch.entries.append(
+                BatchSpriteExportEntry(
+                    rom=rom,
+                    out_dir=rom_out,
+                    ok=True,
+                    n_tiles=manifest.n_tiles,
+                    spritesheet=manifest.spritesheet,
+                    screen_png=manifest.screen_png,
+                    manifest_json=manifest.manifest_json,
+                )
+            )
+        except Exception as exc:
+            batch.entries.append(
+                BatchSpriteExportEntry(
+                    rom=rom,
+                    out_dir=rom_out,
+                    ok=False,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            )
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    manifest_json = out_dir / "sprites-batch-manifest.json"
+    manifest_json.write_text(
+        json.dumps(
+            {
+                "kind": "sprite_batch_export",
+                "input": str(input_path),
+                "recursive": recursive,
+                "mode": "runtime" if runtime_frames is not None else "static",
+                "runtime_frames": runtime_frames,
+                "rom_count": len(batch.entries),
+                "success_count": batch.success_count,
+                "failure_count": batch.failure_count,
+                "transparent_index": 0,
+                "entries": [
+                    {
+                        "rom": str(entry.rom),
+                        "out_dir": str(entry.out_dir),
+                        "ok": entry.ok,
+                        "n_tiles": entry.n_tiles,
+                        "spritesheet": str(entry.spritesheet) if entry.spritesheet else None,
+                        "screen_png": str(entry.screen_png) if entry.screen_png else None,
+                        "manifest_json": (
+                            str(entry.manifest_json) if entry.manifest_json else None
+                        ),
+                        "error": entry.error,
+                    }
+                    for entry in batch.entries
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    batch.manifest_json = manifest_json
+    return batch
