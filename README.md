@@ -102,7 +102,7 @@ python -m qlnes sprites ROM.nes -o out/sprites --palette 0F,30,16,27
 # Extraire les sprites OAM avec couleurs originales depuis un snapshot PPU/OAM
 python -m qlnes sprites ROM.nes -o out/oam-sprites --snapshot snapshot-ppu-oam.json
 
-# Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/BNROM/GxROM/FME-7/Camerica : capture palette/OAM automatiquement
+# Mappers simples NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/BNROM/GxROM/FME-7/Camerica/J87 : capture palette/OAM automatiquement
 # Inclut les ROMs CHR-RAM simples quand les patterns sont écrits en VRAM au boot.
 python -m qlnes sprites ROM.nes -o out/oam-sprites --runtime-frames 120
 
@@ -238,17 +238,18 @@ qlnes/
 
 - **Mappers supportés** : 0 (NROM), 1 (MMC1 mode 3), 2 (UxROM), 3 (CNROM),
   4 (MMC3 initial), 7 (AxROM), 11 (Color Dreams), 34 (BNROM/NINA),
-  66 (GxROM/GNROM), 69 (Sunsoft FME-7/5B initial), 71 (Camerica)
+  66 (GxROM/GNROM), 69 (Sunsoft FME-7/5B initial), 71 (Camerica),
+  87 (J87)
 - **Discovery dynamique** : nécessite `cynes`, supporté seulement pour mapper 0 (limitation runner actuelle)
 - **Capture sprites runtime** : couvre les cas simples NROM, MMC1/SxROM,
   UxROM, CNROM, MMC3, AxROM, Color Dreams, BNROM/NINA, GxROM/GNROM,
-  Sunsoft FME-7/5B et Camerica. MMC1 et NINA couvrent les fenêtres CHR 4 KiB
-  split simples, FME-7 couvre les fenêtres CHR 1 KiB simples. Les ROMs
-  CHR-RAM simples sont exportées depuis les writes runtime vers la pattern
-  table, avec `chr_ram: true` et `chr_source: snapshot` dans le manifeste. Les
-  variantes mapper complexes, les IRQ/raster effects et les changements
-  mid-frame demandent encore un snapshot externe ou un observateur PPU plus
-  complet.
+  Sunsoft FME-7/5B, Camerica et J87. MMC1 et NINA couvrent les fenêtres CHR
+  4 KiB split simples, FME-7 couvre les fenêtres CHR 1 KiB simples, J87 couvre
+  la fenêtre CHR-ROM 8 KiB à bit-order inversé. Les ROMs CHR-RAM simples sont
+  exportées depuis les writes runtime vers la pattern table, avec `chr_ram:
+  true` et `chr_source: snapshot` dans le manifeste. Les variantes mapper
+  complexes, les IRQ/raster effects et les changements mid-frame demandent
+  encore un snapshot externe ou un observateur PPU plus complet.
 - **Inputs runtime** : `--runtime-input` pilote la manette 1 avec des plages de
   frames (`start@1:30,a+right@120:240`) pour atteindre plus d'états de jeu
   avant l'export PNG.

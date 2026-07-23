@@ -697,6 +697,11 @@ La premiere implementation qlnes suit cette decision :
   le fichier `.nes`. L'export runtime capture donc les writes `PPUDATA` vers
   `$0000-$1FFF` et marque le manifeste avec `chr_ram: true`, `chr_source:
   snapshot` et une note `CHR-RAM runtime export`.
+- Pour mapper 87/J87, NESdev documente un PRG fixe 32 KiB et une fenêtre
+  CHR-ROM 8 KiB sélectionnée par writes `$6000-$7FFF`. Le registre expose deux
+  bits `LH` où bit 0 = bit CHR haut et bit 1 = bit CHR bas ; qlnes applique ce
+  bit-order inversé avant de choisir la CHR bank runtime. Source :
+  https://www.nesdev.org/wiki/INES_Mapper_087
 - Pour mapper 11/Color Dreams, NESdev documente une fenêtre CPU 32 KiB
   switchable à `$8000-$FFFF`, une fenêtre PPU CHR 8 KiB à `$0000-$1FFF`, et
   un registre `CCCC LLPP` : bits `0-1` pour le PRG bank 32 KiB, bits `4-7`
