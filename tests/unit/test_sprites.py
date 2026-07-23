@@ -718,6 +718,32 @@ class TestSpriteExport(unittest.TestCase):
             self.assertTrue((out_dir / "unique-trimmed-spritesheet.png").exists())
             self.assertTrue((out_dir / "runtime-sprite-samples-manifest.json").exists())
 
+    def test_cli_sprites_runtime_sample_range_command(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_path = Path(td) / "runtime.nes"
+            rom_path.write_bytes(_runtime_sprite_test_rom())
+            out_dir = Path(td) / "sample-range"
+
+            from qlnes.cli import main
+
+            rc = main(
+                [
+                    "sprites",
+                    str(rom_path),
+                    "-o",
+                    str(out_dir),
+                    "--runtime-sample-range",
+                    "1:3:2",
+                    "--quiet",
+                ]
+            )
+
+            self.assertEqual(rc, 0)
+            self.assertTrue((out_dir / "frame-000001" / "oam-screen.png").exists())
+            self.assertTrue((out_dir / "frame-000003" / "oam-screen.png").exists())
+            data = json.loads((out_dir / "runtime-sprite-samples-manifest.json").read_text())
+            self.assertEqual(data["sample_frames"], [1, 3])
+
     def test_export_sprite_batch_writes_one_manifest_per_rom_and_summary(self):
         with tempfile.TemporaryDirectory() as td:
             rom_dir = Path(td) / "roms"
@@ -804,6 +830,32 @@ class TestSpriteExport(unittest.TestCase):
             self.assertEqual(data["mode"], "runtime-samples")
             self.assertEqual(data["runtime_sample_frames"], [1, 2])
             self.assertEqual(data["success_count"], 1)
+            self.assertEqual(data["entries"][0]["n_tiles"], 1)
+
+    def test_cli_sprites_batch_runtime_sample_range(self):
+        with tempfile.TemporaryDirectory() as td:
+            rom_dir = Path(td) / "roms"
+            rom_dir.mkdir()
+            (rom_dir / "ok.nes").write_bytes(_runtime_sprite_test_rom())
+            out_dir = Path(td) / "batch-range"
+
+            from qlnes.cli import main
+
+            rc = main(
+                [
+                    "sprites-batch",
+                    str(rom_dir),
+                    "-o",
+                    str(out_dir),
+                    "--runtime-sample-range",
+                    "1:3:2",
+                    "--quiet",
+                ]
+            )
+
+            self.assertEqual(rc, 0)
+            data = json.loads((out_dir / "sprites-batch-manifest.json").read_text())
+            self.assertEqual(data["runtime_sample_frames"], [1, 3])
             self.assertEqual(data["entries"][0]["n_tiles"], 1)
 
     def test_in_process_runtime_export_uses_cnrom_selected_chr_bank(self):

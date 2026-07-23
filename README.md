@@ -107,10 +107,10 @@ python -m qlnes sprites ROM.nes -o out/oam-sprites --runtime-frames 120
 
 # Capturer plusieurs frames runtime pour récupérer plus d'états OAM/palettes
 # et produire aussi unique/*.png, unique-trimmed/*.png et leurs spritesheets
-python -m qlnes sprites ROM.nes -o out/oam-samples --runtime-sample-frames 1,30,60,120
+python -m qlnes sprites ROM.nes -o out/oam-samples --runtime-sample-range 1:300:30
 
 # Traiter tout un dossier de ROMs .nes, avec un sous-dossier de sortie par ROM
-python -m qlnes sprites-batch roms/ -o out/sprites-batch --recursive --runtime-sample-frames 1,30,60,120
+python -m qlnes sprites-batch roms/ -o out/sprites-batch --recursive --runtime-sample-range 1:300:30
 ```
 
 ## Documentation

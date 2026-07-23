@@ -120,6 +120,14 @@ python -m qlnes sprites ROM.nes \
   --runtime-sample-frames 1,30,60,120
 ```
 
+La forme plage évite de lister les frames une par une :
+
+```bash
+python -m qlnes sprites ROM.nes \
+  -o out/oam-samples \
+  --runtime-sample-range 1:300:30
+```
+
 Chaque sous-dossier `frame-000120/` contient les mêmes PNG OAM transparents que
 `--runtime-frames`. Le manifeste `runtime-sprite-samples-manifest.json` liste
 toutes les frames capturées, leurs manifestes locaux, et un dossier `unique/`
@@ -140,7 +148,7 @@ global `sprites-batch-manifest.json` :
 python -m qlnes sprites-batch roms/ \
   -o out/sprites-batch \
   --recursive \
-  --runtime-sample-frames 1,30,60,120
+  --runtime-sample-range 1:300:30
 ```
 
 Le batch continue quand une ROM échoue, enregistre l'erreur dans le manifeste

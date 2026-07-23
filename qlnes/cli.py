@@ -77,6 +77,37 @@ def _parse_frame_list(text: str | None) -> tuple[int, ...] | None:
     return tuple(frames)
 
 
+def _parse_frame_range(text: str | None) -> tuple[int, ...] | None:
+    if text is None:
+        return None
+    parts = text.split(":")
+    if len(parts) not in (2, 3):
+        raise typer.BadParameter("--runtime-sample-range doit être start:end[:step]")
+    start = int(parts[0], 0)
+    end = int(parts[1], 0)
+    step = int(parts[2], 0) if len(parts) == 3 else 1
+    if step <= 0:
+        raise typer.BadParameter("--runtime-sample-range step doit être positif")
+    if start <= 0 or end <= 0:
+        raise typer.BadParameter("--runtime-sample-range frames doivent être positives")
+    if end < start:
+        raise typer.BadParameter("--runtime-sample-range end doit être >= start")
+    return tuple(range(start, end + 1, step))
+
+
+def _resolve_runtime_sample_frames(
+    frame_list: str | None,
+    frame_range: str | None,
+) -> tuple[int, ...] | None:
+    listed = _parse_frame_list(frame_list)
+    ranged = _parse_frame_range(frame_range)
+    if listed is not None and ranged is not None:
+        raise typer.BadParameter(
+            "--runtime-sample-frames et --runtime-sample-range sont exclusifs"
+        )
+    return listed if listed is not None else ranged
+
+
 @app.command()
 def analyze(
     rom: Annotated[
@@ -523,6 +554,13 @@ def sprites(
             help="Liste de frames a capturer separees par virgules/espaces, ex: 1,30,60",
         ),
     ] = None,
+    runtime_sample_range: Annotated[
+        str | None,
+        typer.Option(
+            "--runtime-sample-range",
+            help="Plage inclusive start:end:step a capturer, ex: 1:300:30",
+        ),
+    ] = None,
     no_tiles: Annotated[
         bool,
         typer.Option("--no-tiles", help="Ne pas ecrire un PNG par tile, seulement la spritesheet"),
@@ -548,9 +586,11 @@ def sprites(
 
     _resolve_log_level(quiet, log_level="INFO", color="auto")
     logger = get_logger(__name__)
-    sample_frames = _parse_frame_list(runtime_sample_frames)
+    sample_frames = _resolve_runtime_sample_frames(runtime_sample_frames, runtime_sample_range)
     if runtime_frames is not None and sample_frames is not None:
-        raise typer.BadParameter("--runtime-frames et --runtime-sample-frames sont exclusifs")
+        raise typer.BadParameter(
+            "--runtime-frames est exclusif avec les options runtime sample"
+        )
 
     if snapshot is not None:
         manifest = export_runtime_oam_sprites(
@@ -692,6 +732,13 @@ def sprites_batch(
             help="Liste de frames a capturer pour chaque ROM, ex: 1,30,60",
         ),
     ] = None,
+    runtime_sample_range: Annotated[
+        str | None,
+        typer.Option(
+            "--runtime-sample-range",
+            help="Plage inclusive start:end:step a capturer pour chaque ROM, ex: 1:300:30",
+        ),
+    ] = None,
     include_hidden: Annotated[
         bool,
         typer.Option("--include-hidden", help="Inclure les sprites OAM masques hors ecran"),
@@ -715,9 +762,11 @@ def sprites_batch(
 
     palette_values = parse_palette_values(palette) if palette else None
     palette_source = "user" if palette_values is not None else "preview"
-    sample_frames = _parse_frame_list(runtime_sample_frames)
+    sample_frames = _resolve_runtime_sample_frames(runtime_sample_frames, runtime_sample_range)
     if runtime_frames is not None and sample_frames is not None:
-        raise typer.BadParameter("--runtime-frames et --runtime-sample-frames sont exclusifs")
+        raise typer.BadParameter(
+            "--runtime-frames est exclusif avec les options runtime sample"
+        )
     manifest = export_sprite_batch(
         input_path,
         output,
