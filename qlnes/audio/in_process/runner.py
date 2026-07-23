@@ -46,6 +46,7 @@ from .memory import (
     MMC3Memory,
     Memory,
     Namco108Memory,
+    NINA0306Memory,
     NROMMemory,
     UxROMMemory,
 )
@@ -83,9 +84,9 @@ class InProcessRunner:
     @staticmethod
     def _build_memory(rom: Rom) -> Memory:
         mapper = rom.mapper
-        if mapper not in (0, 1, 2, 3, 4, 7, 11, 13, 34, 42, 66, 69, 71, 72, 78, 87, 101, 206, None):
+        if mapper not in (0, 1, 2, 3, 4, 7, 11, 13, 34, 42, 66, 69, 71, 72, 78, 79, 87, 101, 206, None):
             raise ValueError(
-                f"InProcessRunner currently supports mapper 0, 1, 2, 3, 4, 7, 11, 13, 34, 42, 66, 69, 71, 72, 78, 87, 101 and 206 only; "
+                f"InProcessRunner currently supports mapper 0, 1, 2, 3, 4, 7, 11, 13, 34, 42, 66, 69, 71, 72, 78, 79, 87, 101 and 206 only; "
                 f"got mapper {mapper}."
             )
         prg = rom.prg if rom.header is not None else rom.raw
@@ -117,6 +118,8 @@ class InProcessRunner:
             return JF17Memory(prg, rom.header.chr_banks)
         if mapper == 78 and rom.header is not None:
             return HolyDiverMemory(prg, rom.header.chr_banks)
+        if mapper == 79 and rom.header is not None:
+            return NINA0306Memory(prg, rom.header.chr_banks)
         if mapper == 87 and rom.header is not None:
             return J87Memory(prg, rom.header.chr_banks)
         if mapper == 101 and rom.header is not None:

@@ -6,6 +6,7 @@ ships NROMMemory (mapper 0), UxROMMemory (mapper 2), CNROMMemory
 (mapper 3), ColorDreamsMemory (mapper 11), GxROMMemory (mapper 66),
 and a conservative MMC1Memory (mapper 1). MMC3Memory (mapper 4) supports
 enough PRG/CHR banking for runtime sprite capture on simple boot snapshots.
+NINA0306Memory (mapper 79) supports AVE NINA-03/NINA-06 PRG/CHR banking.
 AxROMMemory (mapper 7) supports 32 KiB PRG switching with CHR-RAM captures.
 BNROMNINAMemory (mapper 34) supports BNROM PRG switching and NINA split CHR.
 FME7Memory (mapper 69) supports Sunsoft FME-7/5B PRG and 1 KiB CHR windows.
@@ -390,6 +391,43 @@ class ColorDreamsMemory(NROMMemory):
     def reset_state(self) -> None:
         super().reset_state()
         self._prg_bank = 0
+
+
+class NINA0306Memory(NROMMemory):
+    """Mapper-79 AVE NINA-03/NINA-06 memory.
+
+    $8000-$FFFF is a switchable 32 KiB PRG bank and PPU $0000-$1FFF is a
+    switchable 8 KiB CHR-ROM bank. The control register is decoded in the
+    expansion range, including $4100-$41FF and odd 256-byte pages through
+    $5Fxx. Data bits are PCCC: bit 3 selects PRG, bits 0-2 select CHR.
+    """
+
+    def __init__(self, prg: bytes, chr_banks: int) -> None:
+        if len(prg) % 0x8000 != 0 or len(prg) == 0:
+            raise ValueError("Mapper 79 PRG must contain at least one 32 KiB bank")
+        super().__init__(prg[:0x8000])
+        if chr_banks <= 0:
+            raise ValueError("Mapper 79 requires at least one CHR bank")
+        self._banks = [prg[i : i + 0x8000] for i in range(0, len(prg), 0x8000)]
+        self._prg_bank = 0
+        self._chr_bank_count = chr_banks
+
+    def _read_prg(self, addr: int) -> int:
+        return self._banks[self._prg_bank][addr - 0x8000]
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if 0x4100 <= addr <= 0x5FFF and (addr & 0x0100):
+            self._prg_bank = ((value >> 3) & 0x01) % len(self._banks)
+            self.chr_bank = (value & 0x07) % self._chr_bank_count
+            return
+        if addr >= 0x8000:
+            return
+        super().__setitem__(addr, value)
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        self._prg_bank = 0
+        self.chr_bank = 0
 
 
 class Mapper42Memory(NROMMemory):

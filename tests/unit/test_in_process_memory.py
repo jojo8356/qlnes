@@ -19,6 +19,7 @@ from qlnes.audio.in_process.memory import (
     MMC3Memory,
     Mapper42Memory,
     Namco108Memory,
+    NINA0306Memory,
     NROMMemory,
     UxROMMemory,
 )
@@ -353,6 +354,22 @@ def test_colordreams_reset_state_restores_prg_and_chr_bank():
     m[0x8000] = 0x32
     assert m[0x8000] == 2
     assert m.ppu_snapshot().chr_bank == 3
+    m.reset_state()
+    assert m[0x8000] == 0
+    assert m.ppu_snapshot().chr_bank == 0
+
+
+def test_mapper79_nina0306_switches_prg_and_chr_bank_from_expansion_register():
+    banks = [bytes([bank_id] * 0x8000) for bank_id in range(2)]
+    m = NINA0306Memory(b"".join(banks), chr_banks=8)
+    assert m[0x8000] == 0
+    assert m.ppu_snapshot().chr_bank == 0
+    m[0x4100] = 0x0D
+    assert m[0x8000] == 1
+    assert m[0xFFFF] == 1
+    assert m.ppu_snapshot().chr_bank == 5
+    m[0x4000] = 0x02
+    assert m[0x8000] == 1
     m.reset_state()
     assert m[0x8000] == 0
     assert m.ppu_snapshot().chr_bank == 0
