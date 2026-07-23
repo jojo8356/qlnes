@@ -15,6 +15,7 @@ from qlnes.audio.in_process.memory import (
     FME7Memory,
     GxROMMemory,
     HolyDiverMemory,
+    Jaleco18Memory,
     JF10Memory,
     JF17Memory,
     MMC1Memory,
@@ -470,6 +471,33 @@ def test_mapper16_bandai_fcg_switches_prg_and_1k_chr_windows():
     m[0x8005] = 0x0C
     snap = m.ppu_snapshot()
     assert snap.pattern_table[0x1400] == 12
+
+
+def test_mapper18_jaleco_switches_prg_and_1k_chr_windows_from_nibble_pairs():
+    banks = [bytes([bank_id] * 0x2000) for bank_id in range(8)]
+    chr_data = b"".join(bytes([bank_id] * 0x0400) for bank_id in range(32))
+    m = Jaleco18Memory(b"".join(banks), chr_data=chr_data)
+    assert m[0x8000] == 0
+    assert m[0xA000] == 1
+    assert m[0xC000] == 2
+    assert m[0xE000] == 7
+
+    m[0x8000] = 0x04
+    m[0x8001] = 0x00
+    m[0x8002] = 0x05
+    m[0x8003] = 0x00
+    m[0x9000] = 0x06
+    m[0x9001] = 0x00
+    assert m[0x8000] == 4
+    assert m[0xA000] == 5
+    assert m[0xC000] == 6
+    assert m[0xE000] == 7
+
+    m[0xC000] = 0x0B
+    m[0xC001] = 0x01
+    snap = m.ppu_snapshot()
+    assert snap.pattern_table[0x1000] == 27
+    assert snap.pattern_table[0x13FF] == 27
 
 
 def test_mapper34_bnrom_switches_32k_prg_bank():

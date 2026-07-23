@@ -955,7 +955,7 @@ def export_in_process_runtime_sprites(
             "palette_ram": list(snap.palette_ram),
             "oam": list(snap.oam),
         }
-        if not rom.header or rom.header.chr_size == 0 or rom.mapper in (1, 4, 9, 10, 16, 34, 69, 206):
+        if not rom.header or rom.header.chr_size == 0 or rom.mapper in (1, 4, 9, 10, 16, 18, 34, 69, 206):
             snapshot_data["chr_data"] = list(snap.pattern_table)
         snapshot_path.write_text(json.dumps(snapshot_data), encoding="utf-8")
         manifest = export_runtime_oam_sprites(

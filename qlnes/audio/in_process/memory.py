@@ -9,6 +9,7 @@ enough PRG/CHR banking for runtime sprite capture on simple boot snapshots.
 MMC2Memory (mapper 9) and MMC4Memory (mapper 10) support latch-selected
 4 KiB CHR windows for original-color sprite snapshots.
 Bandai16Memory (mapper 16) supports Bandai FCG PRG and 1 KiB CHR windows.
+Jaleco18Memory (mapper 18) supports SS88006 PRG and 1 KiB CHR windows.
 NINA0306Memory (mapper 79) supports AVE NINA-03/NINA-06 PRG/CHR banking.
 AxROMMemory (mapper 7) supports 32 KiB PRG switching with CHR-RAM captures.
 BNROMNINAMemory (mapper 34) supports BNROM PRG switching and NINA split CHR.
@@ -710,6 +711,117 @@ class Bandai16Memory(NROMMemory):
     def reset_state(self) -> None:
         super().reset_state()
         self._switch_bank = 0
+        self._chr_regs = list(range(8))
+
+
+class Jaleco18Memory(NROMMemory):
+    """Mapper-18 Jaleco SS88006 memory.
+
+    CPU $8000/$A000/$C000 are switchable 8 KiB PRG banks and $E000-$FFFF is
+    fixed to the last PRG bank. CHR uses eight switchable 1 KiB windows. Bank
+    numbers are split across low/high nibble register pairs. IRQ, mirroring and
+    ADPCM registers are intentionally ignored for sprite snapshot export.
+    """
+
+    def __init__(self, prg: bytes, chr_data: bytes) -> None:
+        if len(prg) % 0x2000 != 0 or len(prg) < 0x8000:
+            raise ValueError("Mapper 18 PRG must contain at least four 8 KiB banks")
+        initial = prg[:0x6000] + prg[-0x2000:]
+        super().__init__(initial)
+        if not chr_data:
+            raise ValueError("Mapper 18 requires CHR-ROM data")
+        self._prg_banks = [prg[i : i + 0x2000] for i in range(0, len(prg), 0x2000)]
+        self._chr_rom = bytes(chr_data)
+        self._chr_1k_count = max(len(self._chr_rom) // 0x0400, 1)
+        self._prg_regs = [0, 1, 2]
+        self._chr_regs = list(range(8))
+
+    def _read_prg(self, addr: int) -> int:
+        if addr < 0xA000:
+            return self._prg_banks[self._prg_regs[0] % len(self._prg_banks)][addr - 0x8000]
+        if addr < 0xC000:
+            return self._prg_banks[self._prg_regs[1] % len(self._prg_banks)][addr - 0xA000]
+        if addr < 0xE000:
+            return self._prg_banks[self._prg_regs[2] % len(self._prg_banks)][addr - 0xC000]
+        return self._prg_banks[-1][addr - 0xE000]
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if addr >= 0x8000:
+            self._write_mapper_register(addr, value & 0x0F)
+            return
+        super().__setitem__(addr, value)
+
+    def _write_mapper_register(self, addr: int, value: int) -> None:
+        reg = addr & 0xF003
+        prg_pairs = {
+            0x8000: (0, False),
+            0x8001: (0, True),
+            0x8002: (1, False),
+            0x8003: (1, True),
+            0x9000: (2, False),
+            0x9001: (2, True),
+        }
+        if reg in prg_pairs:
+            slot, high = prg_pairs[reg]
+            if high:
+                self._prg_regs[slot] = (self._prg_regs[slot] & 0x0F) | ((value & 0x03) << 4)
+            else:
+                self._prg_regs[slot] = (self._prg_regs[slot] & 0x30) | value
+            return
+
+        chr_pairs = {
+            0xA000: (0, False),
+            0xA001: (0, True),
+            0xA002: (1, False),
+            0xA003: (1, True),
+            0xB000: (2, False),
+            0xB001: (2, True),
+            0xB002: (3, False),
+            0xB003: (3, True),
+            0xC000: (4, False),
+            0xC001: (4, True),
+            0xC002: (5, False),
+            0xC003: (5, True),
+            0xD000: (6, False),
+            0xD001: (6, True),
+            0xD002: (7, False),
+            0xD003: (7, True),
+        }
+        if reg in chr_pairs:
+            slot, high = chr_pairs[reg]
+            if high:
+                self._chr_regs[slot] = (self._chr_regs[slot] & 0x0F) | (value << 4)
+            else:
+                self._chr_regs[slot] = (self._chr_regs[slot] & 0xF0) | value
+            self.chr_bank = self._dominant_chr_8k_bank()
+
+    def _mapped_chr_pattern_table(self) -> bytes:
+        out = bytearray(0x2000)
+        for slot, reg in enumerate(self._chr_regs):
+            bank = reg % self._chr_1k_count
+            start = bank * 0x0400
+            out[slot * 0x0400 : (slot + 1) * 0x0400] = self._chr_rom[start : start + 0x0400]
+        return bytes(out)
+
+    def _dominant_chr_8k_bank(self) -> int:
+        if self._chr_1k_count < 8:
+            return 0
+        return (self._chr_regs[0] % self._chr_1k_count) // 8
+
+    def ppu_snapshot(self) -> PpuSnapshot:
+        snap = super().ppu_snapshot()
+        return PpuSnapshot(
+            ppuctrl=snap.ppuctrl,
+            ppumask=snap.ppumask,
+            palette_ram=snap.palette_ram,
+            oam=snap.oam,
+            pattern_table=self._mapped_chr_pattern_table(),
+            chr_bank=self._dominant_chr_8k_bank(),
+        )
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        self._prg_regs = [0, 1, 2]
         self._chr_regs = list(range(8))
 
 
