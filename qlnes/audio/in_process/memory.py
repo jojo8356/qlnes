@@ -11,6 +11,7 @@ BNROMNINAMemory (mapper 34) supports BNROM PRG switching and NINA split CHR.
 FME7Memory (mapper 69) supports Sunsoft FME-7/5B PRG and 1 KiB CHR windows.
 CPROMMemory (mapper 13) supports fixed PRG and switchable 4 KiB CHR-RAM.
 CamericaMemory (mapper 71) supports the Codemasters/Camerica UNROM variant.
+JF17Memory (mapper 72) supports Jaleco PRG/CHR latch writes.
 J87Memory (mapper 87) and JF10Memory (mapper 101) support fixed PRG with
 switchable 8 KiB CHR-ROM.
 HolyDiverMemory (mapper 78) supports switchable 16 KiB PRG and 8 KiB CHR-ROM.
@@ -635,6 +636,40 @@ class HolyDiverMemory(UxROMMemory):
 
     def reset_state(self) -> None:
         super().reset_state()
+        self.chr_bank = 0
+
+
+class JF17Memory(UxROMMemory):
+    """Mapper-72 Jaleco JF-17 memory.
+
+    $8000-$BFFF is a switchable 16 KiB PRG bank and $C000-$FFFF is fixed to the
+    last PRG bank. Writes to $8000-$FFFF use command bits in the written value:
+    bit 7 rising selects the PRG bank from bits 0-3, and bit 6 rising selects
+    the 8 KiB CHR-ROM bank from bits 0-3.
+    """
+
+    def __init__(self, prg: bytes, chr_banks: int) -> None:
+        super().__init__(prg)
+        if chr_banks <= 0:
+            raise ValueError("Mapper 72 requires at least one CHR bank")
+        self._chr_bank_count = chr_banks
+        self._last_command_bits = 0
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if addr >= 0x8000:
+            command = value & 0xC0
+            bank = value & 0x0F
+            if (command & 0x80) and not (self._last_command_bits & 0x80):
+                self._switch_bank = bank % len(self._banks)
+            if (command & 0x40) and not (self._last_command_bits & 0x40):
+                self.chr_bank = bank % self._chr_bank_count
+            self._last_command_bits = command
+            return
+        super().__setitem__(addr, value)
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        self._last_command_bits = 0
         self.chr_bank = 0
 
 

@@ -57,6 +57,7 @@ Sources principales :
 - NESdev, PPU palettes : https://www.nesdev.org/wiki/PPU_palettes
 - NESdev, PPU OAM : https://www.nesdev.org/wiki/PPU_OAM
 - NESdev, INES Mapper 042 : https://www.nesdev.org/wiki/INES_Mapper_042
+- NESdev, INES Mapper 072 : https://www.nesdev.org/wiki/INES_Mapper_072
 - NESdev, PPU programmer reference : https://www.nesdev.org/wiki/PPU_programmer_reference
 - NESdev, PPU rendering : https://www.nesdev.org/wiki/PPU_rendering
 - NESdev, CHR-ROM vs CHR-RAM : https://www.nesdev.org/wiki/CHR-ROM_vs_CHR-RAM
@@ -705,13 +706,13 @@ La premiere implementation qlnes suit cette decision :
   canvas `oam-screen.png`.
 - `python -m qlnes sprites ROM.nes -o out/oam --runtime-frames 120` boote les
   ROMs simples NROM, MMC1/SxROM, UxROM, CNROM, MMC3, AxROM, Color Dreams,
-  BNROM/NINA, GxROM/GNROM, Sunsoft FME-7/5B et Camerica avec l'observateur
-  in-process et capture automatiquement PPUCTRL, PPUMASK, palette RAM,
-  OAM/OAMDMA, pattern table CHR-RAM simple,
+  BNROM/NINA, Mapper 42, GxROM/GNROM, Sunsoft FME-7/5B, Camerica et JF-17
+  avec l'observateur in-process et capture automatiquement PPUCTRL, PPUMASK,
+  palette RAM, OAM/OAMDMA, pattern table CHR-RAM simple,
   CHR bank CNROM actif, fenêtres CHR MMC1 8 KiB/split 4 KiB, fenêtres CHR MMC3
   1 KiB/2 KiB, fenêtres CHR NINA 4 KiB, PRG banks AxROM, PRG-CHR banks Color
   Dreams et PRG-CHR banks GxROM, ainsi que les fenêtres PRG 8 KiB et CHR 1 KiB
-  FME-7.
+  FME-7 et les bits de commande PRG/CHR JF-17.
 - `--runtime-input start@1:30,a+right@120:240` pilote la manette 1 pendant la
   capture runtime. Cela permet d'atteindre plus d'etats de jeu que le boot
   naturel seul : ecran titre, debut de niveau, saut, attaque, marche, etc. Le
@@ -756,6 +757,12 @@ La premiere implementation qlnes suit cette decision :
   colore les sprites exportes, et modele `$E000` pour que le boot puisse lire
   du code ou des donnees dans la fenêtre `$6000`. Source :
   https://www.nesdev.org/wiki/INES_Mapper_042
+- Pour mapper 72/JF-17, NESdev documente une PRG bank 16 KiB switchable à
+  `$8000-$BFFF`, la dernière PRG bank fixe à `$C000-$FFFF`, et une CHR-ROM
+  8 KiB switchable. qlnes observe les writes `$8000-$FFFF` : un bit `7`
+  montant sélectionne la PRG bank depuis bits `0-3`, et un bit `6` montant
+  sélectionne la CHR bank depuis bits `0-3`. Source :
+  https://www.nesdev.org/wiki/INES_Mapper_072
 - Pour mapper 11/Color Dreams, NESdev documente une fenêtre CPU 32 KiB
   switchable à `$8000-$FFFF`, une fenêtre PPU CHR 8 KiB à `$0000-$1FFF`, et
   un registre `CCCC LLPP` : bits `0-1` pour le PRG bank 32 KiB, bits `4-7`

@@ -14,6 +14,7 @@ from qlnes.audio.in_process.memory import (
     GxROMMemory,
     HolyDiverMemory,
     JF10Memory,
+    JF17Memory,
     MMC1Memory,
     MMC3Memory,
     Mapper42Memory,
@@ -598,6 +599,24 @@ def test_mapper78_switches_low_prg_bank_and_chr_bank():
     assert m[0x8000] == 2
     assert m[0xC000] == 7
     assert m.ppu_snapshot().chr_bank == 5
+    m.reset_state()
+    assert m[0x8000] == 0
+    assert m.ppu_snapshot().chr_bank == 0
+
+
+def test_mapper72_jf17_rising_command_bits_switch_prg_and_chr_bank():
+    banks = [bytes([bank_id] * 0x4000) for bank_id in range(4)]
+    m = JF17Memory(b"".join(banks), chr_banks=8)
+    assert m[0x8000] == 0
+    assert m[0xC000] == 3
+    assert m.ppu_snapshot().chr_bank == 0
+
+    m[0x8000] = 0x42
+    assert m.ppu_snapshot().chr_bank == 2
+    m[0x8000] = 0x03
+    m[0x8000] = 0x83
+    assert m[0x8000] == 3
+    assert m[0xC000] == 3
     m.reset_state()
     assert m[0x8000] == 0
     assert m.ppu_snapshot().chr_bank == 0

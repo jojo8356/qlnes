@@ -79,15 +79,15 @@ sprite-only avec fond transparent.
 Les sprites masques hors ecran (`Y >= 0xEF`) sont ignores par defaut. Ajouter
 `--include-hidden` pour les exporter aussi.
 
-## Mode runtime automatique NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/CPROM/BNROM/Mapper 42/GxROM/FME-7/Camerica/Holy Diver/J87/JF-10/Namco 108
+## Mode runtime automatique NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/CPROM/BNROM/Mapper 42/GxROM/FME-7/Camerica/JF-17/Holy Diver/J87/JF-10/Namco 108
 
 Pour les ROMs mapper 0/NROM, mapper 1/MMC1 simple, mapper 2/UxROM, mapper
 3/CNROM, mapper 4/MMC3 simple, mapper 7/AxROM, mapper 11/Color Dreams, mapper
-13/CPROM, mapper 34/BNROM-NINA, mapper 66/GxROM, mapper 69/Sunsoft FME-7/5B,
-mapper 71/Camerica, mapper 78/Holy Diver, mapper 87/J87 et mapper 101/JF-10
-mapper 42/FDS conversions et mapper 206/Namco 108 qui initialisent les palettes
-et OAM par les writes PPU classiques, qlnes peut faire le snapshot
-automatiquement :
+13/CPROM, mapper 34/BNROM-NINA, mapper 42/FDS conversions, mapper 66/GxROM,
+mapper 69/Sunsoft FME-7/5B, mapper 71/Camerica, mapper 72/JF-17, mapper
+78/Holy Diver, mapper 87/J87, mapper 101/JF-10 et mapper 206/Namco 108 qui
+initialisent les palettes et OAM par les writes PPU classiques, qlnes peut
+faire le snapshot automatiquement :
 
 ```bash
 python -m qlnes sprites ROM.nes \
@@ -128,6 +128,9 @@ Ce mode boote la ROM en-process avec `py65`, observe :
   dans le snapshot ;
 - les writes mapper 71/Camerica vers `$C000-$FFFF` pour choisir la PRG bank 16
   KiB basse, avec la dernière bank fixe en haut.
+- les writes mapper 72/JF-17 vers `$8000-$FFFF` : bit `7` montant choisit la
+  PRG bank 16 KiB basse et bit `6` montant choisit la CHR-ROM 8 KiB active,
+  avec le numero de bank dans les bits `0-3` ;
 - les writes mapper 78/Holy Diver vers `$8000-$FFFF` pour choisir la PRG bank
   16 KiB basse via bits `0-2` et la CHR-ROM 8 KiB active via bits `4-7` ;
 - les writes mapper 87/J87 vers `$6000-$7FFF` pour choisir la CHR-ROM 8 KiB
@@ -264,7 +267,7 @@ python -m qlnes sprites ROM.nes \
 ## Limite actuelle
 
 La commande sait capturer automatiquement les cas
-NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/CPROM/BNROM/GxROM/FME-7/Camerica/Holy Diver/J87/JF-10/Namco 108
+NROM/MMC1/UxROM/CNROM/MMC3/AxROM/Color Dreams/CPROM/BNROM/Mapper 42/GxROM/FME-7/Camerica/JF-17/Holy Diver/J87/JF-10/Namco 108
 simples, y compris une partie des ROMs CHR-RAM si les tiles sont ecrites via
 `PPUDATA` pendant la fenetre capturee.
 Elle ne couvre pas encore tous les jeux NES :
