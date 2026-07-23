@@ -60,8 +60,24 @@ Sources principales :
 - NESdev, PPU rendering : https://www.nesdev.org/wiki/PPU_rendering
 - NESdev, CHR-ROM vs CHR-RAM : https://www.nesdev.org/wiki/CHR-ROM_vs_CHR-RAM
 - NESdev, PPU attribute tables : https://www.nesdev.org/wiki/PPU_attribute_tables
+- NESdev, MMC3 : https://www.nesdev.org/wiki/MMC3
+- NESdev, Programming MMC3 : https://www.nesdev.org/wiki/Programming_MMC3
 - FCEUX, PPU Viewer : https://fceux.com/web/help/PPUViewer.html
+- FCEUX, Name Table Viewer : https://fceux.com/web/help/NameTableViewer.html
 - FCEUX, Palette config : https://fceux.com/web/help/Palette.html
+
+Verification web faite le 2026-07-23. Les points importants confirmes :
+
+- les tiles/pattern tables sont du 2bpp et produisent seulement des indices
+  `0..3`, pas des couleurs finales ;
+- les sprites sont decrits par 64 entrees OAM de 4 octets ;
+- la palette RAM PPU `$3F00-$3F1F` stocke des valeurs couleur 6 bits ;
+- pour les sprites, l'index graphique `0` est transparent ;
+- FCEUX PPU Viewer affiche l'etat PPU courant et permet d'inspecter les
+  pattern tables avec les palettes runtime, mais les jeux qui changent CHR ou
+  palette mid-frame demandent un choix de scanline ou un rendu PPU plus fin ;
+- le Code/Data Logger de FCEUX ne peut masquer les tiles utilisees que pour
+  CHR-ROM, car il observe les acces CHR-ROM, pas les copies dynamiques CHR-RAM.
 
 ## Ce que qlnes fait aujourd'hui
 
@@ -473,6 +489,186 @@ couleurs. Les "couleurs originales" doivent etre definies comme :
 
 Cela preserve la rigueur technique et evite de confondre les indices CHR, les
 palettes runtime et l'apparence RGB d'un emulateur donne.
+
+## Methode complete pour obtenir les sprites NES en couleurs originales
+
+Cette section est le protocole recommande pour le projet.
+
+### 1. Identifier le type de donnees graphiques
+
+Lire d'abord le header iNES :
+
+- `CHR size > 0` : le fichier contient de la CHR-ROM. Les formes de tiles sont
+  disponibles dans la ROM, mais les couleurs restent runtime.
+- `CHR size == 0` : le jeu utilise CHR-RAM. Les tiles visibles sont chargees ou
+  generees par le CPU via le PPU. Sans execution du jeu, il manque les formes
+  elles-memes.
+- `mapper` : determine si la CHR visible est fixe, bank-switched en 8 KiB,
+  4 KiB, 2 KiB ou 1 KiB, et si l'extraction statique est representative.
+
+Decision :
+
+- pour une preview rapide : `qlnes sprites ROM.nes --palette ...`;
+- pour les couleurs originales : capture runtime obligatoire ;
+- pour CHR-RAM : capture runtime obligatoire meme pour les formes.
+
+### 2. Capturer un etat PPU/OAM coherent
+
+Pour une frame ou un checkpoint donne, capturer ensemble :
+
+- OAM primaire 256 octets ;
+- palette RAM 32 octets ;
+- PPUCTRL et PPUMASK ;
+- pattern table PPU visible `$0000-$1FFF`, ou au minimum le CHR bank courant si
+  le mapper expose une banque 8 KiB simple ;
+- mapper state si le jeu bankswitche PRG/CHR ;
+- frame/scanline de capture.
+
+La capture doit etre coherente temporellement. Melanger OAM d'une frame avec la
+palette d'une autre frame peut produire des couleurs plausibles mais fausses.
+
+### 3. Decoder les sprites, pas seulement les tiles
+
+Chaque sprite vient d'une entree OAM :
+
+```text
+byte 0 = Y brut, affiche a Y+1
+byte 1 = tile index
+byte 2 = attributes
+byte 3 = X
+```
+
+Les bits attributs importants :
+
+```text
+attr & 0x03 : sous-palette sprite 0..3
+attr & 0x20 : priorite derriere background
+attr & 0x40 : flip horizontal
+attr & 0x80 : flip vertical
+```
+
+Regles critiques :
+
+- le pixel CHR `0` devient toujours transparent pour un sprite ;
+- les pixels CHR `1..3` se resolvent dans `$3F10 + palette_id*4 + index` ;
+- en sprite 8x8, PPUCTRL bit 3 choisit pattern table `$0000` ou `$1000` ;
+- en sprite 8x16, PPUCTRL bit 3 est ignore pour les sprites : le bit 0 du tile
+  index choisit la pattern table, et `tile & 0xFE` choisit la paire de tiles ;
+- le flip vertical 8x16 inverse aussi l'ordre des deux sous-tiles.
+
+### 4. Exporter en PNG transparent et JSON auditable
+
+Le PNG doit etre vu comme un rendu pratique. La preuve technique est le JSON.
+
+Pour chaque sprite, stocker au minimum :
+
+- ROM source et hash si disponible ;
+- frame/scanline ;
+- OAM index ;
+- X, Y brut, Y ecran ;
+- tile index, attr, palette_id, priority, flip_h, flip_v ;
+- `palette_ppu` : les 4 valeurs PPU de la sous-palette ;
+- `palette_rgba` : les RGBA utilises par qlnes pour ce PNG ;
+- `transparent_index: 0` ;
+- CHR source : `rom-bank`, `runtime-snapshot`, `chr-ram`, etc. ;
+- bbox alpha si le sprite est recadre ;
+- SHA-256 du PNG brut et du PNG recadre si deduplication.
+
+Sans ces champs, on ne peut pas prouver que le PNG correspond aux couleurs
+observees dans la ROM a ce moment.
+
+### 5. Recuperer "tous" les sprites d'une ROM
+
+Il n'existe pas de bouton universel "extraire tous les sprites" depuis une ROM
+NES commerciale, car beaucoup de sprites n'existent que dans certains etats du
+jeu : title screen, niveau, boss, cutscene, animation, mort, power-up, menu,
+etc.
+
+La meilleure strategie pragmatique pour qlnes :
+
+1. faire une extraction statique CHR pour inventaire de formes ;
+2. faire des captures runtime samplees : frames `1,30,60,...` ;
+3. dedupliquer les PNG RGBA exacts ;
+4. produire aussi des PNG recadres transparents ;
+5. enregistrer un atlas global avec provenance ROM/frame/OAM/palette ;
+6. permettre plus tard des scenarios input : attendre titre, Start, avancer,
+   sauter, entrer dans un niveau, etc. ;
+7. brancher un oracle externe Mesen/FCEUX pour les jeux a effets PPU complexes.
+
+Commande qlnes actuelle recommandee pour une collection locale :
+
+```bash
+python -m qlnes sprites-batch roms/ \
+  -o out/sprites-batch \
+  --recursive \
+  --runtime-sample-range 1:300:30 \
+  --allow-failures
+```
+
+Resultat attendu :
+
+- un dossier par ROM ;
+- des sous-dossiers `frame-XXXXXX/` ;
+- `unique/` et `unique-trimmed/` par ROM ;
+- `all-unique-trimmed/` et `all-unique-trimmed-spritesheet.png` globalement ;
+- `all-unique-trimmed-atlas.json` pour retrouver source, frame, palette et
+  coordonnees atlas.
+
+### 6. Quand utiliser un snapshot externe
+
+Utiliser un snapshot externe si :
+
+- le mapper n'est pas supporte par le runner qlnes ;
+- la ROM depend d'IRQ, raster effects, mid-frame CHR/palette switch ;
+- la ROM utilise un PPU timing exact ;
+- l'objectif est une verification visuelle frame-perfect ;
+- un emulateur comme FCEUX/Mesen sait deja afficher exactement l'etat voulu.
+
+Format minimal supporte par qlnes :
+
+```json
+{
+  "frame": 123,
+  "chr_bank": 0,
+  "ppuctrl": "0x08",
+  "ppumask": "0x1E",
+  "palette_ram": ["32 valeurs 0x00..0x3F"],
+  "oam": ["256 valeurs 0x00..0xFF"]
+}
+```
+
+Pour CHR-RAM, ou pour un mapper avec fenetres CHR partielles, ajouter :
+
+```json
+{
+  "chr_data": ["8192 valeurs 0x00..0xFF pour PPU $0000-$1FFF"]
+}
+```
+
+Puis :
+
+```bash
+python -m qlnes sprites ROM.nes \
+  -o out/oam-sprites \
+  --snapshot snapshot-ppu-oam.json
+```
+
+### 7. Definition retenue de "couleurs originales"
+
+Pour qlnes, "couleur originale" doit signifier :
+
+- les valeurs palette PPU originales observees dans `$3F10-$3F1F` au moment de
+  capture ;
+- les attributs OAM originaux qui choisissent la sous-palette ;
+- le pattern table/CHR mapping original au moment de capture ;
+- un profil RGB declare pour convertir ces valeurs PPU en PNG.
+
+Ce n'est pas :
+
+- les couleurs dans la CHR, car la CHR ne contient pas de couleurs ;
+- une palette universelle unique NES, car le signal video NES est analogique et
+  les emulateurs peuvent choisir des palettes RGB differentes ;
+- une garantie de tous les sprites d'un jeu sans explorer ses etats runtime.
 
 ## Addendum implementation qlnes 2026-07-23
 
