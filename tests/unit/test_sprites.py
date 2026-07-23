@@ -689,6 +689,7 @@ class TestSpriteExport(unittest.TestCase):
                 str(out_dir / "unique-trimmed-spritesheet.png"),
             )
             self.assertEqual(data["unique_sprites"][0]["transparent_bbox"], [1, 0, 8, 8])
+            self.assertRegex(data["unique_sprites"][0]["trimmed_sha256"], r"^[0-9a-f]{64}$")
             self.assertEqual(
                 data["unique_sprites"][0]["sheet"],
                 {"sheet_x": 0, "sheet_y": 0, "sheet_w": 8, "sheet_h": 8, "cell_w": 8, "cell_h": 8},
@@ -842,6 +843,7 @@ class TestSpriteExport(unittest.TestCase):
             self.assertEqual(data["all_unique_trimmed_count"], 1)
             self.assertTrue((out_dir / "all-unique-trimmed" / "sprite-0000.png").exists())
             self.assertTrue((out_dir / "all-unique-trimmed-spritesheet.png").exists())
+            self.assertRegex(data["all_unique_trimmed"][0]["trimmed_sha256"], r"^[0-9a-f]{64}$")
             self.assertEqual(
                 data["all_unique_trimmed"][0]["sheet"],
                 {"sheet_x": 0, "sheet_y": 0, "sheet_w": 7, "sheet_h": 8, "cell_w": 7, "cell_h": 8},

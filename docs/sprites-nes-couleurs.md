@@ -160,8 +160,8 @@ acceptent les ROMs non supportées.
 
 En mode `--runtime-sample-*`, le batch produit aussi `all-unique-trimmed/` et
 `all-unique-trimmed-spritesheet.png` à la racine de sortie. Ces fichiers
-dédupliquent les sprites recadrés de toutes les ROMs traitées et le manifeste
-global expose leurs coordonnées `sheet`.
+dédupliquent les sprites recadrés de toutes les ROMs traitées par
+`trimmed_sha256`, et le manifeste global expose leurs coordonnées `sheet`.
 
 La forme courte `--palette 0F,30,16,27` applique une sous-palette sprite de 4
 valeurs PPU sur les quatre palettes sprite.

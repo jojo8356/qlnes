@@ -951,6 +951,7 @@ def export_in_process_runtime_sprite_samples(
             dst.write_bytes(png_data)
             trimmed_path = trimmed_dir / dst.name
             _, bbox = trim_transparent_png(dst, trimmed_path)
+            trimmed_digest = hashlib.sha256(trimmed_path.read_bytes()).hexdigest()
             seen[digest] = dst
             samples.unique_sprites.append(dst)
             unique_entries.append(
@@ -960,6 +961,7 @@ def export_in_process_runtime_sprite_samples(
                     "transparent_bbox": list(bbox) if bbox is not None else None,
                     "source_path": str(src),
                     "sha256": digest,
+                    "trimmed_sha256": trimmed_digest,
                     "first_seen_frame": sample.frame,
                     "oam_index": sprite.get("oam_index"),
                     "tile_index": sprite.get("tile_index"),
@@ -1175,7 +1177,7 @@ def export_sprite_batch(
         seen_global: set[str] = set()
         for entry in all_unique_entries:
             trimmed_value = entry.get("trimmed_path")
-            digest_value = entry.get("sha256")
+            digest_value = entry.get("trimmed_sha256") or entry.get("sha256")
             if not isinstance(trimmed_value, str) or not isinstance(digest_value, str):
                 continue
             if digest_value in seen_global:
@@ -1194,7 +1196,8 @@ def export_sprite_batch(
                     "source_path": str(src),
                     "rom": entry.get("rom"),
                     "rom_out_dir": entry.get("rom_out_dir"),
-                    "sha256": digest_value,
+                    "sha256": entry.get("sha256"),
+                    "trimmed_sha256": digest_value,
                     "first_seen_frame": entry.get("first_seen_frame"),
                     "oam_index": entry.get("oam_index"),
                     "tile_index": entry.get("tile_index"),
