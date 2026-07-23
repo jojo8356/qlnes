@@ -310,6 +310,14 @@ Terminal=false
                     "sfx": ["jump", "coin", "stomp", "power-up", "shell-kick"],
                     "behavior": "native procedural chiptune-style audio; no NSF, MP3, ROM or emulator is loaded at runtime",
                 },
+                "controls": {
+                    "move_left": ["Left", "A"],
+                    "move_right": ["Right", "D"],
+                    "jump": ["Space", "Up", "W"],
+                    "run": ["Left Shift", "Right Shift", "J"],
+                    "start": ["Enter", "Space"],
+                    "quit": ["Esc"],
+                },
                 "scoring": {
                     "starting_time": 400,
                     "coin_points": 200,
@@ -399,7 +407,7 @@ Terminal=false
                 "notes": [
                     "The generated runtime does not read a .nes file.",
                     "This is a native MVP, not a complete SMB engine yet.",
-                    "Controls: arrows or A/D to move, Space/W/Up to jump, Esc to quit.",
+                    "Controls: arrows or A/D to move, Shift/J to run, Space/W/Up to jump, Esc to quit.",
                     "Title screen uses the ROM-derived SMB title nametable rendered at generation time.",
                     "Collision is derived from the rendered SMB metatile map at build time.",
                     "Supported enemy spawns are decoded from SMB EnemyData for the selected stage.",
@@ -802,6 +810,8 @@ def _main_c_source(
 #define TILE_SIZE 16
 #define MARIO_START_X 48.0f
 #define MARIO_START_Y 176.0f
+#define WALK_SPEED 100.0f
+#define RUN_SPEED 150.0f
 #define STARTING_LIVES 3
 #define STARTING_TIME 400
 #define DEATH_RESTART_MS 1300
@@ -1675,7 +1685,9 @@ int main(int argc, char **argv) {{
         if (keys[SDL_SCANCODE_RIGHT] || keys[SDL_SCANCODE_D]) move += 1.0f;
         if (!player_dead && !stage_clear && move < 0) facing_left = true;
         if (!player_dead && !stage_clear && move > 0) facing_left = false;
-        vx = (player_dead || stage_clear) ? 0.0f : move * 100.0f;
+        bool run = keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT] || keys[SDL_SCANCODE_J];
+        float player_speed = run ? RUN_SPEED : WALK_SPEED;
+        vx = (player_dead || stage_clear) ? 0.0f : move * player_speed;
         bool jump = keys[SDL_SCANCODE_SPACE] || keys[SDL_SCANCODE_UP] || keys[SDL_SCANCODE_W];
         if (!player_dead && !stage_clear && jump && on_ground) {{
             vy = -245.0f;

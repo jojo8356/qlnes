@@ -125,6 +125,7 @@ python -m qlnes smb-native "roms/Super Mario Bros. (World).nes" -o out/smb-nativ
 cd out/smb-native
 ./build-appimage.sh
 ./Super-Mario-Bros-Native.AppImage
+# Controls: arrows/A-D move, Shift/J run, Space/W/Up jump, Enter/Space start, Esc quit
 
 # Generer un projet launcher pour transformer une ROM en .exe ou AppImage
 python -m qlnes bundle-rom ROM.nes -o out/rom-app --name "My NES Game" --target all

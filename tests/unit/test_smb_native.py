@@ -55,6 +55,14 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
         "sfx": ["jump", "coin", "stomp", "power-up", "shell-kick"],
         "behavior": "native procedural chiptune-style audio; no NSF, MP3, ROM or emulator is loaded at runtime",
     }
+    assert data["controls"] == {
+        "move_left": ["Left", "A"],
+        "move_right": ["Right", "D"],
+        "jump": ["Space", "Up", "W"],
+        "run": ["Left Shift", "Right Shift", "J"],
+        "start": ["Enter", "Space"],
+        "quit": ["Esc"],
+    }
     assert data["scoring"] == {
         "starting_time": 400,
         "coin_points": 200,
@@ -193,6 +201,12 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "bool mario_big" in source
     assert "mario_width(mario_big)" in source
     assert "DEAD_MARIO_H" in source
+    assert "WALK_SPEED" in source
+    assert "RUN_SPEED" in source
+    assert "SDL_SCANCODE_LSHIFT" in source
+    assert "SDL_SCANCODE_RSHIFT" in source
+    assert "SDL_SCANCODE_J" in source
+    assert "float player_speed = run ? RUN_SPEED : WALK_SPEED" in source
     assert "STARTING_LIVES" in source
     assert "STARTING_TIME" in source
     assert "SCORE_COIN" in source
