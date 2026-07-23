@@ -28,7 +28,15 @@ from pathlib import Path
 
 from ...rom import Rom
 from ..static.apu_event import ApuWriteEvent
-from .memory import CNROMMemory, GxROMMemory, MMC1Memory, Memory, NROMMemory, UxROMMemory
+from .memory import (
+    CNROMMemory,
+    GxROMMemory,
+    MMC1Memory,
+    MMC3Memory,
+    Memory,
+    NROMMemory,
+    UxROMMemory,
+)
 from .nmi import NTSC_CYCLES_PER_FRAME, trigger_nmi, trigger_nmi_to
 
 
@@ -63,10 +71,10 @@ class InProcessRunner:
     @staticmethod
     def _build_memory(rom: Rom) -> Memory:
         mapper = rom.mapper
-        if mapper not in (0, 1, 2, 3, 66, None):
+        if mapper not in (0, 1, 2, 3, 4, 66, None):
             raise ValueError(
-                f"InProcessRunner currently supports mapper 0, 1, 2, 3 and 66 only; "
-                f"got mapper {mapper}. F.8 will add MMC3."
+                f"InProcessRunner currently supports mapper 0, 1, 2, 3, 4 and 66 only; "
+                f"got mapper {mapper}."
             )
         prg = rom.prg if rom.header is not None else rom.raw
         if mapper == 1 and rom.header is not None:
@@ -75,9 +83,18 @@ class InProcessRunner:
             return UxROMMemory(prg)
         if mapper == 3 and rom.header is not None:
             return CNROMMemory(prg, rom.header.chr_banks)
+        if mapper == 4 and rom.header is not None:
+            return MMC3Memory(prg, InProcessRunner._chr_rom(rom))
         if mapper == 66 and rom.header is not None:
             return GxROMMemory(prg, rom.header.chr_banks)
         return NROMMemory(prg)
+
+    @staticmethod
+    def _chr_rom(rom: Rom) -> bytes:
+        if rom.header is None:
+            return b""
+        offset = 16 + (512 if rom.header.has_trainer else 0) + rom.header.prg_size
+        return rom.raw[offset : offset + rom.header.chr_size]
 
     @staticmethod
     def _build_mpu(mem: Memory):

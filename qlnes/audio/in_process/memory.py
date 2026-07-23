@@ -4,7 +4,8 @@ The Memory ABC is what py65's MPU calls into. Concrete subclasses
 implement mapper-specific PRG/CHR layouts. The in-process runner currently
 ships NROMMemory (mapper 0), UxROMMemory (mapper 2), CNROMMemory
 (mapper 3), GxROMMemory (mapper 66), and a conservative MMC1Memory
-(mapper 1).
+(mapper 1). MMC3Memory (mapper 4) supports enough PRG/CHR banking for
+runtime sprite capture on simple boot snapshots.
 
 The APU observer lives inside __setitem__: when py65 writes to
 $4000-$4017, we record an ApuWriteEvent. PPU reads/writes go through
@@ -374,3 +375,100 @@ class MMC1Memory(NROMMemory):
         self._chr0 = 0
         self._chr1 = 0
         self._prg_bank = 0
+
+
+class MMC3Memory(NROMMemory):
+    """Mapper-4 MMC3 memory for simple runtime sprite capture.
+
+    This tracks standard MMC3 8 KiB PRG windows and 1/2 KiB CHR windows. IRQ
+    timing, mirroring and PRG-RAM protection are intentionally not modeled for
+    sprite extraction snapshots.
+    """
+
+    def __init__(self, prg: bytes, chr_data: bytes) -> None:
+        if len(prg) % 0x2000 != 0 or len(prg) < 0x8000:
+            raise ValueError("MMC3 PRG must contain at least four 8 KiB banks")
+        initial = prg[:0x4000] + prg[-0x4000:]
+        super().__init__(initial)
+        self._prg_banks = [prg[i : i + 0x2000] for i in range(0, len(prg), 0x2000)]
+        self._chr_rom = bytes(chr_data)
+        self._chr_1k_count = max(len(self._chr_rom) // 0x0400, 1)
+        self._bank_select = 0
+        self._regs = [0, 2, 4, 5, 6, 7, 0, 1]
+
+    def _read_prg(self, addr: int) -> int:
+        last = len(self._prg_banks) - 1
+        second_last = max(last - 1, 0)
+        prg_mode = (self._bank_select >> 6) & 0x01
+        r6 = self._regs[6] % len(self._prg_banks)
+        r7 = self._regs[7] % len(self._prg_banks)
+        if addr < 0xA000:
+            bank = second_last if prg_mode else r6
+            return self._prg_banks[bank][addr - 0x8000]
+        if addr < 0xC000:
+            return self._prg_banks[r7][addr - 0xA000]
+        if addr < 0xE000:
+            bank = r6 if prg_mode else second_last
+            return self._prg_banks[bank][addr - 0xC000]
+        return self._prg_banks[last][addr - 0xE000]
+
+    def __setitem__(self, addr: int, value: int) -> None:
+        if addr >= 0x8000:
+            self._write_mapper_register(addr, value & 0xFF)
+            return
+        super().__setitem__(addr, value)
+
+    def _write_mapper_register(self, addr: int, value: int) -> None:
+        if 0x8000 <= addr <= 0x9FFF:
+            if addr & 1:
+                self._regs[self._bank_select & 0x07] = value
+                self.chr_bank = self._dominant_chr_8k_bank()
+            else:
+                self._bank_select = value
+            return
+        # Other MMC3 registers affect mirroring, PRG-RAM and IRQs. They are not
+        # needed for this PPU/OAM capture path.
+
+    def _chr_bank_1k_for_addr(self, ppu_addr: int) -> int:
+        chr_mode = (self._bank_select >> 7) & 0x01
+        slot = ppu_addr // 0x0400
+        if chr_mode:
+            register_by_slot = [2, 3, 4, 5, 0, 0, 1, 1]
+        else:
+            register_by_slot = [0, 0, 1, 1, 2, 3, 4, 5]
+        reg = register_by_slot[slot]
+        bank = self._regs[reg]
+        if reg in (0, 1):
+            bank = (bank & 0xFE) + (slot & 1)
+        return bank % self._chr_1k_count
+
+    def _mapped_chr_pattern_table(self) -> bytes:
+        if not self._chr_rom:
+            return bytes(self._pattern_table)
+        out = bytearray(0x2000)
+        for slot in range(8):
+            bank = self._chr_bank_1k_for_addr(slot * 0x0400)
+            start = bank * 0x0400
+            out[slot * 0x0400 : (slot + 1) * 0x0400] = self._chr_rom[start : start + 0x0400]
+        return bytes(out)
+
+    def _dominant_chr_8k_bank(self) -> int:
+        if self._chr_1k_count < 8:
+            return 0
+        return self._chr_bank_1k_for_addr(0) // 8
+
+    def ppu_snapshot(self) -> PpuSnapshot:
+        snap = super().ppu_snapshot()
+        return PpuSnapshot(
+            ppuctrl=snap.ppuctrl,
+            ppumask=snap.ppumask,
+            palette_ram=snap.palette_ram,
+            oam=snap.oam,
+            pattern_table=self._mapped_chr_pattern_table(),
+            chr_bank=self._dominant_chr_8k_bank(),
+        )
+
+    def reset_state(self) -> None:
+        super().reset_state()
+        self._bank_select = 0
+        self._regs = [0, 2, 4, 5, 6, 7, 0, 1]

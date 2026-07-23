@@ -44,12 +44,12 @@ def test_constructor_rejects_unknown_backend():
 
 def test_constructor_rejects_unsupported_mapper():
     class UnsupportedMapperRom:
-        mapper = 4
+        mapper = 5
         header = None
         raw = b"\x00" * 0x8000
 
     rom = UnsupportedMapperRom()
-    with pytest.raises(ValueError, match="supports mapper 0, 1, 2, 3 and 66 only"):
+    with pytest.raises(ValueError, match="supports mapper 0, 1, 2, 3, 4 and 66 only"):
         InProcessRunner(rom)
 
 

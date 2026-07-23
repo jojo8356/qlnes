@@ -174,9 +174,8 @@ def test_famitracker_init_addr_rejects_mmc1_mapper():
 
 def test_famitracker_play_addr_rejects_unrom_mapper():
     """Same protection for mapper-2 (UNROM, bank-switched PRG).
-    Mapper-4 (MMC3) would also raise but Rom.__init__ rejects it
-    upstream, so we test mapper-2 here as the canonical bank-switched
-    case."""
+    We test mapper-2 here as the canonical unsupported bank-switched
+    audio-engine case for this detector."""
     rom = _make_rom_with_mapper(_prg32_with_vectors(0x8000, 0x9000), mapper=2)
     e = FamiTrackerEngine()
     with pytest.raises(InProcessUnavailable):

@@ -83,10 +83,14 @@ class TestGxROM(unittest.TestCase):
         self.assertEqual(len(images), 1)
 
 
-class TestUnsupportedMapper(unittest.TestCase):
-    def test_mmc3_raises(self):
-        with self.assertRaises(NotImplementedError):
-            rom_to_images(fake_rom(2, 4))
+class TestMMC3InitialLayout(unittest.TestCase):
+    def test_mmc3_builds_initial_fixed_bank_view(self):
+        images = rom_to_images(fake_rom(2, 4))
+        self.assertEqual(len(images), 1)
+        _, image = images[0]
+        self.assertEqual(len(image), 0x10000)
+        self.assertEqual(image[0x8000], 0)
+        self.assertEqual(image[0xC000], 1)
 
 
 class TestRom(unittest.TestCase):

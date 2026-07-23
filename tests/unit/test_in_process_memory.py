@@ -7,6 +7,7 @@ from qlnes.audio.in_process.memory import (
     CNROMMemory,
     GxROMMemory,
     MMC1Memory,
+    MMC3Memory,
     NROMMemory,
     UxROMMemory,
 )
@@ -311,6 +312,34 @@ def test_mmc1_reset_state_restores_shift_register_prg_and_chr_bank():
     m.reset_state()
     assert m[0x8000] == 0
     assert m.ppu_snapshot().chr_bank == 0
+
+
+def test_mmc3_bank_select_switches_prg_windows():
+    banks = [bytes([bank_id] * 0x2000) for bank_id in range(8)]
+    m = MMC3Memory(b"".join(banks), chr_data=bytes([0] * 0x2000))
+    assert m[0x8000] == 0
+    assert m[0xA000] == 1
+    assert m[0xC000] == 6
+    assert m[0xE000] == 7
+    m[0x8000] = 0x06
+    m[0x8001] = 0x03
+    assert m[0x8000] == 3
+    assert m[0xC000] == 6
+    m[0x8000] = 0x46
+    m[0x8001] = 0x02
+    assert m[0x8000] == 6
+    assert m[0xC000] == 2
+
+
+def test_mmc3_bank_select_maps_chr_windows_into_snapshot_pattern_table():
+    banks = [bytes([bank_id] * 0x2000) for bank_id in range(4)]
+    chr_data = b"".join(bytes([bank_id] * 0x0400) for bank_id in range(16))
+    m = MMC3Memory(b"".join(banks), chr_data=chr_data)
+    m[0x8000] = 0x02
+    m[0x8001] = 0x07
+    snap = m.ppu_snapshot()
+    assert snap.pattern_table[0x1000] == 7
+    assert snap.pattern_table[0x13FF] == 7
 
 
 def test_len_is_64k():
