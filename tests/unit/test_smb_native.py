@@ -187,9 +187,18 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     ]
     assert data["enemies"][6]["runtime_kinds"] == ["0x0E", "0x0F", "0x10"]
     assert data["enemies"][6]["behavior"].startswith("native winged Koopa enemy")
-    assert data["enemies"][7]["name"] == "firebar"
-    assert data["enemies"][7]["runtime_kinds"] == ["0x1B", "0x1C", "0x1D", "0x1E", "0x1F"]
-    assert data["enemies"][7]["behavior"].startswith("native castle hazard")
+    assert data["enemies"][7]["name"] == "hammer-bro"
+    assert [sprite["name"] for sprite in data["enemies"][7]["sprites"]] == [
+        "hammer-bro-1",
+        "hammer-bro-2",
+        "hammer-bro-3",
+        "hammer-bro-4",
+    ]
+    assert data["enemies"][7]["runtime_kind"] == "0x05"
+    assert data["enemies"][7]["behavior"].startswith("native Hammer Bro enemy")
+    assert data["enemies"][8]["name"] == "firebar"
+    assert data["enemies"][8]["runtime_kinds"] == ["0x1B", "0x1C", "0x1D", "0x1E", "0x1F"]
+    assert data["enemies"][8]["behavior"].startswith("native castle hazard")
     assert sum(enemy["spawn_count"] for enemy in data["enemies"] if "spawn_count" in enemy) == len(
         data["enemy_spawns"]
     )
@@ -240,6 +249,10 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert (export.out_dir / "assets" / "piranha_plant_2.rgba").exists()
     assert (export.out_dir / "assets" / "koopa_paratroopa_1.rgba").exists()
     assert (export.out_dir / "assets" / "koopa_paratroopa_2.rgba").exists()
+    assert (export.out_dir / "assets" / "hammer_bro_1.rgba").exists()
+    assert (export.out_dir / "assets" / "hammer_bro_2.rgba").exists()
+    assert (export.out_dir / "assets" / "hammer_bro_3.rgba").exists()
+    assert (export.out_dir / "assets" / "hammer_bro_4.rgba").exists()
     assert (export.out_dir / "assets" / "enemies_1_1.bin").exists()
     assert (export.out_dir / "assets" / "enemies_1_2.bin").exists()
     assert not (export.out_dir / "emulator").exists()
@@ -291,6 +304,12 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "PARATROOPA_JUMP_KIND" in source
     assert "enemy_is_paratroopa" in source
     assert "paratroopa_frames" in source
+    assert "HAMMER_BRO_KIND" in source
+    assert "hammer_bro_frames" in source
+    assert "HammerProjectile" in source
+    assert "spawn_hammer" in source
+    assert "update_hammers" in source
+    assert "draw_hammers" in source
     assert "FIREBAR_CLOCKWISE_KIND" in source
     assert "enemy_is_firebar" in source
     assert "draw_firebar" in source
@@ -448,6 +467,8 @@ def test_cli_smb_native_generates_project(tmp_path: Path) -> None:
     assert (out / "assets" / "piranha_plant_2.rgba").exists()
     assert (out / "assets" / "koopa_paratroopa_1.rgba").exists()
     assert (out / "assets" / "koopa_paratroopa_2.rgba").exists()
+    assert (out / "assets" / "hammer_bro_1.rgba").exists()
+    assert (out / "assets" / "hammer_bro_4.rgba").exists()
     assert (out / "assets" / "mario_small_walk_1.rgba").exists()
     assert (out / "assets" / "mario_small_jump.rgba").exists()
     assert (out / "assets" / "mario_big_walk_1.rgba").exists()
@@ -489,7 +510,8 @@ def test_create_smb_native_port_stage_all_generates_main_quest_sequence(tmp_path
     assert data["enemies"][4]["spawn_count_total"] == 14
     assert data["enemies"][5]["spawn_count_total"] == 106
     assert data["enemies"][6]["spawn_count_total"] == 48
-    assert data["enemies"][7]["spawn_count_total"] == 41
+    assert data["enemies"][7]["spawn_count_total"] == 18
+    assert data["enemies"][8]["spawn_count_total"] == 41
     assert (export.out_dir / "assets" / "level_8_4.rgb").exists()
     assert (export.out_dir / "assets" / "collision_8_4.bin").exists()
     assert (export.out_dir / "assets" / "blocks_8_4.bin").exists()
@@ -501,6 +523,7 @@ def test_create_smb_native_port_stage_all_generates_main_quest_sequence(tmp_path
     assert "PODOBOO_KIND" in source
     assert "PIRANHA_KIND" in source
     assert "PARATROOPA_JUMP_KIND" in source
+    assert "HAMMER_BRO_KIND" in source
     assert "FIREBAR_LONG_KIND" in source
     assert '"8-4"' in source
     assert "current_stage = (current_stage + 1) % STAGE_COUNT" in source

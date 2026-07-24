@@ -30,6 +30,7 @@ SMB_ENEMY_DATA_LOW = 0x00E9
 SMB_GREEN_KOOPA_ID = 0x00
 SMB_NATIVE_KOOPA_SHELL_KIND = 0x80
 SMB_GOOMBA_ID = 0x06
+SMB_HAMMER_BRO_ID = 0x05
 SMB_BLOOPER_ID = 0x07
 SMB_PODOBOO_ID = 0x0C
 SMB_PIRANHA_ID = 0x0D
@@ -126,6 +127,12 @@ SMB_PIRANHA_SPRITES = (
 SMB_PARATROOPA_SPRITES = (
     ("koopa-paratroopa-1", "koopa_paratroopa_1.rgba"),
     ("koopa-paratroopa-2", "koopa_paratroopa_2.rgba"),
+)
+SMB_HAMMER_BRO_SPRITES = (
+    ("hammer-bro-1", "hammer_bro_1.rgba"),
+    ("hammer-bro-2", "hammer_bro_2.rgba"),
+    ("hammer-bro-3", "hammer_bro_3.rgba"),
+    ("hammer-bro-4", "hammer_bro_4.rgba"),
 )
 SMB_PIPE_TOP_LEFT_METATILES = {0x10, 0x12}
 SMB_PIPE_TOP_RIGHT_METATILES = {0x11, 0x13}
@@ -248,6 +255,10 @@ def create_smb_native_port(
         sprite_name: build_dir / "characters" / "enemies" / f"{sprite_name}.png"
         for sprite_name, _ in SMB_PARATROOPA_SPRITES
     }
+    hammer_bro_pngs = {
+        sprite_name: build_dir / "characters" / "enemies" / f"{sprite_name}.png"
+        for sprite_name, _ in SMB_HAMMER_BRO_SPRITES
+    }
     mushroom_png = build_dir / "blocks" / "sprites" / "mushroom.png"
     brick_chunk_png = build_dir / "blocks" / "sprites" / "brick-chunk.png"
     for mario_png in mario_pngs.values():
@@ -281,6 +292,9 @@ def create_smb_native_port(
     for paratroopa_png in paratroopa_pngs.values():
         if not paratroopa_png.exists():
             raise RuntimeError(f"expected SMB paratroopa sprite missing: {paratroopa_png}")
+    for hammer_bro_png in hammer_bro_pngs.values():
+        if not hammer_bro_png.exists():
+            raise RuntimeError(f"expected SMB hammer bro sprite missing: {hammer_bro_png}")
     if not mushroom_png.exists():
         raise RuntimeError(f"expected SMB power-up sprite missing: {mushroom_png}")
     if not brick_chunk_png.exists():
@@ -300,6 +314,7 @@ def create_smb_native_port(
     podoboo_raw = assets_dir / SMB_PODOBOO_SPRITE[1]
     piranha_raws = [assets_dir / asset_name for _, asset_name in SMB_PIRANHA_SPRITES]
     paratroopa_raws = [assets_dir / asset_name for _, asset_name in SMB_PARATROOPA_SPRITES]
+    hammer_bro_raws = [assets_dir / asset_name for _, asset_name in SMB_HAMMER_BRO_SPRITES]
     dead_mario_raw = assets_dir / SMB_DEAD_MARIO_SPRITE[1]
     stage_assets: list[_SmbNativeStageAsset] = []
     for level in rendered_levels:
@@ -401,6 +416,11 @@ def create_smb_native_port(
         assets_dir,
         SMB_PARATROOPA_SPRITES,
     )
+    hammer_bro_size, hammer_bro_assets = _write_mario_frame_assets(
+        hammer_bro_pngs,
+        assets_dir,
+        SMB_HAMMER_BRO_SPRITES,
+    )
 
     main_c = src_dir / "main.c"
     main_c.write_text(
@@ -467,6 +487,9 @@ def create_smb_native_port(
             paratroopa_width=paratroopa_size[0],
             paratroopa_height=paratroopa_size[1],
             paratroopa_frame_count=len(SMB_PARATROOPA_SPRITES),
+            hammer_bro_width=hammer_bro_size[0],
+            hammer_bro_height=hammer_bro_size[1],
+            hammer_bro_frame_count=len(SMB_HAMMER_BRO_SPRITES),
             enemy_count=max_enemy_count,
             enemy_record_bytes=SMB_NATIVE_ENEMY_RECORD_BYTES,
         ),
@@ -523,6 +546,7 @@ Terminal=false
         podoboo_raw,
         *piranha_raws,
         *paratroopa_raws,
+        *hammer_bro_raws,
         *(stage_asset.enemies_raw for stage_asset in stage_assets),
         manifest,
     ]
@@ -754,6 +778,18 @@ Terminal=false
                         "behavior": "native winged Koopa enemy: decoded from SMB EnemyData, flaps with ROM-derived Paratroopa frames, hops or flies depending on source enemy ID",
                     },
                     {
+                        "name": "hammer-bro",
+                        "sprites": hammer_bro_assets,
+                        "runtime_kind": f"0x{SMB_HAMMER_BRO_ID:02X}",
+                        "spawn_count_total": sum(
+                            1
+                            for stage_asset in stage_assets
+                            for spawn in stage_asset.enemy_spawns
+                            if spawn["kind"] == "hammer-bro"
+                        ),
+                        "behavior": "native Hammer Bro enemy: decoded from SMB EnemyData, jumps between platforms and throws native arcing hammer projectiles",
+                    },
+                    {
                         "name": "firebar",
                         "runtime_kinds": [f"0x{enemy_id:02X}" for enemy_id in SMB_FIREBAR_IDS],
                         "spawn_count_total": sum(
@@ -793,6 +829,7 @@ Terminal=false
                     "Stationary Koopa shells can be kicked and moving shells defeat other enemies natively.",
                     "Piranha Plants are inferred from generated SMB pipe metatiles rather than the EnemyData stream.",
                     "Koopa Paratroopa variants keep their SMB EnemyData IDs and use native jump/fly movement.",
+                    "Hammer Bros keep their SMB EnemyData ID and throw native arcing hammer projectiles.",
                     "Firebar variants keep their SMB EnemyData IDs and use native rotating fireball chains.",
                 ],
             },
@@ -1118,6 +1155,22 @@ def _write_enemy_spawns(
                 offset=offset,
                 source=(first, second),
             )
+        elif enemy_id == SMB_HAMMER_BRO_ID and not hard_mode_only:
+            x = page_loc * 256 + (first & 0xF0)
+            y = row * 16
+            _append_enemy_spawn(
+                records,
+                spawns,
+                kind="hammer-bro",
+                enemy_id=SMB_HAMMER_BRO_ID,
+                x=x,
+                y=y,
+                page=page_loc,
+                column=column,
+                row=row,
+                offset=offset,
+                source=(first, second),
+            )
         elif enemy_id == SMB_PODOBOO_ID and not hard_mode_only:
             x = page_loc * 256 + (first & 0xF0)
             y = row * 16
@@ -1325,6 +1378,9 @@ def _main_c_source(
     paratroopa_width: int,
     paratroopa_height: int,
     paratroopa_frame_count: int,
+    hammer_bro_width: int,
+    hammer_bro_height: int,
+    hammer_bro_frame_count: int,
     enemy_count: int,
     enemy_record_bytes: int,
 ) -> str:
@@ -1400,6 +1456,13 @@ def _main_c_source(
 #define PARATROOPA_RED_KIND {SMB_RED_PARATROOPA_ID}
 #define PARATROOPA_FLY_KIND {SMB_FLYING_PARATROOPA_ID}
 #define PARATROOPA_FRAME_COUNT {paratroopa_frame_count}
+#define HAMMER_BRO_W {hammer_bro_width}
+#define HAMMER_BRO_H {hammer_bro_height}
+#define HAMMER_BRO_KIND {SMB_HAMMER_BRO_ID}
+#define HAMMER_BRO_FRAME_COUNT {hammer_bro_frame_count}
+#define HAMMER_PROJECTILE_COUNT 32
+#define HAMMER_PROJECTILE_SIZE 8
+#define HAMMER_PROJECTILE_GRAVITY 360.0f
 #define FIREBAR_CLOCKWISE_KIND {SMB_FIREBAR_IDS[0]}
 #define FIREBAR_FAST_CLOCKWISE_KIND {SMB_FIREBAR_IDS[1]}
 #define FIREBAR_COUNTERCLOCKWISE_KIND {SMB_FIREBAR_IDS[2]}
@@ -1467,9 +1530,19 @@ typedef struct {{
     float origin_y;
     float vx;
     float vy;
+    uint32_t last_shot_at;
     uint8_t kind;
     bool alive;
 }} Enemy;
+
+typedef struct {{
+    bool active;
+    float x;
+    float y;
+    float vx;
+    float vy;
+    uint32_t spawned_at;
+}} HammerProjectile;
 
 typedef struct {{
     uint16_t x;
@@ -1894,6 +1967,10 @@ static bool enemy_is_paratroopa(const Enemy *enemy) {{
         enemy->kind == PARATROOPA_FLY_KIND;
 }}
 
+static bool enemy_is_hammer_bro(const Enemy *enemy) {{
+    return enemy->kind == HAMMER_BRO_KIND;
+}}
+
 static bool enemy_is_firebar(const Enemy *enemy) {{
     return enemy->kind == FIREBAR_CLOCKWISE_KIND ||
         enemy->kind == FIREBAR_FAST_CLOCKWISE_KIND ||
@@ -1930,8 +2007,10 @@ static bool load_enemies(const uint8_t *data, Enemy *enemies) {{
         enemies[i].origin_y = (float)y;
         enemies[i].kind = kind;
         enemies[i].vx = (kind == BLOOPER_KIND) ? -24.0f : ((kind == PIRANHA_KIND || kind == PODOBOO_KIND || enemy_is_firebar(&enemies[i])) ? 0.0f : -36.0f);
+        if (kind == HAMMER_BRO_KIND) enemies[i].vx = -18.0f;
         if (kind == PARATROOPA_FLY_KIND) enemies[i].vx = -52.0f;
         enemies[i].vy = 0.0f;
+        enemies[i].last_shot_at = 0;
         enemies[i].alive = data[o + 4] == 0;
     }}
     return true;
@@ -2074,6 +2153,7 @@ static int enemy_width(const Enemy *enemy) {{
     if (enemy->kind == PIRANHA_KIND) return PIRANHA_W;
     if (enemy_is_paratroopa(enemy)) return PARATROOPA_W;
     if (enemy_is_firebar(enemy)) return (firebar_ball_count(enemy) + 1) * FIREBAR_BALL_SIZE;
+    if (enemy_is_hammer_bro(enemy)) return HAMMER_BRO_W;
     return enemy->kind == 0x00 ? KOOPA_W : GOOMBA_W;
 }}
 
@@ -2084,6 +2164,7 @@ static int enemy_height(const Enemy *enemy) {{
     if (enemy->kind == PIRANHA_KIND) return PIRANHA_H;
     if (enemy_is_paratroopa(enemy)) return PARATROOPA_H;
     if (enemy_is_firebar(enemy)) return (firebar_ball_count(enemy) + 1) * FIREBAR_BALL_SIZE;
+    if (enemy_is_hammer_bro(enemy)) return HAMMER_BRO_H;
     return enemy->kind == 0x00 ? KOOPA_H : GOOMBA_H;
 }}
 
@@ -2096,6 +2177,7 @@ static const uint8_t *enemy_sprite(
     const uint8_t *podoboo,
     uint8_t **piranha_frames,
     uint8_t **paratroopa_frames,
+    uint8_t **hammer_bro_frames,
     uint32_t ticks
 ) {{
     if (enemy->kind == KOOPA_SHELL_KIND) return koopa_shell;
@@ -2103,6 +2185,7 @@ static const uint8_t *enemy_sprite(
     if (enemy->kind == PODOBOO_KIND) return podoboo;
     if (enemy->kind == PIRANHA_KIND) return piranha_frames[(ticks / 220) % PIRANHA_FRAME_COUNT];
     if (enemy_is_paratroopa(enemy)) return paratroopa_frames[(ticks / 120) % PARATROOPA_FRAME_COUNT];
+    if (enemy_is_hammer_bro(enemy)) return hammer_bro_frames[(ticks / 140) % HAMMER_BRO_FRAME_COUNT];
     return enemy->kind == 0x00 ? koopa : goomba;
 }}
 
@@ -2152,6 +2235,78 @@ static bool firebar_hits_player(
         float x = cx + cosf(angle) * radius - FIREBAR_BALL_SIZE / 2;
         float y = cy + sinf(angle) * radius - FIREBAR_BALL_SIZE / 2;
         if (rects_overlap(mario_x, mario_y, player_w, player_h, x, y, FIREBAR_BALL_SIZE, FIREBAR_BALL_SIZE)) return true;
+    }}
+    return false;
+}}
+
+static void clear_hammers(HammerProjectile *hammers) {{
+    for (int i = 0; i < HAMMER_PROJECTILE_COUNT; i++) {{
+        hammers[i].active = false;
+    }}
+}}
+
+static void spawn_hammer(HammerProjectile *hammers, const Enemy *enemy, float mario_x, uint32_t now) {{
+    for (int i = 0; i < HAMMER_PROJECTILE_COUNT; i++) {{
+        if (hammers[i].active) continue;
+        hammers[i].active = true;
+        hammers[i].x = enemy->x + (mario_x < enemy->x ? 0.0f : HAMMER_BRO_W - HAMMER_PROJECTILE_SIZE);
+        hammers[i].y = enemy->y + 2.0f;
+        hammers[i].vx = mario_x < enemy->x ? -92.0f : 92.0f;
+        hammers[i].vy = -205.0f;
+        hammers[i].spawned_at = now;
+        return;
+    }}
+}}
+
+static void update_hammers(HammerProjectile *hammers, int level_w, float dt, uint32_t now) {{
+    for (int i = 0; i < HAMMER_PROJECTILE_COUNT; i++) {{
+        HammerProjectile *hammer = &hammers[i];
+        if (!hammer->active) continue;
+        hammer->vy += HAMMER_PROJECTILE_GRAVITY * dt;
+        hammer->x += hammer->vx * dt;
+        hammer->y += hammer->vy * dt;
+        if (hammer->x < -32.0f || hammer->x > level_w + 32.0f || hammer->y > LEVEL_H + 32.0f || now - hammer->spawned_at > 3200u) {{
+            hammer->active = false;
+        }}
+    }}
+}}
+
+static void draw_hammer_projectile(uint32_t *frame, int x, int y, uint32_t ticks) {{
+    bool flip = ((ticks / 90) % 2) == 0;
+    for (int py = 0; py < HAMMER_PROJECTILE_SIZE; py++) {{
+        int dy = y + py;
+        if (dy < 0 || dy >= SCREEN_H) continue;
+        for (int px = 0; px < HAMMER_PROJECTILE_SIZE; px++) {{
+            int dx = x + px;
+            if (dx < 0 || dx >= SCREEN_W) continue;
+            bool head = (px >= 2 && px <= 5 && py >= 0 && py <= 2);
+            bool handle = flip ? (px == py || px + 1 == py) : (px + py == 7 || px + py == 8);
+            if (!head && !handle) continue;
+            frame[(size_t)dy * SCREEN_W + dx] = head ? 0xFFD0D0D0u : 0xFF8A4A1Au;
+        }}
+    }}
+}}
+
+static void draw_hammers(uint32_t *frame, HammerProjectile *hammers, uint32_t ticks, int camera_x) {{
+    for (int i = 0; i < HAMMER_PROJECTILE_COUNT; i++) {{
+        if (!hammers[i].active) continue;
+        draw_hammer_projectile(frame, (int)hammers[i].x - camera_x, (int)hammers[i].y, ticks + (uint32_t)i * 37u);
+    }}
+}}
+
+static bool hammers_hit_player(
+    HammerProjectile *hammers,
+    float mario_x,
+    float mario_y,
+    int player_w,
+    int player_h
+) {{
+    for (int i = 0; i < HAMMER_PROJECTILE_COUNT; i++) {{
+        if (!hammers[i].active) continue;
+        if (rects_overlap(mario_x, mario_y, player_w, player_h, hammers[i].x, hammers[i].y, HAMMER_PROJECTILE_SIZE, HAMMER_PROJECTILE_SIZE)) {{
+            hammers[i].active = false;
+            return true;
+        }}
     }}
     return false;
 }}
@@ -2259,6 +2414,7 @@ static void reset_level_state(
     CoinEffect *coin_effect,
     BrickChunkEffect *brick_effect,
     Powerup *powerup,
+    HammerProjectile *hammers,
     float *mario_x,
     float *mario_y,
     float *vx,
@@ -2277,6 +2433,7 @@ static void reset_level_state(
     brick_effect->active = false;
     powerup->active = false;
     powerup->emerging = false;
+    clear_hammers(hammers);
     *mario_x = MARIO_START_X;
     *mario_y = MARIO_START_Y;
     *vx = 0.0f;
@@ -2401,6 +2558,10 @@ int main(int argc, char **argv) {{
     char piranha_path_1[4096];
     char paratroopa_path_0[4096];
     char paratroopa_path_1[4096];
+    char hammer_bro_path_0[4096];
+    char hammer_bro_path_1[4096];
+    char hammer_bro_path_2[4096];
+    char hammer_bro_path_3[4096];
     snprintf(title_screen_path, sizeof(title_screen_path), "%sassets/title_screen.rgb", base ? base : "");
     snprintf(used_block_path, sizeof(used_block_path), "%sassets/used_empty_block.rgb", base ? base : "");
     snprintf(coin_path_0, sizeof(coin_path_0), "%sassets/jumping_coin_frame_0.rgba", base ? base : "");
@@ -2436,6 +2597,10 @@ int main(int argc, char **argv) {{
     snprintf(piranha_path_1, sizeof(piranha_path_1), "%sassets/piranha_plant_2.rgba", base ? base : "");
     snprintf(paratroopa_path_0, sizeof(paratroopa_path_0), "%sassets/koopa_paratroopa_1.rgba", base ? base : "");
     snprintf(paratroopa_path_1, sizeof(paratroopa_path_1), "%sassets/koopa_paratroopa_2.rgba", base ? base : "");
+    snprintf(hammer_bro_path_0, sizeof(hammer_bro_path_0), "%sassets/hammer_bro_1.rgba", base ? base : "");
+    snprintf(hammer_bro_path_1, sizeof(hammer_bro_path_1), "%sassets/hammer_bro_2.rgba", base ? base : "");
+    snprintf(hammer_bro_path_2, sizeof(hammer_bro_path_2), "%sassets/hammer_bro_3.rgba", base ? base : "");
+    snprintf(hammer_bro_path_3, sizeof(hammer_bro_path_3), "%sassets/hammer_bro_4.rgba", base ? base : "");
 
     uint8_t *levels[STAGE_COUNT];
     uint8_t *collisions[STAGE_COUNT];
@@ -2493,6 +2658,11 @@ int main(int argc, char **argv) {{
     uint8_t *paratroopa_frames[PARATROOPA_FRAME_COUNT];
     paratroopa_frames[0] = read_asset(paratroopa_path_0, (size_t)PARATROOPA_W * PARATROOPA_H * 4);
     paratroopa_frames[1] = read_asset(paratroopa_path_1, (size_t)PARATROOPA_W * PARATROOPA_H * 4);
+    uint8_t *hammer_bro_frames[HAMMER_BRO_FRAME_COUNT];
+    hammer_bro_frames[0] = read_asset(hammer_bro_path_0, (size_t)HAMMER_BRO_W * HAMMER_BRO_H * 4);
+    hammer_bro_frames[1] = read_asset(hammer_bro_path_1, (size_t)HAMMER_BRO_W * HAMMER_BRO_H * 4);
+    hammer_bro_frames[2] = read_asset(hammer_bro_path_2, (size_t)HAMMER_BRO_W * HAMMER_BRO_H * 4);
+    hammer_bro_frames[3] = read_asset(hammer_bro_path_3, (size_t)HAMMER_BRO_W * HAMMER_BRO_H * 4);
     bool mario_loaded = true;
     for (int i = 0; i < MARIO_FRAME_COUNT; i++) {{
         if (!small_mario_frames[i] || !big_mario_frames[i]) mario_loaded = false;
@@ -2517,7 +2687,11 @@ int main(int argc, char **argv) {{
     for (int i = 0; i < PARATROOPA_FRAME_COUNT; i++) {{
         if (!paratroopa_frames[i]) paratroopas_loaded = false;
     }}
-    if (!stages_loaded || !title_screen || !used_block || !coins_loaded || !mushroom || !brick_chunk || !mario_loaded || !swim_loaded || !bloopers_loaded || !piranhas_loaded || !paratroopas_loaded || !podoboo || !dead_mario || !goomba || !koopa || !koopa_shell) return 2;
+    bool hammer_bros_loaded = true;
+    for (int i = 0; i < HAMMER_BRO_FRAME_COUNT; i++) {{
+        if (!hammer_bro_frames[i]) hammer_bros_loaded = false;
+    }}
+    if (!stages_loaded || !title_screen || !used_block || !coins_loaded || !mushroom || !brick_chunk || !mario_loaded || !swim_loaded || !bloopers_loaded || !piranhas_loaded || !paratroopas_loaded || !hammer_bros_loaded || !podoboo || !dead_mario || !goomba || !koopa || !koopa_shell) return 2;
     int current_stage = 0;
     const char *stage_label = STAGE_LABELS[current_stage];
     int current_level_w = STAGE_LEVEL_WIDTHS[current_stage];
@@ -2528,8 +2702,10 @@ int main(int argc, char **argv) {{
     uint8_t *enemy_data = enemy_sets[current_stage];
     Block blocks[BLOCK_COUNT > 0 ? BLOCK_COUNT : 1];
     Enemy enemies[ENEMY_COUNT > 0 ? ENEMY_COUNT : 1];
+    HammerProjectile hammers[HAMMER_PROJECTILE_COUNT];
     load_blocks(block_data, blocks);
     load_enemies(enemy_data, enemies);
+    clear_hammers(hammers);
 
     if (argc > 1 && SDL_strcmp(argv[1], "--self-test") == 0) {{
         for (int i = 0; i < STAGE_COUNT; i++) {{
@@ -2558,6 +2734,7 @@ int main(int argc, char **argv) {{
         for (int i = 0; i < BLOOPER_FRAME_COUNT; i++) free(blooper_frames[i]);
         for (int i = 0; i < PIRANHA_FRAME_COUNT; i++) free(piranha_frames[i]);
         for (int i = 0; i < PARATROOPA_FRAME_COUNT; i++) free(paratroopa_frames[i]);
+        for (int i = 0; i < HAMMER_BRO_FRAME_COUNT; i++) free(hammer_bro_frames[i]);
         free(podoboo);
         return 0;
     }}
@@ -2700,6 +2877,7 @@ int main(int argc, char **argv) {{
                     &coin_effect,
                     &brick_effect,
                     &powerup,
+                    hammers,
                     &mario_x,
                     &mario_y,
                     &vx,
@@ -2733,6 +2911,7 @@ int main(int argc, char **argv) {{
                     &coin_effect,
                     &brick_effect,
                     &powerup,
+                    hammers,
                     &mario_x,
                     &mario_y,
                     &vx,
@@ -2854,6 +3033,32 @@ int main(int argc, char **argv) {{
             int eh = enemy_height(enemy);
             if (enemy_is_firebar(enemy)) {{
                 /* Static pivot; draw/collision use per-ball rotation below. */
+            }} else if (enemy_is_hammer_bro(enemy)) {{
+                if (enemy->last_shot_at == 0 || now - enemy->last_shot_at > 1150u + (uint32_t)(i % 3) * 170u) {{
+                    spawn_hammer(hammers, enemy, mario_x, now);
+                    enemy->last_shot_at = now;
+                }}
+                if (enemy->vy == 0.0f && ((now / 900u + (uint32_t)i) % 3u) == 0u) {{
+                    enemy->vy = -235.0f;
+                }}
+                enemy->vx = mario_x < enemy->x ? -18.0f : 18.0f;
+                enemy->vy += GROUND_GRAVITY * dt;
+                float gx = enemy->x + enemy->vx * dt;
+                if (rect_hits_solid(collision, blocks, current_level_w, gx, enemy->y, ew, eh)) {{
+                    enemy->vx = -enemy->vx;
+                }} else {{
+                    enemy->x = gx;
+                }}
+                float gy = enemy->y + enemy->vy * dt;
+                if (!rect_hits_solid(collision, blocks, current_level_w, enemy->x, gy, ew, eh)) {{
+                    enemy->y = gy;
+                }} else if (enemy->vy > 0.0f) {{
+                    int tile_y = ((int)(enemy->y + eh + enemy->vy * dt)) / TILE_SIZE;
+                    enemy->y = (float)(tile_y * TILE_SIZE - eh);
+                    enemy->vy = 0.0f;
+                }} else {{
+                    enemy->vy = 0.0f;
+                }}
             }} else if (enemy->kind == BLOOPER_KIND) {{
                 float gx = enemy->x + enemy->vx * dt;
                 if (gx < 0.0f || gx > current_level_w - ew || rect_hits_solid(collision, blocks, current_level_w, gx, enemy->y, ew, eh)) {{
@@ -2973,6 +3178,33 @@ int main(int argc, char **argv) {{
             }}
         }}
 
+        update_hammers(hammers, current_level_w, dt, now);
+        if (hammers_hit_player(hammers, mario_x, mario_y, player_w, player_h)) {{
+            if (now < invulnerable_until) {{
+            }} else if (mario_big) {{
+                mario_big = false;
+                mario_y += (float)(BIG_MARIO_H - SMALL_MARIO_H);
+                invulnerable_until = now + INVULNERABLE_MS;
+                trigger_sfx(audio_device, &audio_state, SFX_POWERUP);
+            }} else {{
+                begin_death(
+                    &player_dead,
+                    &death_started_at,
+                    &lives,
+                    &vx,
+                    &vy,
+                    &on_ground,
+                    now,
+                    window,
+                    stage_label,
+                    score,
+                    coins,
+                    time_left
+                );
+                set_audio_mode(audio_device, &audio_state, AUDIO_MODE_DEATH);
+            }}
+        }}
+
         for (int i = 0; i < ENEMY_COUNT; i++) {{
             Enemy *shell = &enemies[i];
             if (!shell->alive || !shell_is_moving(shell)) continue;
@@ -3026,6 +3258,7 @@ int main(int argc, char **argv) {{
                     podoboo,
                     piranha_frames,
                     paratroopa_frames,
+                    hammer_bro_frames,
                     now
                 ),
                 enemy_width(enemy),
@@ -3035,6 +3268,7 @@ int main(int argc, char **argv) {{
                 enemy->vx > 0.0f
             );
         }}
+        draw_hammers(frame, hammers, now, camera);
         if (player_dead) {{
             draw_sprite(
                 frame,
@@ -3093,6 +3327,7 @@ int main(int argc, char **argv) {{
     for (int i = 0; i < BLOOPER_FRAME_COUNT; i++) free(blooper_frames[i]);
     for (int i = 0; i < PIRANHA_FRAME_COUNT; i++) free(piranha_frames[i]);
     for (int i = 0; i < PARATROOPA_FRAME_COUNT; i++) free(paratroopa_frames[i]);
+    for (int i = 0; i < HAMMER_BRO_FRAME_COUNT; i++) free(hammer_bro_frames[i]);
     free(podoboo);
     if (audio_device) SDL_CloseAudioDevice(audio_device);
     SDL_DestroyTexture(texture);
