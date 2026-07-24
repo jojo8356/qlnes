@@ -161,46 +161,58 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert data["enemies"][2]["runtime_kind"] == "0x80"
     assert data["enemies"][2]["width"] > 0
     assert data["enemies"][2]["height"] > 0
-    assert data["enemies"][3]["name"] == "blooper"
-    assert data["enemies"][3]["runtime_kind"] == "0x07"
-    assert [sprite["name"] for sprite in data["enemies"][3]["sprites"]] == [
+    assert data["enemies"][3]["name"] == "red-koopa-troopa"
+    assert data["enemies"][3]["runtime_kind"] == "0x03"
+    assert data["enemies"][3]["behavior"].startswith("native Red Koopa variant")
+    assert data["enemies"][4]["name"] == "buzzy-beetle"
+    assert [sprite["name"] for sprite in data["enemies"][4]["sprites"]] == [
+        "buzzy-beetle-1",
+        "buzzy-beetle-2",
+    ]
+    assert data["enemies"][4]["runtime_kind"] == "0x02"
+    assert data["enemies"][4]["shell"]["asset"] == "assets/buzzy_shell.rgba"
+    assert data["enemies"][4]["shell"]["runtime_kind"] == "0x81"
+    assert data["enemies"][4]["behavior"].startswith("native Buzzy Beetle enemy")
+    assert data["enemies"][5]["name"] == "blooper"
+    assert data["enemies"][5]["runtime_kind"] == "0x07"
+    assert [sprite["name"] for sprite in data["enemies"][5]["sprites"]] == [
         "blooper-1",
         "blooper-2",
     ]
-    assert data["enemies"][3]["behavior"].startswith("native water enemy")
-    assert data["enemies"][4]["name"] == "podoboo"
-    assert data["enemies"][4]["asset"] == "assets/podoboo.rgba"
-    assert data["enemies"][4]["runtime_kind"] == "0x0C"
-    assert data["enemies"][4]["behavior"].startswith("native castle hazard")
-    assert data["enemies"][5]["name"] == "piranha-plant"
-    assert [sprite["name"] for sprite in data["enemies"][5]["sprites"]] == [
+    assert data["enemies"][5]["behavior"].startswith("native water enemy")
+    assert data["enemies"][6]["name"] == "podoboo"
+    assert data["enemies"][6]["asset"] == "assets/podoboo.rgba"
+    assert data["enemies"][6]["runtime_kind"] == "0x0C"
+    assert data["enemies"][6]["behavior"].startswith("native castle hazard")
+    assert data["enemies"][7]["name"] == "piranha-plant"
+    assert [sprite["name"] for sprite in data["enemies"][7]["sprites"]] == [
         "piranha-plant-1",
         "piranha-plant-2",
     ]
-    assert data["enemies"][5]["runtime_kind"] == "0x0D"
-    assert data["enemies"][5]["spawn_count_total"] > 0
-    assert data["enemies"][5]["behavior"].startswith("native pipe hazard")
-    assert data["enemies"][6]["name"] == "koopa-paratroopa"
-    assert [sprite["name"] for sprite in data["enemies"][6]["sprites"]] == [
+    assert data["enemies"][7]["runtime_kind"] == "0x0D"
+    assert data["enemies"][7]["spawn_count_total"] > 0
+    assert data["enemies"][7]["behavior"].startswith("native pipe hazard")
+    assert data["enemies"][8]["name"] == "koopa-paratroopa"
+    assert [sprite["name"] for sprite in data["enemies"][8]["sprites"]] == [
         "koopa-paratroopa-1",
         "koopa-paratroopa-2",
     ]
-    assert data["enemies"][6]["runtime_kinds"] == ["0x0E", "0x0F", "0x10"]
-    assert data["enemies"][6]["behavior"].startswith("native winged Koopa enemy")
-    assert data["enemies"][7]["name"] == "hammer-bro"
-    assert [sprite["name"] for sprite in data["enemies"][7]["sprites"]] == [
+    assert data["enemies"][8]["runtime_kinds"] == ["0x0E", "0x0F", "0x10"]
+    assert data["enemies"][8]["behavior"].startswith("native winged Koopa enemy")
+    assert data["enemies"][9]["name"] == "hammer-bro"
+    assert [sprite["name"] for sprite in data["enemies"][9]["sprites"]] == [
         "hammer-bro-1",
         "hammer-bro-2",
         "hammer-bro-3",
         "hammer-bro-4",
     ]
-    assert data["enemies"][7]["runtime_kind"] == "0x05"
-    assert data["enemies"][7]["behavior"].startswith("native Hammer Bro enemy")
-    assert data["enemies"][8]["name"] == "firebar"
-    assert data["enemies"][8]["runtime_kinds"] == ["0x1B", "0x1C", "0x1D", "0x1E", "0x1F"]
-    assert data["enemies"][8]["behavior"].startswith("native castle hazard")
-    assert data["enemies"][9]["name"] == "lift"
-    assert data["enemies"][9]["runtime_kinds"] == [
+    assert data["enemies"][9]["runtime_kind"] == "0x05"
+    assert data["enemies"][9]["behavior"].startswith("native Hammer Bro enemy")
+    assert data["enemies"][10]["name"] == "firebar"
+    assert data["enemies"][10]["runtime_kinds"] == ["0x1B", "0x1C", "0x1D", "0x1E", "0x1F"]
+    assert data["enemies"][10]["behavior"].startswith("native castle hazard")
+    assert data["enemies"][11]["name"] == "lift"
+    assert data["enemies"][11]["runtime_kinds"] == [
         "0x24",
         "0x25",
         "0x26",
@@ -210,7 +222,7 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
         "0x2B",
         "0x2C",
     ]
-    assert data["enemies"][9]["behavior"].startswith("native moving platform family")
+    assert data["enemies"][11]["behavior"].startswith("native moving platform family")
     assert sum(enemy["spawn_count"] for enemy in data["enemies"] if "spawn_count" in enemy) == len(
         data["enemy_spawns"]
     )
@@ -254,6 +266,9 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert (export.out_dir / "assets" / "goomba.rgba").exists()
     assert (export.out_dir / "assets" / "koopa_troopa.rgba").exists()
     assert (export.out_dir / "assets" / "koopa_shell.rgba").exists()
+    assert (export.out_dir / "assets" / "buzzy_beetle_1.rgba").exists()
+    assert (export.out_dir / "assets" / "buzzy_beetle_2.rgba").exists()
+    assert (export.out_dir / "assets" / "buzzy_shell.rgba").exists()
     assert (export.out_dir / "assets" / "blooper_1.rgba").exists()
     assert (export.out_dir / "assets" / "blooper_2.rgba").exists()
     assert (export.out_dir / "assets" / "podoboo.rgba").exists()
@@ -303,6 +318,12 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "KOOPA_W" in source
     assert "KOOPA_SHELL_KIND" in source
     assert "KOOPA_SHELL_W" in source
+    assert "RED_KOOPA_KIND" in source
+    assert "BUZZY_KIND" in source
+    assert "BUZZY_SHELL_KIND" in source
+    assert "buzzy_frames" in source
+    assert "buzzy_shell" in source
+    assert "enemy_is_buzzy" in source
     assert "BLOOPER_KIND" in source
     assert "BLOOPER_FRAME_COUNT" in source
     assert "blooper_frames" in source
@@ -495,6 +516,8 @@ def test_cli_smb_native_generates_project(tmp_path: Path) -> None:
     assert (out / "assets" / "mario_small_killed.rgba").exists()
     assert (out / "assets" / "koopa_troopa.rgba").exists()
     assert (out / "assets" / "koopa_shell.rgba").exists()
+    assert (out / "assets" / "buzzy_beetle_1.rgba").exists()
+    assert (out / "assets" / "buzzy_shell.rgba").exists()
     assert (out / "assets" / "enemies_1_1.bin").exists()
     assert (out / "assets" / "enemies_1_2.bin").exists()
     assert not list(out.rglob("*.nes"))
@@ -523,13 +546,15 @@ def test_create_smb_native_port_stage_all_generates_main_quest_sequence(tmp_path
     area_types_by_stage = {stage["stage"]: stage["area_type"] for stage in data["stages"]}
     assert area_types_by_stage["2-2"] == 0
     assert area_types_by_stage["7-2"] == 0
-    assert data["enemies"][3]["spawn_count_total"] == 14
-    assert data["enemies"][4]["spawn_count_total"] == 14
-    assert data["enemies"][5]["spawn_count_total"] == 106
-    assert data["enemies"][6]["spawn_count_total"] == 48
-    assert data["enemies"][7]["spawn_count_total"] == 18
-    assert data["enemies"][8]["spawn_count_total"] == 41
-    assert data["enemies"][9]["spawn_count_total"] == 69
+    assert data["enemies"][3]["spawn_count_total"] == 18
+    assert data["enemies"][4]["spawn_count_total"] == 22
+    assert data["enemies"][5]["spawn_count_total"] == 14
+    assert data["enemies"][6]["spawn_count_total"] == 14
+    assert data["enemies"][7]["spawn_count_total"] == 106
+    assert data["enemies"][8]["spawn_count_total"] == 48
+    assert data["enemies"][9]["spawn_count_total"] == 18
+    assert data["enemies"][10]["spawn_count_total"] == 41
+    assert data["enemies"][11]["spawn_count_total"] == 69
     assert (export.out_dir / "assets" / "level_8_4.rgb").exists()
     assert (export.out_dir / "assets" / "collision_8_4.bin").exists()
     assert (export.out_dir / "assets" / "blocks_8_4.bin").exists()
@@ -537,6 +562,8 @@ def test_create_smb_native_port_stage_all_generates_main_quest_sequence(tmp_path
     source = export.source.read_text(encoding="utf-8")
     assert "STAGE_COUNT 32" in source
     assert "STAGE_AREA_TYPES" in source
+    assert "BUZZY_KIND" in source
+    assert "RED_KOOPA_KIND" in source
     assert "BLOOPER_KIND" in source
     assert "PODOBOO_KIND" in source
     assert "PIRANHA_KIND" in source

@@ -126,7 +126,7 @@ cd out/smb-native
 ./build-appimage.sh
 ./Super-Mario-Bros-Native.AppImage
 # Controls: arrows/A-D move, Shift/J run, Space/W/Up jump, Enter/Space start, Esc quit
-# Native gameplay: title screen, HUD, 1-1 -> 1-2 stage sequence, coins, mushroom, enemies, shells, timer, deaths, stage clear, big-Mario brick breaks/chunks, damage invulnerability, ROM-derived swim sprites/physics, Bloopers for water stages, Podoboo castle hazards, Piranha Plants inferred from pipe metatiles, Koopa Paratroopas decoded from EnemyData, Hammer Bros with native hammers, Firebars decoded from EnemyData, and native lifts/platforms
+# Native gameplay: title screen, HUD, 1-1 -> 1-2 stage sequence, coins, mushroom, enemies, shells, timer, deaths, stage clear, big-Mario brick breaks/chunks, damage invulnerability, ROM-derived swim sprites/physics, Red Koopas, Buzzy Beetles, Bloopers for water stages, Podoboo castle hazards, Piranha Plants inferred from pipe metatiles, Koopa Paratroopas decoded from EnemyData, Hammer Bros with native hammers, Firebars decoded from EnemyData, and native lifts/platforms
 # Use --stage all to generate the 32 main SMB stages, including water stages 2-2 and 7-2, into the native AppImage sequence.
 
 # Generer un projet launcher pour transformer une ROM en .exe ou AppImage

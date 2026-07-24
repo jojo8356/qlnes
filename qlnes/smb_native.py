@@ -29,6 +29,9 @@ from .smb_graphics import (
 SMB_ENEMY_DATA_LOW = 0x00E9
 SMB_GREEN_KOOPA_ID = 0x00
 SMB_NATIVE_KOOPA_SHELL_KIND = 0x80
+SMB_NATIVE_BUZZY_SHELL_KIND = 0x81
+SMB_BUZZY_BEETLE_ID = 0x02
+SMB_RED_KOOPA_ID = 0x03
 SMB_GOOMBA_ID = 0x06
 SMB_HAMMER_BRO_ID = 0x05
 SMB_BLOOPER_ID = 0x07
@@ -120,6 +123,11 @@ SMB_BLOOPER_SPRITES = (
     ("blooper-1", "blooper_1.rgba"),
     ("blooper-2", "blooper_2.rgba"),
 )
+SMB_BUZZY_SPRITES = (
+    ("buzzy-beetle-1", "buzzy_beetle_1.rgba"),
+    ("buzzy-beetle-2", "buzzy_beetle_2.rgba"),
+)
+SMB_BUZZY_SHELL_SPRITE = ("buzzy-shell-1", "buzzy_shell.rgba")
 SMB_PODOBOO_SPRITE = ("podoboo", "podoboo.rgba")
 SMB_PIRANHA_SPRITES = (
     ("piranha-plant-1", "piranha_plant_1.rgba"),
@@ -247,6 +255,11 @@ def create_smb_native_port(
         sprite_name: build_dir / "characters" / "enemies" / f"{sprite_name}.png"
         for sprite_name, _ in SMB_BLOOPER_SPRITES
     }
+    buzzy_pngs = {
+        sprite_name: build_dir / "characters" / "enemies" / f"{sprite_name}.png"
+        for sprite_name, _ in SMB_BUZZY_SPRITES
+    }
+    buzzy_shell_png = build_dir / "characters" / "enemies" / f"{SMB_BUZZY_SHELL_SPRITE[0]}.png"
     podoboo_png = build_dir / "characters" / "enemies" / f"{SMB_PODOBOO_SPRITE[0]}.png"
     piranha_pngs = {
         sprite_name: build_dir / "characters" / "enemies" / f"{sprite_name}.png"
@@ -285,6 +298,11 @@ def create_smb_native_port(
     for blooper_png in blooper_pngs.values():
         if not blooper_png.exists():
             raise RuntimeError(f"expected SMB blooper sprite missing: {blooper_png}")
+    for buzzy_png in buzzy_pngs.values():
+        if not buzzy_png.exists():
+            raise RuntimeError(f"expected SMB buzzy beetle sprite missing: {buzzy_png}")
+    if not buzzy_shell_png.exists():
+        raise RuntimeError(f"expected SMB buzzy shell sprite missing: {buzzy_shell_png}")
     if not podoboo_png.exists():
         raise RuntimeError(f"expected SMB podoboo sprite missing: {podoboo_png}")
     for piranha_png in piranha_pngs.values():
@@ -312,6 +330,8 @@ def create_smb_native_port(
     koopa_raw = assets_dir / "koopa_troopa.rgba"
     koopa_shell_raw = assets_dir / "koopa_shell.rgba"
     blooper_raws = [assets_dir / asset_name for _, asset_name in SMB_BLOOPER_SPRITES]
+    buzzy_raws = [assets_dir / asset_name for _, asset_name in SMB_BUZZY_SPRITES]
+    buzzy_shell_raw = assets_dir / SMB_BUZZY_SHELL_SPRITE[1]
     podoboo_raw = assets_dir / SMB_PODOBOO_SPRITE[1]
     piranha_raws = [assets_dir / asset_name for _, asset_name in SMB_PIRANHA_SPRITES]
     paratroopa_raws = [assets_dir / asset_name for _, asset_name in SMB_PARATROOPA_SPRITES]
@@ -406,6 +426,12 @@ def create_smb_native_port(
         assets_dir,
         SMB_BLOOPER_SPRITES,
     )
+    buzzy_size, buzzy_assets = _write_mario_frame_assets(
+        buzzy_pngs,
+        assets_dir,
+        SMB_BUZZY_SPRITES,
+    )
+    buzzy_shell_size = _write_rgba(buzzy_shell_png, buzzy_shell_raw)
     podoboo_size = _write_rgba(podoboo_png, podoboo_raw)
     piranha_size, piranha_assets = _write_mario_frame_assets(
         piranha_pngs,
@@ -480,6 +506,11 @@ def create_smb_native_port(
             blooper_width=blooper_size[0],
             blooper_height=blooper_size[1],
             blooper_frame_count=len(SMB_BLOOPER_SPRITES),
+            buzzy_width=buzzy_size[0],
+            buzzy_height=buzzy_size[1],
+            buzzy_frame_count=len(SMB_BUZZY_SPRITES),
+            buzzy_shell_width=buzzy_shell_size[0],
+            buzzy_shell_height=buzzy_shell_size[1],
             podoboo_width=podoboo_size[0],
             podoboo_height=podoboo_size[1],
             piranha_width=piranha_size[0],
@@ -544,6 +575,8 @@ Terminal=false
         koopa_raw,
         koopa_shell_raw,
         *blooper_raws,
+        *buzzy_raws,
+        buzzy_shell_raw,
         podoboo_raw,
         *piranha_raws,
         *paratroopa_raws,
@@ -724,6 +757,41 @@ Terminal=false
                         "runtime_kind": f"0x{SMB_NATIVE_KOOPA_SHELL_KIND:02X}",
                     },
                     {
+                        "name": "red-koopa-troopa",
+                        "source_png": str(koopa_png),
+                        "asset": str(koopa_raw.relative_to(out)),
+                        "width": koopa_size[0],
+                        "height": koopa_size[1],
+                        "runtime_kind": f"0x{SMB_RED_KOOPA_ID:02X}",
+                        "spawn_count_total": sum(
+                            1
+                            for stage_asset in stage_assets
+                            for spawn in stage_asset.enemy_spawns
+                            if spawn["kind"] == "red-koopa-troopa"
+                        ),
+                        "behavior": "native Red Koopa variant: decoded from SMB EnemyData ID 0x03, uses Koopa frames and shell behavior while preserving the source ID",
+                    },
+                    {
+                        "name": "buzzy-beetle",
+                        "sprites": buzzy_assets,
+                        "shell": {
+                            "name": SMB_BUZZY_SHELL_SPRITE[0],
+                            "source_png": str(buzzy_shell_png),
+                            "asset": str(buzzy_shell_raw.relative_to(out)),
+                            "width": buzzy_shell_size[0],
+                            "height": buzzy_shell_size[1],
+                            "runtime_kind": f"0x{SMB_NATIVE_BUZZY_SHELL_KIND:02X}",
+                        },
+                        "runtime_kind": f"0x{SMB_BUZZY_BEETLE_ID:02X}",
+                        "spawn_count_total": sum(
+                            1
+                            for stage_asset in stage_assets
+                            for spawn in stage_asset.enemy_spawns
+                            if spawn["kind"] == "buzzy-beetle"
+                        ),
+                        "behavior": "native Buzzy Beetle enemy: decoded from SMB EnemyData ID 0x02, walks like shell enemies and switches to a native Buzzy shell when stomped",
+                    },
+                    {
                         "name": "blooper",
                         "sprites": blooper_assets,
                         "runtime_kind": f"0x{SMB_BLOOPER_ID:02X}",
@@ -838,6 +906,7 @@ Terminal=false
                     "Breakable brick metatiles are removed from native collision when big Mario hits them.",
                     "Brick shatter uses the ROM-derived brick chunk sprite as a native visual effect.",
                     "Koopa stomps switch to a native shell state using the ROM-derived shell sprite.",
+                    "Red Koopas and Buzzy Beetles keep their SMB EnemyData IDs and share native shell-enemy movement.",
                     "Stationary Koopa shells can be kicked and moving shells defeat other enemies natively.",
                     "Piranha Plants are inferred from generated SMB pipe metatiles rather than the EnemyData stream.",
                     "Koopa Paratroopa variants keep their SMB EnemyData IDs and use native jump/fly movement.",
@@ -1152,6 +1221,38 @@ def _write_enemy_spawns(
                 offset=offset,
                 source=(first, second),
             )
+        elif enemy_id == SMB_RED_KOOPA_ID and not hard_mode_only:
+            x = page_loc * 256 + (first & 0xF0)
+            y = row * 16
+            _append_enemy_spawn(
+                records,
+                spawns,
+                kind="red-koopa-troopa",
+                enemy_id=SMB_RED_KOOPA_ID,
+                x=x,
+                y=y,
+                page=page_loc,
+                column=column,
+                row=row,
+                offset=offset,
+                source=(first, second),
+            )
+        elif enemy_id == SMB_BUZZY_BEETLE_ID and not hard_mode_only:
+            x = page_loc * 256 + (first & 0xF0)
+            y = row * 16
+            _append_enemy_spawn(
+                records,
+                spawns,
+                kind="buzzy-beetle",
+                enemy_id=SMB_BUZZY_BEETLE_ID,
+                x=x,
+                y=y,
+                page=page_loc,
+                column=column,
+                row=row,
+                offset=offset,
+                source=(first, second),
+            )
         elif enemy_id == SMB_BLOOPER_ID and not hard_mode_only:
             x = page_loc * 256 + (first & 0xF0)
             y = row * 16
@@ -1399,6 +1500,11 @@ def _main_c_source(
     blooper_width: int,
     blooper_height: int,
     blooper_frame_count: int,
+    buzzy_width: int,
+    buzzy_height: int,
+    buzzy_frame_count: int,
+    buzzy_shell_width: int,
+    buzzy_shell_height: int,
     podoboo_width: int,
     podoboo_height: int,
     piranha_width: int,
@@ -1468,6 +1574,14 @@ def _main_c_source(
 #define KOOPA_SHELL_W {koopa_shell_width}
 #define KOOPA_SHELL_H {koopa_shell_height}
 #define KOOPA_SHELL_KIND {SMB_NATIVE_KOOPA_SHELL_KIND}
+#define RED_KOOPA_KIND {SMB_RED_KOOPA_ID}
+#define BUZZY_W {buzzy_width}
+#define BUZZY_H {buzzy_height}
+#define BUZZY_KIND {SMB_BUZZY_BEETLE_ID}
+#define BUZZY_FRAME_COUNT {buzzy_frame_count}
+#define BUZZY_SHELL_W {buzzy_shell_width}
+#define BUZZY_SHELL_H {buzzy_shell_height}
+#define BUZZY_SHELL_KIND {SMB_NATIVE_BUZZY_SHELL_KIND}
 #define BLOOPER_W {blooper_width}
 #define BLOOPER_H {blooper_height}
 #define BLOOPER_KIND {SMB_BLOOPER_ID}
@@ -1997,7 +2111,20 @@ static bool rects_overlap(float ax, float ay, int aw, int ah, float bx, float by
 }}
 
 static bool shell_is_moving(const Enemy *enemy) {{
-    return enemy->kind == KOOPA_SHELL_KIND && (enemy->vx < -1.0f || enemy->vx > 1.0f);
+    return (enemy->kind == KOOPA_SHELL_KIND || enemy->kind == BUZZY_SHELL_KIND) &&
+        (enemy->vx < -1.0f || enemy->vx > 1.0f);
+}}
+
+static bool enemy_is_shell_kind(const Enemy *enemy) {{
+    return enemy->kind == KOOPA_SHELL_KIND || enemy->kind == BUZZY_SHELL_KIND;
+}}
+
+static bool enemy_is_koopa_body(const Enemy *enemy) {{
+    return enemy->kind == 0x00 || enemy->kind == RED_KOOPA_KIND;
+}}
+
+static bool enemy_is_buzzy(const Enemy *enemy) {{
+    return enemy->kind == BUZZY_KIND;
 }}
 
 static bool enemy_is_paratroopa(const Enemy *enemy) {{
@@ -2201,6 +2328,8 @@ static void update_powerup(
 
 static int enemy_width(const Enemy *enemy) {{
     if (enemy->kind == KOOPA_SHELL_KIND) return KOOPA_SHELL_W;
+    if (enemy->kind == BUZZY_SHELL_KIND) return BUZZY_SHELL_W;
+    if (enemy_is_buzzy(enemy)) return BUZZY_W;
     if (enemy->kind == BLOOPER_KIND) return BLOOPER_W;
     if (enemy->kind == PODOBOO_KIND) return PODOBOO_W;
     if (enemy->kind == PIRANHA_KIND) return PIRANHA_W;
@@ -2208,11 +2337,13 @@ static int enemy_width(const Enemy *enemy) {{
     if (enemy_is_firebar(enemy)) return (firebar_ball_count(enemy) + 1) * FIREBAR_BALL_SIZE;
     if (enemy_is_hammer_bro(enemy)) return HAMMER_BRO_W;
     if (enemy_is_lift(enemy)) return LIFT_W;
-    return enemy->kind == 0x00 ? KOOPA_W : GOOMBA_W;
+    return enemy_is_koopa_body(enemy) ? KOOPA_W : GOOMBA_W;
 }}
 
 static int enemy_height(const Enemy *enemy) {{
     if (enemy->kind == KOOPA_SHELL_KIND) return KOOPA_SHELL_H;
+    if (enemy->kind == BUZZY_SHELL_KIND) return BUZZY_SHELL_H;
+    if (enemy_is_buzzy(enemy)) return BUZZY_H;
     if (enemy->kind == BLOOPER_KIND) return BLOOPER_H;
     if (enemy->kind == PODOBOO_KIND) return PODOBOO_H;
     if (enemy->kind == PIRANHA_KIND) return PIRANHA_H;
@@ -2220,7 +2351,7 @@ static int enemy_height(const Enemy *enemy) {{
     if (enemy_is_firebar(enemy)) return (firebar_ball_count(enemy) + 1) * FIREBAR_BALL_SIZE;
     if (enemy_is_hammer_bro(enemy)) return HAMMER_BRO_H;
     if (enemy_is_lift(enemy)) return LIFT_H;
-    return enemy->kind == 0x00 ? KOOPA_H : GOOMBA_H;
+    return enemy_is_koopa_body(enemy) ? KOOPA_H : GOOMBA_H;
 }}
 
 static const uint8_t *enemy_sprite(
@@ -2228,6 +2359,8 @@ static const uint8_t *enemy_sprite(
     const uint8_t *goomba,
     const uint8_t *koopa,
     const uint8_t *koopa_shell,
+    uint8_t **buzzy_frames,
+    const uint8_t *buzzy_shell,
     uint8_t **blooper_frames,
     const uint8_t *podoboo,
     uint8_t **piranha_frames,
@@ -2236,12 +2369,14 @@ static const uint8_t *enemy_sprite(
     uint32_t ticks
 ) {{
     if (enemy->kind == KOOPA_SHELL_KIND) return koopa_shell;
+    if (enemy->kind == BUZZY_SHELL_KIND) return buzzy_shell;
+    if (enemy_is_buzzy(enemy)) return buzzy_frames[(ticks / 140) % BUZZY_FRAME_COUNT];
     if (enemy->kind == BLOOPER_KIND) return blooper_frames[(ticks / 180) % BLOOPER_FRAME_COUNT];
     if (enemy->kind == PODOBOO_KIND) return podoboo;
     if (enemy->kind == PIRANHA_KIND) return piranha_frames[(ticks / 220) % PIRANHA_FRAME_COUNT];
     if (enemy_is_paratroopa(enemy)) return paratroopa_frames[(ticks / 120) % PARATROOPA_FRAME_COUNT];
     if (enemy_is_hammer_bro(enemy)) return hammer_bro_frames[(ticks / 140) % HAMMER_BRO_FRAME_COUNT];
-    return enemy->kind == 0x00 ? koopa : goomba;
+    return enemy_is_koopa_body(enemy) ? koopa : goomba;
 }}
 
 static void draw_firebar_ball(uint32_t *frame, int x, int y) {{
@@ -2663,6 +2798,9 @@ int main(int argc, char **argv) {{
     char goomba_path[4096];
     char koopa_path[4096];
     char koopa_shell_path[4096];
+    char buzzy_path_0[4096];
+    char buzzy_path_1[4096];
+    char buzzy_shell_path[4096];
     char blooper_path_0[4096];
     char blooper_path_1[4096];
     char podoboo_path[4096];
@@ -2702,6 +2840,9 @@ int main(int argc, char **argv) {{
     snprintf(goomba_path, sizeof(goomba_path), "%sassets/goomba.rgba", base ? base : "");
     snprintf(koopa_path, sizeof(koopa_path), "%sassets/koopa_troopa.rgba", base ? base : "");
     snprintf(koopa_shell_path, sizeof(koopa_shell_path), "%sassets/koopa_shell.rgba", base ? base : "");
+    snprintf(buzzy_path_0, sizeof(buzzy_path_0), "%sassets/buzzy_beetle_1.rgba", base ? base : "");
+    snprintf(buzzy_path_1, sizeof(buzzy_path_1), "%sassets/buzzy_beetle_2.rgba", base ? base : "");
+    snprintf(buzzy_shell_path, sizeof(buzzy_shell_path), "%sassets/buzzy_shell.rgba", base ? base : "");
     snprintf(blooper_path_0, sizeof(blooper_path_0), "%sassets/blooper_1.rgba", base ? base : "");
     snprintf(blooper_path_1, sizeof(blooper_path_1), "%sassets/blooper_2.rgba", base ? base : "");
     snprintf(podoboo_path, sizeof(podoboo_path), "%sassets/podoboo.rgba", base ? base : "");
@@ -2760,6 +2901,10 @@ int main(int argc, char **argv) {{
     uint8_t *goomba = read_asset(goomba_path, (size_t)GOOMBA_W * GOOMBA_H * 4);
     uint8_t *koopa = read_asset(koopa_path, (size_t)KOOPA_W * KOOPA_H * 4);
     uint8_t *koopa_shell = read_asset(koopa_shell_path, (size_t)KOOPA_SHELL_W * KOOPA_SHELL_H * 4);
+    uint8_t *buzzy_frames[BUZZY_FRAME_COUNT];
+    buzzy_frames[0] = read_asset(buzzy_path_0, (size_t)BUZZY_W * BUZZY_H * 4);
+    buzzy_frames[1] = read_asset(buzzy_path_1, (size_t)BUZZY_W * BUZZY_H * 4);
+    uint8_t *buzzy_shell = read_asset(buzzy_shell_path, (size_t)BUZZY_SHELL_W * BUZZY_SHELL_H * 4);
     uint8_t *blooper_frames[BLOOPER_FRAME_COUNT];
     blooper_frames[0] = read_asset(blooper_path_0, (size_t)BLOOPER_W * BLOOPER_H * 4);
     blooper_frames[1] = read_asset(blooper_path_1, (size_t)BLOOPER_W * BLOOPER_H * 4);
@@ -2791,6 +2936,10 @@ int main(int argc, char **argv) {{
     for (int i = 0; i < BLOOPER_FRAME_COUNT; i++) {{
         if (!blooper_frames[i]) bloopers_loaded = false;
     }}
+    bool buzzies_loaded = true;
+    for (int i = 0; i < BUZZY_FRAME_COUNT; i++) {{
+        if (!buzzy_frames[i]) buzzies_loaded = false;
+    }}
     bool piranhas_loaded = true;
     for (int i = 0; i < PIRANHA_FRAME_COUNT; i++) {{
         if (!piranha_frames[i]) piranhas_loaded = false;
@@ -2803,7 +2952,7 @@ int main(int argc, char **argv) {{
     for (int i = 0; i < HAMMER_BRO_FRAME_COUNT; i++) {{
         if (!hammer_bro_frames[i]) hammer_bros_loaded = false;
     }}
-    if (!stages_loaded || !title_screen || !used_block || !coins_loaded || !mushroom || !brick_chunk || !mario_loaded || !swim_loaded || !bloopers_loaded || !piranhas_loaded || !paratroopas_loaded || !hammer_bros_loaded || !podoboo || !dead_mario || !goomba || !koopa || !koopa_shell) return 2;
+    if (!stages_loaded || !title_screen || !used_block || !coins_loaded || !mushroom || !brick_chunk || !mario_loaded || !swim_loaded || !bloopers_loaded || !buzzies_loaded || !piranhas_loaded || !paratroopas_loaded || !hammer_bros_loaded || !podoboo || !dead_mario || !goomba || !koopa || !koopa_shell || !buzzy_shell) return 2;
     int current_stage = 0;
     const char *stage_label = STAGE_LABELS[current_stage];
     int current_level_w = STAGE_LEVEL_WIDTHS[current_stage];
@@ -2843,6 +2992,8 @@ int main(int argc, char **argv) {{
         free(goomba);
         free(koopa);
         free(koopa_shell);
+        for (int i = 0; i < BUZZY_FRAME_COUNT; i++) free(buzzy_frames[i]);
+        free(buzzy_shell);
         for (int i = 0; i < BLOOPER_FRAME_COUNT; i++) free(blooper_frames[i]);
         for (int i = 0; i < PIRANHA_FRAME_COUNT; i++) free(piranha_frames[i]);
         for (int i = 0; i < PARATROOPA_FRAME_COUNT; i++) free(paratroopa_frames[i]);
@@ -3243,19 +3394,24 @@ int main(int argc, char **argv) {{
                 firebar_hits_player(enemy, mario_x, mario_y, player_w, player_h, now) :
                 rects_overlap(mario_x, mario_y, player_w, player_h, enemy->x, enemy->y, ew, eh);
             if (hits_player) {{
-                bool shell_stationary = enemy->kind == KOOPA_SHELL_KIND && !shell_is_moving(enemy);
+                bool shell_stationary = enemy_is_shell_kind(enemy) && !shell_is_moving(enemy);
                 if (!enemy_is_firebar(enemy) && !enemy_is_lift(enemy) && enemy->kind != PIRANHA_KIND && enemy->kind != PODOBOO_KIND && vy > 40.0f && mario_y + player_h - 4.0f < enemy->y + 8.0f) {{
-                    if (enemy->kind == 0x00) {{
+                    if (enemy_is_koopa_body(enemy)) {{
                         enemy->kind = KOOPA_SHELL_KIND;
                         enemy->vx = 0.0f;
                         enemy->vy = 0.0f;
                         enemy->y += (float)(KOOPA_H - KOOPA_SHELL_H);
+                    }} else if (enemy_is_buzzy(enemy)) {{
+                        enemy->kind = BUZZY_SHELL_KIND;
+                        enemy->vx = 0.0f;
+                        enemy->vy = 0.0f;
+                        enemy->y += (float)(BUZZY_H - BUZZY_SHELL_H);
                     }} else if (enemy_is_paratroopa(enemy)) {{
                         enemy->kind = 0x00;
                         enemy->vx = -36.0f;
                         enemy->vy = 0.0f;
                         enemy->y += (float)(PARATROOPA_H - KOOPA_H);
-                    }} else if (enemy->kind == KOOPA_SHELL_KIND) {{
+                    }} else if (enemy_is_shell_kind(enemy)) {{
                         enemy->vx = 0.0f;
                         enemy->vy = 0.0f;
                     }} else {{
@@ -3337,7 +3493,7 @@ int main(int argc, char **argv) {{
             for (int j = 0; j < ENEMY_COUNT; j++) {{
                 if (i == j) continue;
                 Enemy *target = &enemies[j];
-                if (!target->alive || target->kind == KOOPA_SHELL_KIND || enemy_is_firebar(target) || enemy_is_lift(target)) continue;
+                if (!target->alive || enemy_is_shell_kind(target) || enemy_is_firebar(target) || enemy_is_lift(target)) continue;
                 int tw = enemy_width(target);
                 int th = enemy_height(target);
                 if (rects_overlap(shell->x, shell->y, sw, sh, target->x, target->y, tw, th)) {{
@@ -3382,6 +3538,8 @@ int main(int argc, char **argv) {{
                     goomba,
                     koopa,
                     koopa_shell,
+                    buzzy_frames,
+                    buzzy_shell,
                     blooper_frames,
                     podoboo,
                     piranha_frames,
@@ -3452,6 +3610,8 @@ int main(int argc, char **argv) {{
     free(goomba);
     free(koopa);
     free(koopa_shell);
+    for (int i = 0; i < BUZZY_FRAME_COUNT; i++) free(buzzy_frames[i]);
+    free(buzzy_shell);
     for (int i = 0; i < BLOOPER_FRAME_COUNT; i++) free(blooper_frames[i]);
     for (int i = 0; i < PIRANHA_FRAME_COUNT; i++) free(piranha_frames[i]);
     for (int i = 0; i < PARATROOPA_FRAME_COUNT; i++) free(paratroopa_frames[i]);
