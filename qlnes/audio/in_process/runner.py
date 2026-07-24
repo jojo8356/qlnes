@@ -324,11 +324,22 @@ class InProcessRunner:
         # Phase 1: let game init settle until NMI is enabled or budget elapses
         init_cap = INIT_BUDGET_CYCLES
         while mpu.processorCycles < init_cap:
+            if not mem.nmi_enabled and not mem.apu_writes and self._is_jmp_self_loop(mpu.pc):
+                break
             mpu.step()
             mem.cpu_cycles = mpu.processorCycles
             if mem.nmi_enabled:
                 break
         init_cycles = mpu.processorCycles
+
+        if not mem.nmi_enabled and not mem.apu_writes:
+            mem.cpu_cycles = init_cycles + int(frames * NTSC_CYCLES_PER_FRAME)
+            self.last_stats = _RunStats(
+                init_cycles=init_cycles,
+                total_cycles=mem.cpu_cycles,
+                apu_event_count=0,
+            )
+            return iter(())
 
         # Phase 2: NMI cadence
         next_nmi_at = init_cycles + NTSC_CYCLES_PER_FRAME
@@ -351,6 +362,13 @@ class InProcessRunner:
             apu_event_count=len(mem.apu_writes),
         )
         return iter(list(mem.apu_writes))
+
+    def _is_jmp_self_loop(self, pc: int) -> bool:
+        opcode = self._mem[pc]
+        if opcode != 0x4C:
+            return False
+        target = self._mem[(pc + 1) & 0xFFFF] | (self._mem[(pc + 2) & 0xFFFF] << 8)
+        return target == pc
 
     def _set_controller1_state_for_frame(
         self,

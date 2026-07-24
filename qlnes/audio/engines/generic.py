@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, ClassVar
 from ...apu import ApuEmulator
 from ..engine import (
     CYCLES_PER_FRAME,
+    NTSC_FRAME_RATE,
     DetectionResult,
     LoopBoundary,
     PcmStream,
@@ -63,6 +64,9 @@ class GenericFallbackEngine(SoundEngine):
     def render_song_in_process(self, rom: Rom, song: SongEntry, *, frames: int = 600) -> PcmStream:
         runner = InProcessRunner(rom)
         events = list(runner.run_natural_boot(frames=frames))
+        if not events:
+            samples = int((frames / NTSC_FRAME_RATE) * 44_100)
+            return PcmStream(samples=b"\x00\x00" * samples, sample_rate=44_100)
         emu = ApuEmulator()
         last_cycle = 0
         for ev in events:

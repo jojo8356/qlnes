@@ -65,6 +65,7 @@ def test_run_natural_boot_returns_iterable_of_apu_events():
     assert events == []  # halt loop never touches APU
     assert runner.last_stats is not None
     assert runner.last_stats.apu_event_count == 0
+    assert runner.last_stats.total_cycles > runner.last_stats.init_cycles
 
 
 def test_run_natural_boot_captures_apu_writes():
