@@ -199,6 +199,18 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert data["enemies"][8]["name"] == "firebar"
     assert data["enemies"][8]["runtime_kinds"] == ["0x1B", "0x1C", "0x1D", "0x1E", "0x1F"]
     assert data["enemies"][8]["behavior"].startswith("native castle hazard")
+    assert data["enemies"][9]["name"] == "lift"
+    assert data["enemies"][9]["runtime_kinds"] == [
+        "0x24",
+        "0x25",
+        "0x26",
+        "0x27",
+        "0x28",
+        "0x29",
+        "0x2B",
+        "0x2C",
+    ]
+    assert data["enemies"][9]["behavior"].startswith("native moving platform family")
     assert sum(enemy["spawn_count"] for enemy in data["enemies"] if "spawn_count" in enemy) == len(
         data["enemy_spawns"]
     )
@@ -314,6 +326,11 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "enemy_is_firebar" in source
     assert "draw_firebar" in source
     assert "firebar_hits_player" in source
+    assert "LIFT_HORIZONTAL_KIND" in source
+    assert "enemy_is_lift" in source
+    assert "update_lift" in source
+    assert "player_stands_on_lift" in source
+    assert "draw_lift" in source
     assert "BRICK_CHUNK_W" in source
     assert "BRICK_CHUNK_H" in source
     assert "MARIO_FRAME_COUNT" in source
@@ -512,6 +529,7 @@ def test_create_smb_native_port_stage_all_generates_main_quest_sequence(tmp_path
     assert data["enemies"][6]["spawn_count_total"] == 48
     assert data["enemies"][7]["spawn_count_total"] == 18
     assert data["enemies"][8]["spawn_count_total"] == 41
+    assert data["enemies"][9]["spawn_count_total"] == 69
     assert (export.out_dir / "assets" / "level_8_4.rgb").exists()
     assert (export.out_dir / "assets" / "collision_8_4.bin").exists()
     assert (export.out_dir / "assets" / "blocks_8_4.bin").exists()
@@ -525,6 +543,7 @@ def test_create_smb_native_port_stage_all_generates_main_quest_sequence(tmp_path
     assert "PARATROOPA_JUMP_KIND" in source
     assert "HAMMER_BRO_KIND" in source
     assert "FIREBAR_LONG_KIND" in source
+    assert "LIFT_FALLING_KIND" in source
     assert '"8-4"' in source
     assert "current_stage = (current_stage + 1) % STAGE_COUNT" in source
     assert not list(export.out_dir.rglob("*.nes"))

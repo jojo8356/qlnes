@@ -38,6 +38,7 @@ SMB_JUMP_GREEN_PARATROOPA_ID = 0x0E
 SMB_RED_PARATROOPA_ID = 0x0F
 SMB_FLYING_PARATROOPA_ID = 0x10
 SMB_FIREBAR_IDS = (0x1B, 0x1C, 0x1D, 0x1E, 0x1F)
+SMB_LIFT_IDS = (0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2B, 0x2C)
 SMB_GOOMBA_GROUPS = {0x37: 2, 0x38: 3, 0x39: 2, 0x3A: 3}
 SMB_KOOPA_GROUPS = {0x3B: 2, 0x3C: 3}
 SMB_NATIVE_ENEMY_RECORD_BYTES = 5
@@ -800,6 +801,17 @@ Terminal=false
                         ),
                         "behavior": "native castle hazard: decoded from SMB EnemyData IDs 0x1B-0x1F, rotates short/long fire chains with per-ball damage collision",
                     },
+                    {
+                        "name": "lift",
+                        "runtime_kinds": [f"0x{enemy_id:02X}" for enemy_id in SMB_LIFT_IDS],
+                        "spawn_count_total": sum(
+                            1
+                            for stage_asset in stage_assets
+                            for spawn in stage_asset.enemy_spawns
+                            if spawn["kind"] == "lift"
+                        ),
+                        "behavior": "native moving platform family: decoded from SMB EnemyData IDs 0x24-0x29 and 0x2B-0x2C with static, horizontal, vertical and falling variants",
+                    },
                 ],
                 "enemy_spawns": first_stage.enemy_spawns,
                 "block_manifest": str(block_assets.manifest_json),
@@ -831,6 +843,7 @@ Terminal=false
                     "Koopa Paratroopa variants keep their SMB EnemyData IDs and use native jump/fly movement.",
                     "Hammer Bros keep their SMB EnemyData ID and throw native arcing hammer projectiles.",
                     "Firebar variants keep their SMB EnemyData IDs and use native rotating fireball chains.",
+                    "Lift variants keep their SMB EnemyData IDs and provide native rideable platforms.",
                 ],
             },
             indent=2,
@@ -1227,6 +1240,22 @@ def _write_enemy_spawns(
                 offset=offset,
                 source=(first, second),
             )
+        elif enemy_id in SMB_LIFT_IDS and not hard_mode_only:
+            x = page_loc * 256 + (first & 0xF0)
+            y = row * 16
+            _append_enemy_spawn(
+                records,
+                spawns,
+                kind="lift",
+                enemy_id=enemy_id,
+                x=x,
+                y=y,
+                page=page_loc,
+                column=column,
+                row=row,
+                offset=offset,
+                source=(first, second),
+            )
         elif enemy_id in SMB_KOOPA_GROUPS and not hard_mode_only:
             x = page_loc * 256 + (first & 0xF0)
             y = row * 16
@@ -1473,6 +1502,16 @@ def _main_c_source(
 #define FIREBAR_LONG_BALLS 12
 #define FIREBAR_RADIUS_STEP 8.0f
 #define FIREBAR_PI 3.14159265f
+#define LIFT_STATIC_KIND {SMB_LIFT_IDS[0]}
+#define LIFT_STATIC_ALT_KIND {SMB_LIFT_IDS[1]}
+#define LIFT_VERTICAL_KIND {SMB_LIFT_IDS[2]}
+#define LIFT_VERTICAL_ALT_KIND {SMB_LIFT_IDS[3]}
+#define LIFT_HORIZONTAL_KIND {SMB_LIFT_IDS[4]}
+#define LIFT_FALLING_KIND {SMB_LIFT_IDS[5]}
+#define LIFT_DOUBLE_LEFT_KIND {SMB_LIFT_IDS[6]}
+#define LIFT_DOUBLE_RIGHT_KIND {SMB_LIFT_IDS[7]}
+#define LIFT_W 48
+#define LIFT_H 8
 #define ENEMY_COUNT {enemy_count}
 #define ENEMY_RECORD_BYTES {enemy_record_bytes}
 #define TILE_SIZE 16
@@ -1979,6 +2018,17 @@ static bool enemy_is_firebar(const Enemy *enemy) {{
         enemy->kind == FIREBAR_LONG_KIND;
 }}
 
+static bool enemy_is_lift(const Enemy *enemy) {{
+    return enemy->kind == LIFT_STATIC_KIND ||
+        enemy->kind == LIFT_STATIC_ALT_KIND ||
+        enemy->kind == LIFT_VERTICAL_KIND ||
+        enemy->kind == LIFT_VERTICAL_ALT_KIND ||
+        enemy->kind == LIFT_HORIZONTAL_KIND ||
+        enemy->kind == LIFT_FALLING_KIND ||
+        enemy->kind == LIFT_DOUBLE_LEFT_KIND ||
+        enemy->kind == LIFT_DOUBLE_RIGHT_KIND;
+}}
+
 static int firebar_ball_count(const Enemy *enemy) {{
     return enemy->kind == FIREBAR_LONG_KIND ? FIREBAR_LONG_BALLS : FIREBAR_SHORT_BALLS;
 }}
@@ -2006,7 +2056,10 @@ static bool load_enemies(const uint8_t *data, Enemy *enemies) {{
         enemies[i].y = (float)y;
         enemies[i].origin_y = (float)y;
         enemies[i].kind = kind;
-        enemies[i].vx = (kind == BLOOPER_KIND) ? -24.0f : ((kind == PIRANHA_KIND || kind == PODOBOO_KIND || enemy_is_firebar(&enemies[i])) ? 0.0f : -36.0f);
+        enemies[i].vx = (kind == BLOOPER_KIND) ? -24.0f : ((kind == PIRANHA_KIND || kind == PODOBOO_KIND || enemy_is_firebar(&enemies[i]) || enemy_is_lift(&enemies[i])) ? 0.0f : -36.0f);
+        if (kind == LIFT_HORIZONTAL_KIND) enemies[i].vx = 36.0f;
+        if (kind == LIFT_DOUBLE_LEFT_KIND) enemies[i].vx = -24.0f;
+        if (kind == LIFT_DOUBLE_RIGHT_KIND) enemies[i].vx = 24.0f;
         if (kind == HAMMER_BRO_KIND) enemies[i].vx = -18.0f;
         if (kind == PARATROOPA_FLY_KIND) enemies[i].vx = -52.0f;
         enemies[i].vy = 0.0f;
@@ -2154,6 +2207,7 @@ static int enemy_width(const Enemy *enemy) {{
     if (enemy_is_paratroopa(enemy)) return PARATROOPA_W;
     if (enemy_is_firebar(enemy)) return (firebar_ball_count(enemy) + 1) * FIREBAR_BALL_SIZE;
     if (enemy_is_hammer_bro(enemy)) return HAMMER_BRO_W;
+    if (enemy_is_lift(enemy)) return LIFT_W;
     return enemy->kind == 0x00 ? KOOPA_W : GOOMBA_W;
 }}
 
@@ -2165,6 +2219,7 @@ static int enemy_height(const Enemy *enemy) {{
     if (enemy_is_paratroopa(enemy)) return PARATROOPA_H;
     if (enemy_is_firebar(enemy)) return (firebar_ball_count(enemy) + 1) * FIREBAR_BALL_SIZE;
     if (enemy_is_hammer_bro(enemy)) return HAMMER_BRO_H;
+    if (enemy_is_lift(enemy)) return LIFT_H;
     return enemy->kind == 0x00 ? KOOPA_H : GOOMBA_H;
 }}
 
@@ -2309,6 +2364,63 @@ static bool hammers_hit_player(
         }}
     }}
     return false;
+}}
+
+static void update_lift(Enemy *enemy, float mario_x, float mario_y, int player_w, int player_h, float dt, uint32_t now, int level_w) {{
+    if (enemy->kind == LIFT_HORIZONTAL_KIND || enemy->kind == LIFT_DOUBLE_LEFT_KIND || enemy->kind == LIFT_DOUBLE_RIGHT_KIND) {{
+        enemy->x += enemy->vx * dt;
+        if (enemy->x < 0.0f || enemy->x > level_w - LIFT_W) {{
+            enemy->vx = -enemy->vx;
+            enemy->x += enemy->vx * dt;
+        }}
+    }} else if (enemy->kind == LIFT_VERTICAL_KIND || enemy->kind == LIFT_VERTICAL_ALT_KIND) {{
+        uint32_t cycle_ms = (now + (uint32_t)((int)enemy->origin_y * 17)) % 2600u;
+        float t = (float)cycle_ms / 2600.0f;
+        float wave = t < 0.5f ? t * 2.0f : (1.0f - t) * 2.0f;
+        enemy->y = enemy->origin_y - 48.0f + wave * 96.0f;
+    }} else if (enemy->kind == LIFT_FALLING_KIND) {{
+        bool player_on_lift = mario_x + player_w > enemy->x + 2.0f &&
+            mario_x < enemy->x + LIFT_W - 2.0f &&
+            mario_y + player_h <= enemy->y + 6.0f &&
+            mario_y + player_h >= enemy->y - 6.0f;
+        if (player_on_lift) enemy->vy += GROUND_GRAVITY * dt * 0.45f;
+        enemy->y += enemy->vy * dt;
+        if (enemy->y > LEVEL_H + 32.0f) {{
+            enemy->y = enemy->origin_y;
+            enemy->vy = 0.0f;
+        }}
+    }}
+}}
+
+static bool player_stands_on_lift(
+    const Enemy *enemy,
+    float mario_x,
+    float mario_y,
+    int player_w,
+    int player_h,
+    float vy
+) {{
+    if (!enemy_is_lift(enemy) || !enemy->alive || vy < -1.0f) return false;
+    return mario_x + player_w > enemy->x + 2.0f &&
+        mario_x < enemy->x + LIFT_W - 2.0f &&
+        mario_y + player_h >= enemy->y - 5.0f &&
+        mario_y + player_h <= enemy->y + LIFT_H + 5.0f;
+}}
+
+static void draw_lift(uint32_t *frame, const Enemy *enemy, int camera_x) {{
+    int x = (int)enemy->x - camera_x;
+    int y = (int)enemy->y;
+    for (int py = 0; py < LIFT_H; py++) {{
+        int dy = y + py;
+        if (dy < 0 || dy >= SCREEN_H) continue;
+        for (int px = 0; px < LIFT_W; px++) {{
+            int dx = x + px;
+            if (dx < 0 || dx >= SCREEN_W) continue;
+            bool edge = py == 0 || py == LIFT_H - 1 || px < 2 || px >= LIFT_W - 2;
+            bool slat = (px / 8) % 2 == 0;
+            frame[(size_t)dy * SCREEN_W + dx] = edge ? 0xFF3A2515u : (slat ? 0xFFB87030u : 0xFF8A4A20u);
+        }}
+    }}
 }}
 
 static const uint8_t *mario_sprite(
@@ -3033,6 +3145,17 @@ int main(int argc, char **argv) {{
             int eh = enemy_height(enemy);
             if (enemy_is_firebar(enemy)) {{
                 /* Static pivot; draw/collision use per-ball rotation below. */
+            }} else if (enemy_is_lift(enemy)) {{
+                float old_x = enemy->x;
+                update_lift(enemy, mario_x, mario_y, player_w, player_h, dt, now, current_level_w);
+                if (player_stands_on_lift(enemy, mario_x, mario_y, player_w, player_h, vy)) {{
+                    mario_y = enemy->y - (float)player_h;
+                    if (enemy->kind == LIFT_HORIZONTAL_KIND || enemy->kind == LIFT_DOUBLE_LEFT_KIND || enemy->kind == LIFT_DOUBLE_RIGHT_KIND) {{
+                        mario_x += enemy->x - old_x;
+                    }}
+                    vy = 0.0f;
+                    on_ground = true;
+                }}
             }} else if (enemy_is_hammer_bro(enemy)) {{
                 if (enemy->last_shot_at == 0 || now - enemy->last_shot_at > 1150u + (uint32_t)(i % 3) * 170u) {{
                     spawn_hammer(hammers, enemy, mario_x, now);
@@ -3115,12 +3238,13 @@ int main(int argc, char **argv) {{
                     enemy->vx = -enemy->vx;
                 }}
             }}
+            if (enemy_is_lift(enemy)) continue;
             bool hits_player = enemy_is_firebar(enemy) ?
                 firebar_hits_player(enemy, mario_x, mario_y, player_w, player_h, now) :
                 rects_overlap(mario_x, mario_y, player_w, player_h, enemy->x, enemy->y, ew, eh);
             if (hits_player) {{
                 bool shell_stationary = enemy->kind == KOOPA_SHELL_KIND && !shell_is_moving(enemy);
-                if (!enemy_is_firebar(enemy) && enemy->kind != PIRANHA_KIND && enemy->kind != PODOBOO_KIND && vy > 40.0f && mario_y + player_h - 4.0f < enemy->y + 8.0f) {{
+                if (!enemy_is_firebar(enemy) && !enemy_is_lift(enemy) && enemy->kind != PIRANHA_KIND && enemy->kind != PODOBOO_KIND && vy > 40.0f && mario_y + player_h - 4.0f < enemy->y + 8.0f) {{
                     if (enemy->kind == 0x00) {{
                         enemy->kind = KOOPA_SHELL_KIND;
                         enemy->vx = 0.0f;
@@ -3213,7 +3337,7 @@ int main(int argc, char **argv) {{
             for (int j = 0; j < ENEMY_COUNT; j++) {{
                 if (i == j) continue;
                 Enemy *target = &enemies[j];
-                if (!target->alive || target->kind == KOOPA_SHELL_KIND || enemy_is_firebar(target)) continue;
+                if (!target->alive || target->kind == KOOPA_SHELL_KIND || enemy_is_firebar(target) || enemy_is_lift(target)) continue;
                 int tw = enemy_width(target);
                 int th = enemy_height(target);
                 if (rects_overlap(shell->x, shell->y, sw, sh, target->x, target->y, tw, th)) {{
@@ -3243,6 +3367,10 @@ int main(int argc, char **argv) {{
         for (int i = 0; i < ENEMY_COUNT; i++) {{
             Enemy *enemy = &enemies[i];
             if (!enemy->alive) continue;
+            if (enemy_is_lift(enemy)) {{
+                draw_lift(frame, enemy, camera);
+                continue;
+            }}
             if (enemy_is_firebar(enemy)) {{
                 draw_firebar(frame, enemy, now, camera);
                 continue;
