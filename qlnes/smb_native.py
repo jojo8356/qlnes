@@ -36,6 +36,7 @@ SMB_PIRANHA_ID = 0x0D
 SMB_JUMP_GREEN_PARATROOPA_ID = 0x0E
 SMB_RED_PARATROOPA_ID = 0x0F
 SMB_FLYING_PARATROOPA_ID = 0x10
+SMB_FIREBAR_IDS = (0x1B, 0x1C, 0x1D, 0x1E, 0x1F)
 SMB_GOOMBA_GROUPS = {0x37: 2, 0x38: 3, 0x39: 2, 0x3A: 3}
 SMB_KOOPA_GROUPS = {0x3B: 2, 0x3C: 3}
 SMB_NATIVE_ENEMY_RECORD_BYTES = 5
@@ -752,6 +753,17 @@ Terminal=false
                         ),
                         "behavior": "native winged Koopa enemy: decoded from SMB EnemyData, flaps with ROM-derived Paratroopa frames, hops or flies depending on source enemy ID",
                     },
+                    {
+                        "name": "firebar",
+                        "runtime_kinds": [f"0x{enemy_id:02X}" for enemy_id in SMB_FIREBAR_IDS],
+                        "spawn_count_total": sum(
+                            1
+                            for stage_asset in stage_assets
+                            for spawn in stage_asset.enemy_spawns
+                            if spawn["kind"] == "firebar"
+                        ),
+                        "behavior": "native castle hazard: decoded from SMB EnemyData IDs 0x1B-0x1F, rotates short/long fire chains with per-ball damage collision",
+                    },
                 ],
                 "enemy_spawns": first_stage.enemy_spawns,
                 "block_manifest": str(block_assets.manifest_json),
@@ -781,6 +793,7 @@ Terminal=false
                     "Stationary Koopa shells can be kicked and moving shells defeat other enemies natively.",
                     "Piranha Plants are inferred from generated SMB pipe metatiles rather than the EnemyData stream.",
                     "Koopa Paratroopa variants keep their SMB EnemyData IDs and use native jump/fly movement.",
+                    "Firebar variants keep their SMB EnemyData IDs and use native rotating fireball chains.",
                 ],
             },
             indent=2,
@@ -1145,6 +1158,22 @@ def _write_enemy_spawns(
                 offset=offset,
                 source=(first, second),
             )
+        elif enemy_id in SMB_FIREBAR_IDS and not hard_mode_only:
+            x = page_loc * 256 + (first & 0xF0)
+            y = row * 16
+            _append_enemy_spawn(
+                records,
+                spawns,
+                kind="firebar",
+                enemy_id=enemy_id,
+                x=x,
+                y=y,
+                page=page_loc,
+                column=column,
+                row=row,
+                offset=offset,
+                source=(first, second),
+            )
         elif enemy_id in SMB_KOOPA_GROUPS and not hard_mode_only:
             x = page_loc * 256 + (first & 0xF0)
             y = row * 16
@@ -1307,6 +1336,7 @@ def _main_c_source(
     stage_block_files_c = ", ".join(f'"{path}"' for path in stage_block_files)
     stage_enemy_files_c = ", ".join(f'"{path}"' for path in stage_enemy_files)
     return f"""#include <SDL2/SDL.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -1370,6 +1400,16 @@ def _main_c_source(
 #define PARATROOPA_RED_KIND {SMB_RED_PARATROOPA_ID}
 #define PARATROOPA_FLY_KIND {SMB_FLYING_PARATROOPA_ID}
 #define PARATROOPA_FRAME_COUNT {paratroopa_frame_count}
+#define FIREBAR_CLOCKWISE_KIND {SMB_FIREBAR_IDS[0]}
+#define FIREBAR_FAST_CLOCKWISE_KIND {SMB_FIREBAR_IDS[1]}
+#define FIREBAR_COUNTERCLOCKWISE_KIND {SMB_FIREBAR_IDS[2]}
+#define FIREBAR_FAST_COUNTERCLOCKWISE_KIND {SMB_FIREBAR_IDS[3]}
+#define FIREBAR_LONG_KIND {SMB_FIREBAR_IDS[4]}
+#define FIREBAR_BALL_SIZE 8
+#define FIREBAR_SHORT_BALLS 6
+#define FIREBAR_LONG_BALLS 12
+#define FIREBAR_RADIUS_STEP 8.0f
+#define FIREBAR_PI 3.14159265f
 #define ENEMY_COUNT {enemy_count}
 #define ENEMY_RECORD_BYTES {enemy_record_bytes}
 #define TILE_SIZE 16
@@ -1854,6 +1894,31 @@ static bool enemy_is_paratroopa(const Enemy *enemy) {{
         enemy->kind == PARATROOPA_FLY_KIND;
 }}
 
+static bool enemy_is_firebar(const Enemy *enemy) {{
+    return enemy->kind == FIREBAR_CLOCKWISE_KIND ||
+        enemy->kind == FIREBAR_FAST_CLOCKWISE_KIND ||
+        enemy->kind == FIREBAR_COUNTERCLOCKWISE_KIND ||
+        enemy->kind == FIREBAR_FAST_COUNTERCLOCKWISE_KIND ||
+        enemy->kind == FIREBAR_LONG_KIND;
+}}
+
+static int firebar_ball_count(const Enemy *enemy) {{
+    return enemy->kind == FIREBAR_LONG_KIND ? FIREBAR_LONG_BALLS : FIREBAR_SHORT_BALLS;
+}}
+
+static float firebar_spin_speed(const Enemy *enemy) {{
+    return (enemy->kind == FIREBAR_FAST_CLOCKWISE_KIND || enemy->kind == FIREBAR_FAST_COUNTERCLOCKWISE_KIND) ? 0.0068f : 0.0034f;
+}}
+
+static float firebar_spin_direction(const Enemy *enemy) {{
+    return (enemy->kind == FIREBAR_COUNTERCLOCKWISE_KIND || enemy->kind == FIREBAR_FAST_COUNTERCLOCKWISE_KIND) ? -1.0f : 1.0f;
+}}
+
+static float firebar_angle(const Enemy *enemy, uint32_t ticks) {{
+    float phase = ((float)(ticks % 4096u)) * firebar_spin_speed(enemy) * firebar_spin_direction(enemy);
+    return phase + FIREBAR_PI * 0.25f;
+}}
+
 static bool load_enemies(const uint8_t *data, Enemy *enemies) {{
     for (int i = 0; i < ENEMY_COUNT; i++) {{
         size_t o = (size_t)i * ENEMY_RECORD_BYTES;
@@ -1863,10 +1928,10 @@ static bool load_enemies(const uint8_t *data, Enemy *enemies) {{
         enemies[i].x = (float)x;
         enemies[i].y = (float)y;
         enemies[i].origin_y = (float)y;
-        enemies[i].vx = (kind == BLOOPER_KIND) ? -24.0f : ((kind == PIRANHA_KIND || kind == PODOBOO_KIND) ? 0.0f : -36.0f);
+        enemies[i].kind = kind;
+        enemies[i].vx = (kind == BLOOPER_KIND) ? -24.0f : ((kind == PIRANHA_KIND || kind == PODOBOO_KIND || enemy_is_firebar(&enemies[i])) ? 0.0f : -36.0f);
         if (kind == PARATROOPA_FLY_KIND) enemies[i].vx = -52.0f;
         enemies[i].vy = 0.0f;
-        enemies[i].kind = kind;
         enemies[i].alive = data[o + 4] == 0;
     }}
     return true;
@@ -2008,6 +2073,7 @@ static int enemy_width(const Enemy *enemy) {{
     if (enemy->kind == PODOBOO_KIND) return PODOBOO_W;
     if (enemy->kind == PIRANHA_KIND) return PIRANHA_W;
     if (enemy_is_paratroopa(enemy)) return PARATROOPA_W;
+    if (enemy_is_firebar(enemy)) return (firebar_ball_count(enemy) + 1) * FIREBAR_BALL_SIZE;
     return enemy->kind == 0x00 ? KOOPA_W : GOOMBA_W;
 }}
 
@@ -2017,6 +2083,7 @@ static int enemy_height(const Enemy *enemy) {{
     if (enemy->kind == PODOBOO_KIND) return PODOBOO_H;
     if (enemy->kind == PIRANHA_KIND) return PIRANHA_H;
     if (enemy_is_paratroopa(enemy)) return PARATROOPA_H;
+    if (enemy_is_firebar(enemy)) return (firebar_ball_count(enemy) + 1) * FIREBAR_BALL_SIZE;
     return enemy->kind == 0x00 ? KOOPA_H : GOOMBA_H;
 }}
 
@@ -2037,6 +2104,56 @@ static const uint8_t *enemy_sprite(
     if (enemy->kind == PIRANHA_KIND) return piranha_frames[(ticks / 220) % PIRANHA_FRAME_COUNT];
     if (enemy_is_paratroopa(enemy)) return paratroopa_frames[(ticks / 120) % PARATROOPA_FRAME_COUNT];
     return enemy->kind == 0x00 ? koopa : goomba;
+}}
+
+static void draw_firebar_ball(uint32_t *frame, int x, int y) {{
+    for (int py = 0; py < FIREBAR_BALL_SIZE; py++) {{
+        int dy = y + py;
+        if (dy < 0 || dy >= SCREEN_H) continue;
+        for (int px = 0; px < FIREBAR_BALL_SIZE; px++) {{
+            int dx = x + px;
+            if (dx < 0 || dx >= SCREEN_W) continue;
+            int cx = px - FIREBAR_BALL_SIZE / 2;
+            int cy = py - FIREBAR_BALL_SIZE / 2;
+            if (cx * cx + cy * cy > 18) continue;
+            uint32_t color = (cx * cx + cy * cy < 6) ? 0xFFFFFF80u : 0xFFFF4A10u;
+            frame[(size_t)dy * SCREEN_W + dx] = color;
+        }}
+    }}
+}}
+
+static void draw_firebar(uint32_t *frame, const Enemy *enemy, uint32_t ticks, int camera_x) {{
+    float angle = firebar_angle(enemy, ticks);
+    float cx = enemy->x + 8.0f;
+    float cy = enemy->y + 8.0f;
+    int balls = firebar_ball_count(enemy);
+    for (int i = 0; i < balls; i++) {{
+        float radius = (float)i * FIREBAR_RADIUS_STEP;
+        int x = (int)(cx + cosf(angle) * radius) - camera_x - FIREBAR_BALL_SIZE / 2;
+        int y = (int)(cy + sinf(angle) * radius) - FIREBAR_BALL_SIZE / 2;
+        draw_firebar_ball(frame, x, y);
+    }}
+}}
+
+static bool firebar_hits_player(
+    const Enemy *enemy,
+    float mario_x,
+    float mario_y,
+    int player_w,
+    int player_h,
+    uint32_t ticks
+) {{
+    float angle = firebar_angle(enemy, ticks);
+    float cx = enemy->x + 8.0f;
+    float cy = enemy->y + 8.0f;
+    int balls = firebar_ball_count(enemy);
+    for (int i = 0; i < balls; i++) {{
+        float radius = (float)i * FIREBAR_RADIUS_STEP;
+        float x = cx + cosf(angle) * radius - FIREBAR_BALL_SIZE / 2;
+        float y = cy + sinf(angle) * radius - FIREBAR_BALL_SIZE / 2;
+        if (rects_overlap(mario_x, mario_y, player_w, player_h, x, y, FIREBAR_BALL_SIZE, FIREBAR_BALL_SIZE)) return true;
+    }}
+    return false;
 }}
 
 static const uint8_t *mario_sprite(
@@ -2735,7 +2852,9 @@ int main(int argc, char **argv) {{
             if (!enemy->alive) continue;
             int ew = enemy_width(enemy);
             int eh = enemy_height(enemy);
-            if (enemy->kind == BLOOPER_KIND) {{
+            if (enemy_is_firebar(enemy)) {{
+                /* Static pivot; draw/collision use per-ball rotation below. */
+            }} else if (enemy->kind == BLOOPER_KIND) {{
                 float gx = enemy->x + enemy->vx * dt;
                 if (gx < 0.0f || gx > current_level_w - ew || rect_hits_solid(collision, blocks, current_level_w, gx, enemy->y, ew, eh)) {{
                     enemy->vx = -enemy->vx;
@@ -2791,9 +2910,12 @@ int main(int argc, char **argv) {{
                     enemy->vx = -enemy->vx;
                 }}
             }}
-            if (rects_overlap(mario_x, mario_y, player_w, player_h, enemy->x, enemy->y, ew, eh)) {{
+            bool hits_player = enemy_is_firebar(enemy) ?
+                firebar_hits_player(enemy, mario_x, mario_y, player_w, player_h, now) :
+                rects_overlap(mario_x, mario_y, player_w, player_h, enemy->x, enemy->y, ew, eh);
+            if (hits_player) {{
                 bool shell_stationary = enemy->kind == KOOPA_SHELL_KIND && !shell_is_moving(enemy);
-                if (enemy->kind != PIRANHA_KIND && enemy->kind != PODOBOO_KIND && vy > 40.0f && mario_y + player_h - 4.0f < enemy->y + 8.0f) {{
+                if (!enemy_is_firebar(enemy) && enemy->kind != PIRANHA_KIND && enemy->kind != PODOBOO_KIND && vy > 40.0f && mario_y + player_h - 4.0f < enemy->y + 8.0f) {{
                     if (enemy->kind == 0x00) {{
                         enemy->kind = KOOPA_SHELL_KIND;
                         enemy->vx = 0.0f;
@@ -2859,7 +2981,7 @@ int main(int argc, char **argv) {{
             for (int j = 0; j < ENEMY_COUNT; j++) {{
                 if (i == j) continue;
                 Enemy *target = &enemies[j];
-                if (!target->alive || target->kind == KOOPA_SHELL_KIND) continue;
+                if (!target->alive || target->kind == KOOPA_SHELL_KIND || enemy_is_firebar(target)) continue;
                 int tw = enemy_width(target);
                 int th = enemy_height(target);
                 if (rects_overlap(shell->x, shell->y, sw, sh, target->x, target->y, tw, th)) {{
@@ -2889,6 +3011,10 @@ int main(int argc, char **argv) {{
         for (int i = 0; i < ENEMY_COUNT; i++) {{
             Enemy *enemy = &enemies[i];
             if (!enemy->alive) continue;
+            if (enemy_is_firebar(enemy)) {{
+                draw_firebar(frame, enemy, now, camera);
+                continue;
+            }}
             draw_sprite(
                 frame,
                 enemy_sprite(
@@ -2984,7 +3110,7 @@ set -eu
 command -v pkg-config >/dev/null 2>&1 || {{ echo "pkg-config is required" >&2; exit 1; }}
 pkg-config --exists sdl2 || {{ echo "SDL2 development files are required (pkg-config sdl2)" >&2; exit 1; }}
 mkdir -p dist
-cc -O2 -Wall -Wextra src/main.c -o "dist/{app_slug}" $(pkg-config --cflags --libs sdl2)
+cc -O2 -Wall -Wextra src/main.c -o "dist/{app_slug}" $(pkg-config --cflags --libs sdl2) -lm
 mkdir -p dist/assets
 cp assets/*.bin assets/*.rgb assets/*.rgba dist/assets/
 """

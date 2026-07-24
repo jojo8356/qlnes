@@ -187,6 +187,9 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     ]
     assert data["enemies"][6]["runtime_kinds"] == ["0x0E", "0x0F", "0x10"]
     assert data["enemies"][6]["behavior"].startswith("native winged Koopa enemy")
+    assert data["enemies"][7]["name"] == "firebar"
+    assert data["enemies"][7]["runtime_kinds"] == ["0x1B", "0x1C", "0x1D", "0x1E", "0x1F"]
+    assert data["enemies"][7]["behavior"].startswith("native castle hazard")
     assert sum(enemy["spawn_count"] for enemy in data["enemies"] if "spawn_count" in enemy) == len(
         data["enemy_spawns"]
     )
@@ -288,6 +291,10 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "PARATROOPA_JUMP_KIND" in source
     assert "enemy_is_paratroopa" in source
     assert "paratroopa_frames" in source
+    assert "FIREBAR_CLOCKWISE_KIND" in source
+    assert "enemy_is_firebar" in source
+    assert "draw_firebar" in source
+    assert "firebar_hits_player" in source
     assert "BRICK_CHUNK_W" in source
     assert "BRICK_CHUNK_H" in source
     assert "MARIO_FRAME_COUNT" in source
@@ -482,6 +489,7 @@ def test_create_smb_native_port_stage_all_generates_main_quest_sequence(tmp_path
     assert data["enemies"][4]["spawn_count_total"] == 14
     assert data["enemies"][5]["spawn_count_total"] == 106
     assert data["enemies"][6]["spawn_count_total"] == 48
+    assert data["enemies"][7]["spawn_count_total"] == 41
     assert (export.out_dir / "assets" / "level_8_4.rgb").exists()
     assert (export.out_dir / "assets" / "collision_8_4.bin").exists()
     assert (export.out_dir / "assets" / "blocks_8_4.bin").exists()
@@ -493,6 +501,7 @@ def test_create_smb_native_port_stage_all_generates_main_quest_sequence(tmp_path
     assert "PODOBOO_KIND" in source
     assert "PIRANHA_KIND" in source
     assert "PARATROOPA_JUMP_KIND" in source
+    assert "FIREBAR_LONG_KIND" in source
     assert '"8-4"' in source
     assert "current_stage = (current_stage + 1) % STAGE_COUNT" in source
     assert not list(export.out_dir.rglob("*.nes"))
