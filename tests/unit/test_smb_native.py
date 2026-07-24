@@ -172,6 +172,14 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert data["enemies"][4]["asset"] == "assets/podoboo.rgba"
     assert data["enemies"][4]["runtime_kind"] == "0x0C"
     assert data["enemies"][4]["behavior"].startswith("native castle hazard")
+    assert data["enemies"][5]["name"] == "piranha-plant"
+    assert [sprite["name"] for sprite in data["enemies"][5]["sprites"]] == [
+        "piranha-plant-1",
+        "piranha-plant-2",
+    ]
+    assert data["enemies"][5]["runtime_kind"] == "0x0D"
+    assert data["enemies"][5]["spawn_count_total"] > 0
+    assert data["enemies"][5]["behavior"].startswith("native pipe hazard")
     assert sum(enemy["spawn_count"] for enemy in data["enemies"] if "spawn_count" in enemy) == len(
         data["enemy_spawns"]
     )
@@ -218,6 +226,8 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert (export.out_dir / "assets" / "blooper_1.rgba").exists()
     assert (export.out_dir / "assets" / "blooper_2.rgba").exists()
     assert (export.out_dir / "assets" / "podoboo.rgba").exists()
+    assert (export.out_dir / "assets" / "piranha_plant_1.rgba").exists()
+    assert (export.out_dir / "assets" / "piranha_plant_2.rgba").exists()
     assert (export.out_dir / "assets" / "enemies_1_1.bin").exists()
     assert (export.out_dir / "assets" / "enemies_1_2.bin").exists()
     assert not (export.out_dir / "emulator").exists()
@@ -263,6 +273,9 @@ def test_create_smb_native_port_generates_c_sdl_project_without_rom_or_emulator(
     assert "PODOBOO_KIND" in source
     assert "enemy->origin_y" in source
     assert "enemy->kind == PODOBOO_KIND" in source
+    assert "PIRANHA_KIND" in source
+    assert "piranha_frames" in source
+    assert "enemy->kind == PIRANHA_KIND" in source
     assert "BRICK_CHUNK_W" in source
     assert "BRICK_CHUNK_H" in source
     assert "MARIO_FRAME_COUNT" in source
@@ -412,6 +425,8 @@ def test_cli_smb_native_generates_project(tmp_path: Path) -> None:
     assert (out / "assets" / "goomba.rgba").exists()
     assert (out / "assets" / "blooper_1.rgba").exists()
     assert (out / "assets" / "podoboo.rgba").exists()
+    assert (out / "assets" / "piranha_plant_1.rgba").exists()
+    assert (out / "assets" / "piranha_plant_2.rgba").exists()
     assert (out / "assets" / "mario_small_walk_1.rgba").exists()
     assert (out / "assets" / "mario_small_jump.rgba").exists()
     assert (out / "assets" / "mario_big_walk_1.rgba").exists()
@@ -451,6 +466,7 @@ def test_create_smb_native_port_stage_all_generates_main_quest_sequence(tmp_path
     assert area_types_by_stage["7-2"] == 0
     assert data["enemies"][3]["spawn_count_total"] == 14
     assert data["enemies"][4]["spawn_count_total"] == 14
+    assert data["enemies"][5]["spawn_count_total"] == 106
     assert (export.out_dir / "assets" / "level_8_4.rgb").exists()
     assert (export.out_dir / "assets" / "collision_8_4.bin").exists()
     assert (export.out_dir / "assets" / "blocks_8_4.bin").exists()
@@ -460,6 +476,7 @@ def test_create_smb_native_port_stage_all_generates_main_quest_sequence(tmp_path
     assert "STAGE_AREA_TYPES" in source
     assert "BLOOPER_KIND" in source
     assert "PODOBOO_KIND" in source
+    assert "PIRANHA_KIND" in source
     assert '"8-4"' in source
     assert "current_stage = (current_stage + 1) % STAGE_COUNT" in source
     assert not list(export.out_dir.rglob("*.nes"))

@@ -32,6 +32,7 @@ SMB_NATIVE_KOOPA_SHELL_KIND = 0x80
 SMB_GOOMBA_ID = 0x06
 SMB_BLOOPER_ID = 0x07
 SMB_PODOBOO_ID = 0x0C
+SMB_PIRANHA_ID = 0x0D
 SMB_GOOMBA_GROUPS = {0x37: 2, 0x38: 3, 0x39: 2, 0x3A: 3}
 SMB_KOOPA_GROUPS = {0x3B: 2, 0x3C: 3}
 SMB_NATIVE_ENEMY_RECORD_BYTES = 5
@@ -114,6 +115,12 @@ SMB_BLOOPER_SPRITES = (
     ("blooper-2", "blooper_2.rgba"),
 )
 SMB_PODOBOO_SPRITE = ("podoboo", "podoboo.rgba")
+SMB_PIRANHA_SPRITES = (
+    ("piranha-plant-1", "piranha_plant_1.rgba"),
+    ("piranha-plant-2", "piranha_plant_2.rgba"),
+)
+SMB_PIPE_TOP_LEFT_METATILES = {0x10, 0x12}
+SMB_PIPE_TOP_RIGHT_METATILES = {0x11, 0x13}
 
 
 @dataclass(frozen=True)
@@ -225,6 +232,10 @@ def create_smb_native_port(
         for sprite_name, _ in SMB_BLOOPER_SPRITES
     }
     podoboo_png = build_dir / "characters" / "enemies" / f"{SMB_PODOBOO_SPRITE[0]}.png"
+    piranha_pngs = {
+        sprite_name: build_dir / "characters" / "enemies" / f"{sprite_name}.png"
+        for sprite_name, _ in SMB_PIRANHA_SPRITES
+    }
     mushroom_png = build_dir / "blocks" / "sprites" / "mushroom.png"
     brick_chunk_png = build_dir / "blocks" / "sprites" / "brick-chunk.png"
     for mario_png in mario_pngs.values():
@@ -252,6 +263,9 @@ def create_smb_native_port(
             raise RuntimeError(f"expected SMB blooper sprite missing: {blooper_png}")
     if not podoboo_png.exists():
         raise RuntimeError(f"expected SMB podoboo sprite missing: {podoboo_png}")
+    for piranha_png in piranha_pngs.values():
+        if not piranha_png.exists():
+            raise RuntimeError(f"expected SMB piranha sprite missing: {piranha_png}")
     if not mushroom_png.exists():
         raise RuntimeError(f"expected SMB power-up sprite missing: {mushroom_png}")
     if not brick_chunk_png.exists():
@@ -269,6 +283,7 @@ def create_smb_native_port(
     koopa_shell_raw = assets_dir / "koopa_shell.rgba"
     blooper_raws = [assets_dir / asset_name for _, asset_name in SMB_BLOOPER_SPRITES]
     podoboo_raw = assets_dir / SMB_PODOBOO_SPRITE[1]
+    piranha_raws = [assets_dir / asset_name for _, asset_name in SMB_PIRANHA_SPRITES]
     dead_mario_raw = assets_dir / SMB_DEAD_MARIO_SPRITE[1]
     stage_assets: list[_SmbNativeStageAsset] = []
     for level in rendered_levels:
@@ -360,6 +375,11 @@ def create_smb_native_port(
         SMB_BLOOPER_SPRITES,
     )
     podoboo_size = _write_rgba(podoboo_png, podoboo_raw)
+    piranha_size, piranha_assets = _write_mario_frame_assets(
+        piranha_pngs,
+        assets_dir,
+        SMB_PIRANHA_SPRITES,
+    )
 
     main_c = src_dir / "main.c"
     main_c.write_text(
@@ -420,6 +440,9 @@ def create_smb_native_port(
             blooper_frame_count=len(SMB_BLOOPER_SPRITES),
             podoboo_width=podoboo_size[0],
             podoboo_height=podoboo_size[1],
+            piranha_width=piranha_size[0],
+            piranha_height=piranha_size[1],
+            piranha_frame_count=len(SMB_PIRANHA_SPRITES),
             enemy_count=max_enemy_count,
             enemy_record_bytes=SMB_NATIVE_ENEMY_RECORD_BYTES,
         ),
@@ -474,6 +497,7 @@ Terminal=false
         koopa_shell_raw,
         *blooper_raws,
         podoboo_raw,
+        *piranha_raws,
         *(stage_asset.enemies_raw for stage_asset in stage_assets),
         manifest,
     ]
@@ -676,6 +700,18 @@ Terminal=false
                         ),
                         "behavior": "native castle hazard: vertical lava jump cycle, damages Mario on contact",
                     },
+                    {
+                        "name": "piranha-plant",
+                        "sprites": piranha_assets,
+                        "runtime_kind": f"0x{SMB_PIRANHA_ID:02X}",
+                        "spawn_count_total": sum(
+                            1
+                            for stage_asset in stage_assets
+                            for spawn in stage_asset.enemy_spawns
+                            if spawn["kind"] == "piranha-plant"
+                        ),
+                        "behavior": "native pipe hazard: generated from SMB vertical pipe metatiles, cycles out of pipes and damages Mario on contact",
+                    },
                 ],
                 "enemy_spawns": first_stage.enemy_spawns,
                 "block_manifest": str(block_assets.manifest_json),
@@ -703,6 +739,7 @@ Terminal=false
                     "Brick shatter uses the ROM-derived brick chunk sprite as a native visual effect.",
                     "Koopa stomps switch to a native shell state using the ROM-derived shell sprite.",
                     "Stationary Koopa shells can be kicked and moving shells defeat other enemies natively.",
+                    "Piranha Plants are inferred from generated SMB pipe metatiles rather than the EnemyData stream.",
                 ],
             },
             indent=2,
@@ -926,7 +963,7 @@ def _write_enemy_spawns(
         raise ValueError(f"unknown SMB stage {stage!r}; valid: {valid}")
 
     runtime = _SmbLevelRuntime(rom_bytes)
-    runtime.load_stage(WORLD_MAP[stage], max_columns=256)
+    columns = runtime.load_stage(WORLD_MAP[stage], max_columns=256)
     enemy_data = runtime.read(SMB_ENEMY_DATA_LOW) | (runtime.read(SMB_ENEMY_DATA_LOW + 1) << 8)
 
     page_loc = 0
@@ -1066,8 +1103,42 @@ def _write_enemy_spawns(
         offset += 2
         page_selected = False
 
+    _append_pipe_piranha_spawns(records, spawns, columns, stage)
     target.write_bytes(bytes(records))
     return spawns
+
+
+def _append_pipe_piranha_spawns(
+    records: bytearray,
+    spawns: list[dict[str, object]],
+    columns: list[list[int]],
+    stage: str,
+) -> None:
+    if stage == "1-1":
+        return
+    for col in range(len(columns) - 1):
+        left = columns[col]
+        right = columns[col + 1]
+        for row in range(len(left) - 1):
+            if left[row] not in SMB_PIPE_TOP_LEFT_METATILES:
+                continue
+            if right[row] not in SMB_PIPE_TOP_RIGHT_METATILES:
+                continue
+            if left[row + 1] != 0x14 or right[row + 1] != 0x15:
+                continue
+            _append_enemy_spawn(
+                records,
+                spawns,
+                kind="piranha-plant",
+                enemy_id=SMB_PIRANHA_ID,
+                x=col * 16 + 8,
+                y=row * 16 + 8,
+                page=col // 16,
+                column=col & 0x0F,
+                row=row,
+                offset=0,
+                source=(left[row], right[row]),
+            )
 
 
 def _append_enemy_spawn(
@@ -1154,6 +1225,9 @@ def _main_c_source(
     blooper_frame_count: int,
     podoboo_width: int,
     podoboo_height: int,
+    piranha_width: int,
+    piranha_height: int,
+    piranha_frame_count: int,
     enemy_count: int,
     enemy_record_bytes: int,
 ) -> str:
@@ -1218,6 +1292,10 @@ def _main_c_source(
 #define PODOBOO_W {podoboo_width}
 #define PODOBOO_H {podoboo_height}
 #define PODOBOO_KIND {SMB_PODOBOO_ID}
+#define PIRANHA_W {piranha_width}
+#define PIRANHA_H {piranha_height}
+#define PIRANHA_KIND {SMB_PIRANHA_ID}
+#define PIRANHA_FRAME_COUNT {piranha_frame_count}
 #define ENEMY_COUNT {enemy_count}
 #define ENEMY_RECORD_BYTES {enemy_record_bytes}
 #define TILE_SIZE 16
@@ -1705,7 +1783,7 @@ static bool load_enemies(const uint8_t *data, Enemy *enemies) {{
         enemies[i].x = (float)x;
         enemies[i].y = (float)y;
         enemies[i].origin_y = (float)y;
-        enemies[i].vx = kind == BLOOPER_KIND ? -24.0f : -36.0f;
+        enemies[i].vx = (kind == BLOOPER_KIND) ? -24.0f : ((kind == PIRANHA_KIND || kind == PODOBOO_KIND) ? 0.0f : -36.0f);
         enemies[i].vy = 0.0f;
         enemies[i].kind = kind;
         enemies[i].alive = data[o + 4] == 0;
@@ -1847,6 +1925,7 @@ static int enemy_width(const Enemy *enemy) {{
     if (enemy->kind == KOOPA_SHELL_KIND) return KOOPA_SHELL_W;
     if (enemy->kind == BLOOPER_KIND) return BLOOPER_W;
     if (enemy->kind == PODOBOO_KIND) return PODOBOO_W;
+    if (enemy->kind == PIRANHA_KIND) return PIRANHA_W;
     return enemy->kind == 0x00 ? KOOPA_W : GOOMBA_W;
 }}
 
@@ -1854,6 +1933,7 @@ static int enemy_height(const Enemy *enemy) {{
     if (enemy->kind == KOOPA_SHELL_KIND) return KOOPA_SHELL_H;
     if (enemy->kind == BLOOPER_KIND) return BLOOPER_H;
     if (enemy->kind == PODOBOO_KIND) return PODOBOO_H;
+    if (enemy->kind == PIRANHA_KIND) return PIRANHA_H;
     return enemy->kind == 0x00 ? KOOPA_H : GOOMBA_H;
 }}
 
@@ -1864,11 +1944,13 @@ static const uint8_t *enemy_sprite(
     const uint8_t *koopa_shell,
     uint8_t **blooper_frames,
     const uint8_t *podoboo,
+    uint8_t **piranha_frames,
     uint32_t ticks
 ) {{
     if (enemy->kind == KOOPA_SHELL_KIND) return koopa_shell;
     if (enemy->kind == BLOOPER_KIND) return blooper_frames[(ticks / 180) % BLOOPER_FRAME_COUNT];
     if (enemy->kind == PODOBOO_KIND) return podoboo;
+    if (enemy->kind == PIRANHA_KIND) return piranha_frames[(ticks / 220) % PIRANHA_FRAME_COUNT];
     return enemy->kind == 0x00 ? koopa : goomba;
 }}
 
@@ -2113,6 +2195,8 @@ int main(int argc, char **argv) {{
     char blooper_path_0[4096];
     char blooper_path_1[4096];
     char podoboo_path[4096];
+    char piranha_path_0[4096];
+    char piranha_path_1[4096];
     snprintf(title_screen_path, sizeof(title_screen_path), "%sassets/title_screen.rgb", base ? base : "");
     snprintf(used_block_path, sizeof(used_block_path), "%sassets/used_empty_block.rgb", base ? base : "");
     snprintf(coin_path_0, sizeof(coin_path_0), "%sassets/jumping_coin_frame_0.rgba", base ? base : "");
@@ -2144,6 +2228,8 @@ int main(int argc, char **argv) {{
     snprintf(blooper_path_0, sizeof(blooper_path_0), "%sassets/blooper_1.rgba", base ? base : "");
     snprintf(blooper_path_1, sizeof(blooper_path_1), "%sassets/blooper_2.rgba", base ? base : "");
     snprintf(podoboo_path, sizeof(podoboo_path), "%sassets/podoboo.rgba", base ? base : "");
+    snprintf(piranha_path_0, sizeof(piranha_path_0), "%sassets/piranha_plant_1.rgba", base ? base : "");
+    snprintf(piranha_path_1, sizeof(piranha_path_1), "%sassets/piranha_plant_2.rgba", base ? base : "");
 
     uint8_t *levels[STAGE_COUNT];
     uint8_t *collisions[STAGE_COUNT];
@@ -2195,6 +2281,9 @@ int main(int argc, char **argv) {{
     blooper_frames[0] = read_asset(blooper_path_0, (size_t)BLOOPER_W * BLOOPER_H * 4);
     blooper_frames[1] = read_asset(blooper_path_1, (size_t)BLOOPER_W * BLOOPER_H * 4);
     uint8_t *podoboo = read_asset(podoboo_path, (size_t)PODOBOO_W * PODOBOO_H * 4);
+    uint8_t *piranha_frames[PIRANHA_FRAME_COUNT];
+    piranha_frames[0] = read_asset(piranha_path_0, (size_t)PIRANHA_W * PIRANHA_H * 4);
+    piranha_frames[1] = read_asset(piranha_path_1, (size_t)PIRANHA_W * PIRANHA_H * 4);
     bool mario_loaded = true;
     for (int i = 0; i < MARIO_FRAME_COUNT; i++) {{
         if (!small_mario_frames[i] || !big_mario_frames[i]) mario_loaded = false;
@@ -2211,7 +2300,11 @@ int main(int argc, char **argv) {{
     for (int i = 0; i < BLOOPER_FRAME_COUNT; i++) {{
         if (!blooper_frames[i]) bloopers_loaded = false;
     }}
-    if (!stages_loaded || !title_screen || !used_block || !coins_loaded || !mushroom || !brick_chunk || !mario_loaded || !swim_loaded || !bloopers_loaded || !podoboo || !dead_mario || !goomba || !koopa || !koopa_shell) return 2;
+    bool piranhas_loaded = true;
+    for (int i = 0; i < PIRANHA_FRAME_COUNT; i++) {{
+        if (!piranha_frames[i]) piranhas_loaded = false;
+    }}
+    if (!stages_loaded || !title_screen || !used_block || !coins_loaded || !mushroom || !brick_chunk || !mario_loaded || !swim_loaded || !bloopers_loaded || !piranhas_loaded || !podoboo || !dead_mario || !goomba || !koopa || !koopa_shell) return 2;
     int current_stage = 0;
     const char *stage_label = STAGE_LABELS[current_stage];
     int current_level_w = STAGE_LEVEL_WIDTHS[current_stage];
@@ -2250,6 +2343,7 @@ int main(int argc, char **argv) {{
         free(koopa);
         free(koopa_shell);
         for (int i = 0; i < BLOOPER_FRAME_COUNT; i++) free(blooper_frames[i]);
+        for (int i = 0; i < PIRANHA_FRAME_COUNT; i++) free(piranha_frames[i]);
         free(podoboo);
         return 0;
     }}
@@ -2560,6 +2654,11 @@ int main(int argc, char **argv) {{
                 float t = (float)cycle_ms / 1700.0f;
                 float rise = t < 0.5f ? t * 2.0f : (1.0f - t) * 2.0f;
                 enemy->y = enemy->origin_y - rise * 92.0f;
+            }} else if (enemy->kind == PIRANHA_KIND) {{
+                uint32_t cycle_ms = (now + (uint32_t)i * 173u) % 2400u;
+                float t = (float)cycle_ms / 2400.0f;
+                float rise = t < 0.5f ? t * 2.0f : (1.0f - t) * 2.0f;
+                enemy->y = enemy->origin_y - rise * 32.0f;
             }} else {{
                 enemy->vy += GROUND_GRAVITY * dt;
                 float gx = enemy->x + enemy->vx * dt;
@@ -2586,7 +2685,7 @@ int main(int argc, char **argv) {{
             }}
             if (rects_overlap(mario_x, mario_y, player_w, player_h, enemy->x, enemy->y, ew, eh)) {{
                 bool shell_stationary = enemy->kind == KOOPA_SHELL_KIND && !shell_is_moving(enemy);
-                if (vy > 40.0f && mario_y + player_h - 4.0f < enemy->y + 8.0f) {{
+                if (enemy->kind != PIRANHA_KIND && enemy->kind != PODOBOO_KIND && vy > 40.0f && mario_y + player_h - 4.0f < enemy->y + 8.0f) {{
                     if (enemy->kind == 0x00) {{
                         enemy->kind = KOOPA_SHELL_KIND;
                         enemy->vx = 0.0f;
@@ -2679,7 +2778,16 @@ int main(int argc, char **argv) {{
             if (!enemy->alive) continue;
             draw_sprite(
                 frame,
-                enemy_sprite(enemy, goomba, koopa, koopa_shell, blooper_frames, podoboo, now),
+                enemy_sprite(
+                    enemy,
+                    goomba,
+                    koopa,
+                    koopa_shell,
+                    blooper_frames,
+                    podoboo,
+                    piranha_frames,
+                    now
+                ),
                 enemy_width(enemy),
                 enemy_height(enemy),
                 (int)enemy->x - camera,
@@ -2743,6 +2851,7 @@ int main(int argc, char **argv) {{
     free(koopa);
     free(koopa_shell);
     for (int i = 0; i < BLOOPER_FRAME_COUNT; i++) free(blooper_frames[i]);
+    for (int i = 0; i < PIRANHA_FRAME_COUNT; i++) free(piranha_frames[i]);
     free(podoboo);
     if (audio_device) SDL_CloseAudioDevice(audio_device);
     SDL_DestroyTexture(texture);
